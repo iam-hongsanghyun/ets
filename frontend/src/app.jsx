@@ -9,7 +9,7 @@ import {
   Header,
   Tweaks,
 } from "./components/AppShared.jsx";
-import { BuildView, ModelView, ValidationView, AnalysisView, Compare } from "./components/AppViews.jsx";
+import { BuildView, ValidationView, AnalysisView, Compare } from "./components/AppViews.jsx";
 
 export default function App() {
   const [templates, setTemplates] = useS([]);
@@ -58,6 +58,24 @@ export default function App() {
     loadTemplates();
   }, []);
 
+  function makeImportedScenarioName(baseName, existingScenarios) {
+    const existingNames = new Set((existingScenarios || []).map((scenario) => scenario.name));
+    if (!existingNames.has(baseName)) return baseName;
+    let suffix = 2;
+    while (existingNames.has(`${baseName} ${suffix}`)) suffix += 1;
+    return `${baseName} ${suffix}`;
+  }
+
+  function importTemplateScenarios(templateConfig, existingScenarios, replacedScenarioId = null) {
+    const otherScenarios = (existingScenarios || []).filter((scenario) => scenario.id !== replacedScenarioId);
+    const imported = structuredClone(templateConfig?.scenarios || []).map((scenario, index) => ({
+      ...scenario,
+      id: `imported_scenario_${Date.now()}_${index}_${Math.random().toString(36).slice(2, 8)}`,
+      name: makeImportedScenarioName(scenario.name || `Imported Scenario ${index + 1}`, otherScenarios),
+    }));
+    return imported;
+  }
+
   async function loadTemplates() {
     try {
       const response = await fetch("/api/templates");
@@ -83,6 +101,34 @@ export default function App() {
       setStatus("Template loaded. Review or edit inputs, then run the scenario.");
     } catch (error) {
       setStatus(`Failed to load templates: ${error.message}`);
+    }
+  }
+
+  async function saveActiveScenarioToLibrary() {
+    if (!activeScenario) return;
+    setStatus(`Saving ${activeScenario.name} to user scenario library…`);
+    try {
+      const response = await fetch("/api/save-scenario", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ scenario: activeScenario }),
+      });
+      const payload = await response.json();
+      if (!response.ok) {
+        throw new Error(payload.error || "Save failed.");
+      }
+      setTemplates((prev) => {
+        const next = [...prev.filter((item) => item.id !== payload.template.id), payload.template];
+        next.sort((left, right) => {
+          if (left.id === "blank") return -1;
+          if (right.id === "blank") return 1;
+          return left.name.localeCompare(right.name);
+        });
+        return next;
+      });
+      setStatus(`Saved ${activeScenario.name} to ${payload.path}`);
+    } catch (error) {
+      setStatus(`Save failed: ${error.message}`);
     }
   }
 
@@ -294,21 +340,45 @@ export default function App() {
     runSimulation(baseConfig);
   };
 
+  const runAllScenarios = () => {
+    runSimulation(configRef.current);
+  };
+
   const loadTemplateIntoEditor = (templateId) => {
     const template = templates.find((item) => item.id === templateId);
-    if (!template) return;
-    const nextConfig = structuredClone(template.config);
+    if (!template || !activeScenario) return;
+    const importedScenarios = importTemplateScenarios(
+      template.config,
+      configRef.current?.scenarios || [],
+      activeScenario.id
+    );
+    if (!importedScenarios.length) {
+      setStatus(`Template ${template.name} has no scenarios to import.`);
+      return;
+    }
+    const [replacementScenario, ...additionalScenarios] = importedScenarios;
+    const nextConfig = {
+      ...structuredClone(configRef.current || { scenarios: [] }),
+      scenarios: (configRef.current?.scenarios || []).flatMap((scenario) => {
+        if (scenario.id !== activeScenario.id) return [scenario];
+        return [replacementScenario, ...additionalScenarios];
+      }),
+    };
     setConfig(nextConfig);
     configRef.current = nextConfig;
-    loadedConfigRef.current = structuredClone(template.config);
+    loadedConfigRef.current = structuredClone(nextConfig);
     setResults({});
     setSummary([]);
     setAnalysis([]);
-    setActiveScenarioId(nextConfig.scenarios?.[0]?.id || null);
-    setActiveYear(nextConfig.scenarios?.[0]?.years?.[0]?.year || null);
+    setActiveScenarioId(replacementScenario?.id || null);
+    setActiveYear(replacementScenario?.years?.[0]?.year || null);
     setSelPart(null);
     setValidationTarget(null);
-    setStatus(`Loaded template: ${template.name}. Click Run scenario to solve the market.`);
+    setStatus(
+      additionalScenarios.length
+        ? `Loaded template: ${template.name}. Replaced ${activeScenario.name} and added ${additionalScenarios.length} additional scenario${additionalScenarios.length > 1 ? "s" : ""}.`
+        : `Loaded template: ${template.name}. Replaced ${activeScenario.name}.`
+    );
   };
 
   const navigateValidationIssue = (issue) => {
@@ -350,6 +420,7 @@ export default function App() {
         onDuplicateScenario={duplicateScenario}
         onRemoveScenario={removeScenario}
         onLoadTemplate={loadTemplateIntoEditor}
+        onSaveScenario={saveActiveScenarioToLibrary}
         status={status}
       />
 
@@ -367,22 +438,9 @@ export default function App() {
           onUpdateYearSeries={updateYearSeriesValue}
           onRunBase={runBaseScenario}
           onRunEdited={() => runSimulation()}
+          onRunAll={runAllScenarios}
           hasEditedChanges={hasEditedChanges}
           navigationTarget={validationTarget}
-        />
-      )}
-
-      {activeSection === "model" && (
-        <ModelView
-          scenario={activeScenario}
-          yearObj={yearObj}
-          activeYear={activeYear}
-          onYearChange={(year) => { setActiveYear(year); setSelPart(null); }}
-          selPart={selPart}
-          setSelPart={setSelPart}
-          onRunBase={runBaseScenario}
-          onRunEdited={() => runSimulation()}
-          hasEditedChanges={hasEditedChanges}
         />
       )}
 

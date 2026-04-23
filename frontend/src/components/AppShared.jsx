@@ -2,21 +2,21 @@ import { useState as useS, useEffect as useE, useMemo as useM, useRef as useR } 
 import { fmt } from "./MarketChart.jsx";
 
 const SERIES_FIELD_META = {
-  total_cap: { label: "Total cap", step: 1, min: 0, format: (value) => fmt.num(value, 0) },
-  auction_offered: { label: "Auction offered", step: 1, min: 0, format: (value) => fmt.num(value, 0) },
-  reserved_allowances: { label: "Reserved allowances", step: 1, min: 0, format: (value) => fmt.num(value, 0) },
-  cancelled_allowances: { label: "Cancelled allowances", step: 1, min: 0, format: (value) => fmt.num(value, 0) },
-  auction_reserve_price: { label: "Auction reserve price", step: 1, min: 0, format: (value) => fmt.price(value) },
-  minimum_bid_coverage: { label: "Minimum bid coverage", step: 0.05, min: 0, max: 2, format: (value) => fmt.num(value, 2) },
-  price_lower_bound: { label: "Price floor", step: 1, min: 0, format: (value) => fmt.price(value) },
-  price_upper_bound: { label: "Price ceiling", step: 1, min: 0, format: (value) => fmt.price(value) },
-  borrowing_limit: { label: "Borrowing limit", step: 1, min: 0, format: (value) => fmt.num(value, 0) },
-  manual_expected_price: { label: "Manual expected price", step: 1, min: 0, format: (value) => fmt.price(value) },
-  initial_emissions: { label: "Initial emissions", step: 1, min: 0, format: (value) => fmt.num(value, 1) },
-  free_allocation_ratio: { label: "Free allocation ratio", step: 0.05, min: 0, max: 1, format: (value) => fmt.num(value, 2) },
-  penalty_price: { label: "Penalty price", step: 1, min: 0, format: (value) => fmt.price(value) },
-  fixed_cost: { label: "Fixed cost", step: 1, min: 0, format: (value) => fmt.num(value, 0) },
-  max_activity_share: { label: "Adoption share cap", step: 0.05, min: 0, max: 1, format: (value) => fmt.num(value, 2) },
+  total_cap: { label: "Total cap", unit: "Mt CO₂e", step: 1, min: 0, format: (value) => `${fmt.num(value, 0)} Mt`, description: "Hard annual ceiling on covered emissions. All allowance buckets (free allocation, auction, reserved, cancelled) must sum to this." },
+  auction_offered: { label: "Auction offered", unit: "Mt CO₂e", step: 1, min: 0, format: (value) => `${fmt.num(value, 0)} Mt`, description: "Volume offered at auction each year. Must not exceed total cap minus free allocation, reserved, and cancelled allowances." },
+  reserved_allowances: { label: "Reserved allowances", unit: "Mt CO₂e", step: 1, min: 0, format: (value) => `${fmt.num(value, 0)} Mt`, description: "Allowances withheld from the market this year. They are not auctioned and do not contribute to supply." },
+  cancelled_allowances: { label: "Cancelled allowances", unit: "Mt CO₂e", step: 1, min: 0, format: (value) => `${fmt.num(value, 0)} Mt`, description: "Allowances permanently retired from the cap. Reduces the effective supply permanently." },
+  auction_reserve_price: { label: "Auction reserve price", unit: "$/t", step: 1, min: 0, format: (value) => fmt.price(value), description: "Minimum price at which auction volume will clear. Offered allowances that cannot meet this price are treated as unsold." },
+  minimum_bid_coverage: { label: "Minimum bid coverage", unit: "%", displayScale: 100, step: 5, min: 0, max: 100, format: (value) => `${fmt.num(value, 0)}%`, description: "Minimum fraction of offered volume that must be covered by bids for the auction to clear. E.g. 80 means 80% of offered volume must be bid for." },
+  price_lower_bound: { label: "Price floor", unit: "$/t", step: 1, min: 0, format: (value) => fmt.price(value), description: "Equilibrium price cannot fall below this value. Models a minimum price guarantee or cost-containment mechanism." },
+  price_upper_bound: { label: "Price ceiling", unit: "$/t", step: 1, min: 0, format: (value) => fmt.price(value), description: "Equilibrium price is capped at this value. Models a safety valve or maximum price commitment." },
+  borrowing_limit: { label: "Borrowing limit", unit: "Mt CO₂e", step: 1, min: 0, format: (value) => `${fmt.num(value, 0)} Mt`, description: "Maximum volume a participant may borrow from a future period's allocation to cover current compliance. Requires borrowing to be enabled." },
+  manual_expected_price: { label: "Manual expected price", unit: "$/t", step: 1, min: 0, format: (value) => fmt.price(value), description: "Overrides the expectation rule and sets the future carbon price assumption manually. Only active when expectation rule is set to Manual." },
+  initial_emissions: { label: "Initial emissions", unit: "Mt CO₂e", step: 1, min: 0, format: (value) => fmt.num(value, 1), description: "Gross emissions before any abatement. This is the participant's baseline coverage obligation each year." },
+  free_allocation_ratio: { label: "Free allocation ratio", unit: "ratio 0–1", step: 0.05, min: 0, max: 1, format: (value) => fmt.num(value, 2), description: "Share of a participant's initial emissions covered by free allowances. 1.0 means fully covered for free; 0 means no free allocation." },
+  penalty_price: { label: "Penalty price", unit: "$/t", step: 1, min: 0, format: (value) => fmt.price(value), description: "Price paid per tonne of uncovered emissions when a participant exceeds their allowance holdings. Acts as a compliance ceiling." },
+  fixed_cost: { label: "Fixed cost", unit: "$", step: 1, min: 0, format: (value) => fmt.num(value, 0), description: "One-time adoption cost for a technology option. Paid in the year a participant switches to that technology." },
+  max_activity_share: { label: "Adoption share cap", unit: "ratio 0–1", step: 0.05, min: 0, max: 1, format: (value) => fmt.num(value, 2), description: "Maximum fraction of a participant's activity that can switch to this technology option in any given year." },
 };
 
 function getSeriesFieldMeta(field) {
@@ -479,6 +479,7 @@ function Header({
   activeSection,
   onSelectSection,
   onLoadTemplate,
+  onSaveScenario,
   onAddScenario,
   onDuplicateScenario,
   onRemoveScenario,
@@ -486,8 +487,7 @@ function Header({
 }) {
   const [selectedTemplate, setSelectedTemplate] = useS(templates?.[0]?.id || "blank");
   const sections = [
-    { id: "build", label: "Build" },
-    { id: "model", label: "Model" },
+    { id: "build", label: "Model" },
     { id: "validation", label: "Validation" },
     { id: "analysis", label: "Analysis" },
     { id: "scenario", label: "Scenario" },
@@ -535,6 +535,7 @@ function Header({
             {templates.map((template) => <option key={template.id} value={template.id}>{template.name}</option>)}
           </select>
           <button className="ghost-btn" onClick={() => onLoadTemplate(selectedTemplate)}>Load template</button>
+          <button className="ghost-btn" onClick={onSaveScenario}>Save scenario</button>
           <button className="ghost-btn" onClick={onAddScenario}>Add scenario</button>
           <button className="ghost-btn" onClick={onDuplicateScenario}>Duplicate scenario</button>
           <button className="ghost-btn danger-btn" onClick={onRemoveScenario} disabled={scenarios.length <= 1}>Remove scenario</button>
@@ -556,7 +557,7 @@ function Header({
   );
 }
 
-function ScenarioHero({ scenario, activeYear, onYearChange, results, primaryMetric = null, secondaryMetric = null }) {
+function ScenarioHero({ scenario, activeYear, onYearChange, results, primaryMetric = null, secondaryMetric = null, showYearStrip = true }) {
   const resByYear = results?.[scenario.name] || {};
   return (
     <section className="wb-hero">
@@ -564,18 +565,20 @@ function ScenarioHero({ scenario, activeYear, onYearChange, results, primaryMetr
         <div className="eyebrow">Scenario</div>
         <h1 style={{ color: scenario.color }}>{scenario.name}</h1>
         <p className="lede">{scenario.description}</p>
-        <div className="year-strip">
-          {scenario.years.map((year) => (
-            <button
-              key={year.year}
-              className={"ystep " + (String(year.year) === String(activeYear) ? "on" : "")}
-              onClick={() => onYearChange(String(year.year))}
-            >
-              <div className="yv">{year.year}</div>
-              <div className="yp">{fmt.price(resByYear[String(year.year)]?.price)}</div>
-            </button>
-          ))}
-        </div>
+        {showYearStrip && (
+          <div className="year-strip">
+            {scenario.years.map((year) => (
+              <button
+                key={year.year}
+                className={"ystep " + (String(year.year) === String(activeYear) ? "on" : "")}
+                onClick={() => onYearChange(String(year.year))}
+              >
+                <div className="yv">{year.year}</div>
+                <div className="yp">{fmt.price(resByYear[String(year.year)]?.price)}</div>
+              </button>
+            ))}
+          </div>
+        )}
       </div>
       <div className="hero-side">
         {primaryMetric}
@@ -588,20 +591,18 @@ function ScenarioHero({ scenario, activeYear, onYearChange, results, primaryMetr
 function SeriesTrajectoryEditor({ years, draft, setDraft, meta }) {
   const svgRef = useR(null);
   const [dragYear, setDragYear] = useS(null);
+  const [activeEditYear, setActiveEditYear] = useS(null);
   const W = 820;
   const H = 280;
-  const PAD = { t: 24, r: 24, b: 46, l: 64 };
+  const PAD = { t: 24, r: 24, b: 46, l: 76 };
   const innerW = W - PAD.l - PAD.r;
   const innerH = H - PAD.t - PAD.b;
   const orderedYears = useM(() => (years || []).map((year) => String(year.year)), [years]);
   const values = orderedYears.map((year) => Number(draft[year] ?? 0));
   const minValue = meta.min ?? Math.min(0, ...values);
-  const rawMax = Math.max(...values, minValue + 1);
-  const maxValue = Math.max(
-    meta.max ?? 0,
-    minValue + (meta.max != null ? 0 : rawMax * (rawMax <= 1 ? 1.1 : 1.15))
-  );
-  const domainMax = maxValue <= minValue ? minValue + 1 : maxValue;
+  const dataMax = Math.max(...values, 0);
+  const floorMax = meta.max ?? 100;
+  const domainMax = dataMax > floorMax ? dataMax * 1.1 : floorMax;
   const xAt = (index) => PAD.l + (orderedYears.length <= 1 ? innerW / 2 : (index / (orderedYears.length - 1)) * innerW);
   const yAt = (value) => {
     const ratio = (Number(value ?? 0) - minValue) / (domainMax - minValue);
@@ -630,6 +631,9 @@ function SeriesTrajectoryEditor({ years, draft, setDraft, meta }) {
       window.removeEventListener("mouseup", handleUp);
     };
   }, [dragYear, minValue, domainMax, meta.step, meta.min, meta.max]);
+  useE(() => {
+    if (dragYear) setActiveEditYear(null);
+  }, [dragYear]);
   const tickValues = Array.from({ length: 5 }, (_, index) => minValue + ((domainMax - minValue) * index) / 4);
   const path = orderedYears
     .map((year, index) => `${index === 0 ? "M" : "L"}${xAt(index)},${yAt(draft[year])}`)
@@ -661,6 +665,17 @@ function SeriesTrajectoryEditor({ years, draft, setDraft, meta }) {
         ))}
         <line x1={PAD.l} x2={W - PAD.r} y1={H - PAD.b} y2={H - PAD.b} className="axis" />
         <line x1={PAD.l} x2={PAD.l} y1={PAD.t} y2={H - PAD.b} className="axis" />
+        {meta.unit && (
+          <text
+            x={14}
+            y={PAD.t + (H - PAD.t - PAD.b) / 2}
+            className="axis-title"
+            textAnchor="middle"
+            transform={`rotate(-90, 14, ${PAD.t + (H - PAD.t - PAD.b) / 2})`}
+          >
+            {meta.unit}
+          </text>
+        )}
         <path d={path} className="series-line" />
         {orderedYears.map((year, index) => (
           <g key={`point-${year}`}>
@@ -670,19 +685,119 @@ function SeriesTrajectoryEditor({ years, draft, setDraft, meta }) {
               r="6"
               className={"series-point " + (dragYear === year ? "dragging" : "")}
               onMouseDown={() => setDragYear(year)}
+              onClick={() => setActiveEditYear(year)}
             />
-            <text x={xAt(index)} y={yAt(draft[year]) - 12} className="point-label" textAnchor="middle">
+            <text
+              x={xAt(index)}
+              y={yAt(draft[year]) - 12}
+              className="point-label point-label-interactive"
+              textAnchor="middle"
+              onClick={() => setActiveEditYear(year)}
+            >
               {meta.format(draft[year])}
             </text>
+            {activeEditYear === year && (
+              <foreignObject x={xAt(index) - 42} y={yAt(draft[year]) - 48} width="84" height="34">
+                <input
+                  className="series-point-input"
+                  type="number"
+                  autoFocus
+                  step={meta.step}
+                  min={meta.min}
+                  max={meta.max}
+                  value={draft[year] ?? 0}
+                  onChange={(event) =>
+                    setDraft((current) => ({
+                      ...current,
+                      [year]: clampSeriesValue(event.target.value, meta),
+                    }))
+                  }
+                  onBlur={() => setActiveEditYear(null)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === "Escape") {
+                      setActiveEditYear(null);
+                    }
+                  }}
+                />
+              </foreignObject>
+            )}
           </g>
         ))}
       </svg>
       <div className="series-chart-help">
         <span>Drag a point to edit the value for that year.</span>
-        <span>The table view remains available for precise entry.</span>
+        <span>Click the value label on the chart to type an exact number inline.</span>
       </div>
     </div>
   );
+}
+
+function clampSeriesValue(value, meta) {
+  const min = meta.min ?? -Infinity;
+  const max = meta.max ?? Infinity;
+  const step = meta.step || 1;
+  const rounded = step < 1
+    ? Math.round(Number(value) / step) * step
+    : Math.round(Number(value) / step) * step;
+  return Number(Math.max(min, Math.min(max, rounded)).toFixed(4));
+}
+
+function generateSeriesPath({
+  years,
+  draft,
+  meta,
+  rule,
+  startValue,
+  endValue,
+  holdUntilYear,
+  percentRate,
+  applyStartYear,
+  applyEndYear,
+}) {
+  const orderedYears = (years || []).map((year) => String(year.year));
+  if (!orderedYears.length) return draft;
+  const requestedStart = orderedYears.indexOf(String(applyStartYear));
+  const requestedEnd = orderedYears.indexOf(String(applyEndYear));
+  const firstIndex = requestedStart >= 0 ? requestedStart : 0;
+  const lastIndex = requestedEnd >= 0 ? requestedEnd : orderedYears.length - 1;
+  const rangeStart = Math.min(firstIndex, lastIndex);
+  const rangeEnd = Math.max(firstIndex, lastIndex);
+  const start = clampSeriesValue(startValue, meta);
+  const end = clampSeriesValue(endValue, meta);
+  const holdIndex = Math.max(rangeStart, Math.min(rangeEnd, orderedYears.indexOf(String(holdUntilYear))));
+  const next = { ...draft };
+
+  orderedYears.forEach((yearKey, index) => {
+    if (index < rangeStart || index > rangeEnd) {
+      return;
+    }
+    const progress = rangeEnd === rangeStart ? 1 : (index - rangeStart) / (rangeEnd - rangeStart);
+    let value = start;
+    if (rule === "linear") {
+      value = start + (end - start) * progress;
+    } else if (rule === "step") {
+      value = index < rangeEnd ? start : end;
+    } else if (rule === "percent_decline") {
+      value = start * Math.pow(1 - Number(percentRate || 0) / 100, index - rangeStart);
+    } else if (rule === "hold_then_drop") {
+      if (index <= holdIndex) {
+        value = start;
+      } else {
+        const tailDenom = Math.max(1, rangeEnd - holdIndex);
+        const tailProgress = (index - holdIndex) / tailDenom;
+        value = start + (end - start) * tailProgress;
+      }
+    } else if (rule === "s_curve") {
+      const k = 10;
+      const logistic = 1 / (1 + Math.exp(-k * (progress - 0.5)));
+      const normalized = (logistic - 1 / (1 + Math.exp(k / 2))) / ((1 / (1 + Math.exp(-k / 2))) - (1 / (1 + Math.exp(k / 2))));
+      value = start + (end - start) * normalized;
+    } else if (rule === "copy_forward") {
+      value = index === firstIndex ? start : Number(next[orderedYears[index - 1]] ?? start);
+    }
+    next[yearKey] = clampSeriesValue(value, meta);
+  });
+  return next;
 }
 
 function YearSeriesModal({ title, field, years, onClose, onSave, values, description, step, min, max }) {
@@ -693,11 +808,26 @@ function YearSeriesModal({ title, field, years, onClose, onSave, values, descrip
     ...(max != null ? { max } : {}),
   };
   const [viewMode, setViewMode] = useS("chart");
+  const orderedYears = useM(() => (years || []).map((year) => String(year.year)), [years]);
   const [draft, setDraft] = useS(() =>
     Object.fromEntries((years || []).map((year) => [String(year.year), values?.[String(year.year)] ?? year[field] ?? 0]))
   );
+  const [generatorRule, setGeneratorRule] = useS("linear");
+  const [generatorStart, setGeneratorStart] = useS(() => values?.[orderedYears[0]] ?? years?.[0]?.[field] ?? 0);
+  const [generatorEnd, setGeneratorEnd] = useS(() => values?.[orderedYears[orderedYears.length - 1]] ?? years?.[years?.length - 1]?.[field] ?? 0);
+  const [holdUntilYear, setHoldUntilYear] = useS(() => orderedYears[Math.max(0, Math.floor((orderedYears.length - 1) / 2))] || "");
+  const [percentRate, setPercentRate] = useS(5);
+  const [applyStartYear, setApplyStartYear] = useS(() => orderedYears[0] || "");
+  const [applyEndYear, setApplyEndYear] = useS(() => orderedYears[orderedYears.length - 1] || "");
   useE(() => {
+    const lastYear = years?.[Math.max(0, (years?.length || 1) - 1)];
+    const midYear = years?.[Math.max(0, Math.floor(((years?.length || 1) - 1) / 2))];
     setDraft(Object.fromEntries((years || []).map((year) => [String(year.year), values?.[String(year.year)] ?? year[field] ?? 0])));
+    setGeneratorStart(values?.[String(years?.[0]?.year)] ?? years?.[0]?.[field] ?? 0);
+    setGeneratorEnd(values?.[String(lastYear?.year)] ?? lastYear?.[field] ?? 0);
+    setHoldUntilYear(String(midYear?.year ?? ""));
+    setApplyStartYear(String(years?.[0]?.year ?? ""));
+    setApplyEndYear(String(lastYear?.year ?? ""));
   }, [field, years, values]);
   return (
     <div className="modal-backdrop" onClick={onClose}>
@@ -718,6 +848,102 @@ function YearSeriesModal({ title, field, years, onClose, onSave, values, descrip
           <div className="series-editor-meta">
             <span>Field: {meta.label}</span>
             <span>Step: {meta.step}</span>
+          </div>
+        </div>
+        <div className="series-generator">
+          <div className="series-generator-head">
+            <div>
+              <div className="eyebrow">Pathway generator</div>
+              <h3>Generate a trajectory, then refine it</h3>
+              <p className="muted">Choose a pathway rule to populate the full series. The generated curve stays editable in both chart and table views.</p>
+            </div>
+            <div className="seg">
+              <button className={generatorRule === "linear" ? "on" : ""} onClick={() => setGeneratorRule("linear")}>Linear</button>
+              <button className={generatorRule === "step" ? "on" : ""} onClick={() => setGeneratorRule("step")}>Step</button>
+              <button className={generatorRule === "percent_decline" ? "on" : ""} onClick={() => setGeneratorRule("percent_decline")}>% decline</button>
+              <button className={generatorRule === "hold_then_drop" ? "on" : ""} onClick={() => setGeneratorRule("hold_then_drop")}>Hold then drop</button>
+              <button className={generatorRule === "s_curve" ? "on" : ""} onClick={() => setGeneratorRule("s_curve")}>S-curve</button>
+            </div>
+          </div>
+          <div className="series-generator-grid">
+            <label>
+              <span>Apply from year</span>
+              <select value={applyStartYear} onChange={(event) => setApplyStartYear(event.target.value)}>
+                {orderedYears.map((year) => <option key={`start-${year}`} value={year}>{year}</option>)}
+              </select>
+            </label>
+            <label>
+              <span>Apply to year</span>
+              <select value={applyEndYear} onChange={(event) => setApplyEndYear(event.target.value)}>
+                {orderedYears.map((year) => <option key={`end-${year}`} value={year}>{year}</option>)}
+              </select>
+            </label>
+            <label>
+              <span>Start value</span>
+              <input type="number" step={meta.step} min={meta.min} max={meta.max} value={generatorStart} onChange={(event) => setGeneratorStart(Number(event.target.value))} />
+            </label>
+            <label>
+              <span>End value</span>
+              <input type="number" step={meta.step} min={meta.min} max={meta.max} value={generatorEnd} onChange={(event) => setGeneratorEnd(Number(event.target.value))} />
+            </label>
+            {generatorRule === "hold_then_drop" && (
+              <label>
+                <span>Hold until year</span>
+                <select value={holdUntilYear} onChange={(event) => setHoldUntilYear(event.target.value)}>
+                  {orderedYears.map((year) => <option key={year} value={year}>{year}</option>)}
+                </select>
+              </label>
+            )}
+            {generatorRule === "percent_decline" && (
+              <label>
+                <span>Decline per step (%)</span>
+                <input type="number" step="0.1" min="0" max="100" value={percentRate} onChange={(event) => setPercentRate(Number(event.target.value))} />
+              </label>
+            )}
+          </div>
+          <div className="series-generator-actions">
+            <button
+              className="ghost-btn"
+              onClick={() => {
+                setDraft(
+                  generateSeriesPath({
+                    years,
+                    draft,
+                    meta,
+                    rule: generatorRule,
+                    startValue: generatorStart,
+                    endValue: generatorEnd,
+                    holdUntilYear,
+                    percentRate,
+                    applyStartYear,
+                    applyEndYear,
+                  })
+                );
+                setViewMode("chart");
+              }}
+            >
+              Generate pathway
+            </button>
+            <button
+              className="ghost-btn"
+              onClick={() => {
+                const flatValue = clampSeriesValue(generatorStart, meta);
+                setDraft((current) => {
+                  const next = { ...current };
+                  const startIndex = orderedYears.indexOf(String(applyStartYear));
+                  const endIndex = orderedYears.indexOf(String(applyEndYear));
+                  const rangeStart = Math.min(startIndex >= 0 ? startIndex : 0, endIndex >= 0 ? endIndex : orderedYears.length - 1);
+                  const rangeEnd = Math.max(startIndex >= 0 ? startIndex : 0, endIndex >= 0 ? endIndex : orderedYears.length - 1);
+                  orderedYears.forEach((year, index) => {
+                    if (index >= rangeStart && index <= rangeEnd) next[year] = flatValue;
+                  });
+                  return next;
+                });
+                setViewMode("chart");
+              }}
+            >
+              Copy start value across selected range
+            </button>
           </div>
         </div>
         {viewMode === "chart" ? (
@@ -823,6 +1049,22 @@ function Tweaks({ open, state, setState }) {
   );
 }
 
+function TooltipButton({ className, onClick, tooltip, children }) {
+  const [visible, setVisible] = useS(false);
+  const timerRef = useR(null);
+  useE(() => () => clearTimeout(timerRef.current), []);
+  const handleEnter = () => { timerRef.current = setTimeout(() => setVisible(true), 2000); };
+  const handleLeave = () => { clearTimeout(timerRef.current); setVisible(false); };
+  return (
+    <div className="tooltip-wrap">
+      <button className={className} onClick={onClick} onMouseEnter={handleEnter} onMouseLeave={handleLeave}>
+        {children}
+      </button>
+      {visible && tooltip && <div className="tooltip-box">{tooltip}</div>}
+    </div>
+  );
+}
+
 function slugify(value) {
   return String(value).toLowerCase().replaceAll(" ", "_");
 }
@@ -847,9 +1089,13 @@ export {
   AuctionPathwayPanel,
   Header,
   ScenarioHero,
+  clampSeriesValue,
+  generateSeriesPath,
+  SeriesTrajectoryEditor,
   YearSeriesModal,
   MiniMarket,
   Tweaks,
+  TooltipButton,
   slugify,
   getSeriesFieldMeta,
   };

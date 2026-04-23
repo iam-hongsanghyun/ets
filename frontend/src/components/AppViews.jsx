@@ -1,9 +1,10 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { fmt, SECTOR_COLORS, MarketChart } from "./MarketChart.jsx";
 import { TrajectoryChart } from "./TrajectoryChart.jsx";
 import { ParticipantPanel } from "./ParticipantPanel.jsx";
 import { ParticipantMacChart } from "./ParticipantMacChart.jsx";
 import { AnnualMarketChart } from "./AnnualMarketChart.jsx";
+import { AnnualEmissionsChart } from "./AnnualEmissionsChart.jsx";
 import { MarketYearGallery } from "./MarketYearGallery.jsx";
 import { Editor } from "./Editor.jsx";
 import {
@@ -12,18 +13,28 @@ import {
   AuctionDiagnosticsPanel,
   AuctionPathwayPanel,
   ScenarioHero,
-  YearSeriesModal,
+  clampSeriesValue,
+  generateSeriesPath,
+  SeriesTrajectoryEditor,
   MiniMarket,
   buildTechnologyPathway,
   describeUnsoldTreatment,
   getSeriesFieldMeta,
+  TooltipButton,
 } from "./AppShared.jsx";
 
 function BuildView({
   scenario, yearObj, activeYear, onYearChange, addYear, removeYear,
-  onRunBase, onRunEdited, hasEditedChanges, onSave, onUpdateYearSeries, navigationTarget,
+  onRunBase, onRunEdited, onRunAll, hasEditedChanges, onSave, onUpdateYearSeries, navigationTarget,
 }) {
-  const [seriesField, setSeriesField] = useState(null);
+  const [selectedSeriesField, setSelectedSeriesField] = useState("total_cap");
+  const [generatorRule, setGeneratorRule] = useState("linear");
+  const [generatorStart, setGeneratorStart] = useState(0);
+  const [generatorEnd, setGeneratorEnd] = useState(0);
+  const [holdUntilYear, setHoldUntilYear] = useState("");
+  const [percentRate, setPercentRate] = useState(5);
+  const [applyStartYear, setApplyStartYear] = useState("");
+  const [applyEndYear, setApplyEndYear] = useState("");
   const seriesFields = [
     "total_cap",
     "auction_offered",
@@ -36,6 +47,44 @@ function BuildView({
     "borrowing_limit",
     "manual_expected_price",
   ];
+  const selectedMeta = getSeriesFieldMeta(selectedSeriesField);
+  const orderedYears = useMemo(() => (scenario.years || []).map((year) => String(year.year)), [scenario.years]);
+  const seriesDraft = useMemo(
+    () => {
+      const scale = selectedMeta.displayScale || 1;
+      return Object.fromEntries(
+        (scenario.years || []).map((year) => [String(year.year), Number(year[selectedSeriesField] ?? 0) * scale])
+      );
+    },
+    [scenario.years, selectedSeriesField]
+  );
+  useEffect(() => {
+    if (!seriesFields.includes(selectedSeriesField)) {
+      setSelectedSeriesField(seriesFields[0]);
+    }
+  }, [selectedSeriesField]);
+  useEffect(() => {
+    const scale = getSeriesFieldMeta(selectedSeriesField).displayScale || 1;
+    const firstYear = scenario.years?.[0];
+    const lastYear = scenario.years?.[Math.max(0, (scenario.years?.length || 1) - 1)];
+    const midYear = scenario.years?.[Math.max(0, Math.floor(((scenario.years?.length || 1) - 1) / 2))];
+    setGeneratorStart(Number(firstYear?.[selectedSeriesField] ?? 0) * scale);
+    setGeneratorEnd(Number(lastYear?.[selectedSeriesField] ?? 0) * scale);
+    setHoldUntilYear(String(midYear?.year ?? ""));
+    setApplyStartYear(String(firstYear?.year ?? ""));
+    setApplyEndYear(String(lastYear?.year ?? ""));
+  }, [scenario.years, selectedSeriesField]);
+  const updateSelectedSeries = (updater) => {
+    const scale = selectedMeta.displayScale || 1;
+    const current = Object.fromEntries(
+      (scenario.years || []).map((year) => [String(year.year), Number(year[selectedSeriesField] ?? 0) * scale])
+    );
+    const next = typeof updater === "function" ? updater(current) : updater;
+    const rawNext = scale !== 1
+      ? Object.fromEntries(Object.entries(next).map(([y, v]) => [y, v / scale]))
+      : next;
+    onUpdateYearSeries(selectedSeriesField, rawNext);
+  };
   return (
     <div className="wb">
       <ScenarioHero
@@ -43,18 +92,19 @@ function BuildView({
         activeYear={activeYear}
         onYearChange={onYearChange}
         results={{}}
+        showYearStrip={false}
         primaryMetric={(
           <div className="panel hero-panel">
             <div className="panel-head">
               <div>
-                <div className="eyebrow">Build</div>
+                <div className="eyebrow">Model</div>
                 <h2>Scenario builder</h2>
-                <p className="muted">Create or import a scenario, edit assumptions, then run directly from here.</p>
               </div>
             </div>
             <div className="hero-actions">
-              <button className="ghost-btn" onClick={onRunBase}>Run loaded scenario</button>
-              <button className={"ghost-btn on " + (hasEditedChanges ? "edited-btn" : "")} onClick={onRunEdited}>Run edited</button>
+              <button className="ghost-btn ghost-btn-muted" onClick={onRunBase}>Run loaded scenario</button>
+              <button className={"ghost-btn ghost-btn-muted " + (hasEditedChanges ? "edited-btn" : "")} onClick={onRunEdited}>Run edited</button>
+              <button className="ghost-btn ghost-btn-muted" onClick={onRunAll}>Run all scenarios</button>
             </div>
           </div>
         )}
@@ -64,20 +114,134 @@ function BuildView({
           <div>
             <div className="eyebrow">Market timeline</div>
             <h2>Review values across years</h2>
-            <p className="muted">Click a market attribute to open a year-by-year editor for the whole scenario period.</p>
+            <p className="muted">Select a market attribute on the left, then edit it directly on the chart. The pathway setup controls are embedded on the right so you can generate and refine without opening a popup.</p>
           </div>
         </div>
-        <div className="review-grid">
-          {seriesFields.map((field) => {
-            const meta = getSeriesFieldMeta(field);
-            return (
-            <button key={field} className="review-item review-button" onClick={() => setSeriesField(field)}>
-              <span className="review-label">{meta.label}</span>
-              <strong>{meta.format(yearObj[field] || 0)}</strong>
-              <span className="muted">{scenario.years.map((year) => `${year.year}: ${meta.format(year[field] || 0)}`).join(" · ")}</span>
-              </button>
-            );
-          })}
+        <div className="timeline-workbench">
+          <div className="timeline-field-list">
+            {seriesFields.map((field) => {
+              const meta = getSeriesFieldMeta(field);
+              return (
+                <TooltipButton
+                  key={field}
+                  className={"timeline-field-item " + (selectedSeriesField === field ? "on" : "")}
+                  onClick={() => setSelectedSeriesField(field)}
+                  tooltip={meta.description}
+                >
+                  <span>{meta.label}</span>
+                </TooltipButton>
+              );
+            })}
+          </div>
+          <div className="timeline-chart-panel">
+            <div className="timeline-editor-head">
+              <div>
+                <div className="eyebrow">Selected metric</div>
+                <h3>{selectedMeta.label}</h3>
+              </div>
+            </div>
+            <SeriesTrajectoryEditor
+              years={scenario.years}
+              draft={seriesDraft}
+              setDraft={updateSelectedSeries}
+              meta={selectedMeta}
+            />
+          </div>
+          <div className="timeline-side-panel">
+            <div className="series-generator timeline-generator-inline">
+              <div className="timeline-gen-header">
+                <h3>Pathway Setting</h3>
+                <div className="series-generator-actions">
+                  <button
+                    className="ghost-btn ghost-btn-muted"
+                    onClick={() =>
+                      updateSelectedSeries((current) =>
+                        generateSeriesPath({
+                          years: scenario.years,
+                          draft: current,
+                          meta: selectedMeta,
+                          rule: generatorRule,
+                          startValue: generatorStart,
+                          endValue: generatorEnd,
+                          holdUntilYear,
+                          percentRate,
+                          applyStartYear,
+                          applyEndYear,
+                        })
+                      )
+                    }
+                  >
+                    Apply pathway
+                  </button>
+                  <button
+                    className="ghost-btn ghost-btn-muted"
+                    onClick={() =>
+                      updateSelectedSeries((current) => {
+                        const next = { ...current };
+                        const startIndex = orderedYears.indexOf(String(applyStartYear));
+                        const endIndex = orderedYears.indexOf(String(applyEndYear));
+                        const rangeStart = Math.min(startIndex >= 0 ? startIndex : 0, endIndex >= 0 ? endIndex : orderedYears.length - 1);
+                        const rangeEnd = Math.max(startIndex >= 0 ? startIndex : 0, endIndex >= 0 ? endIndex : orderedYears.length - 1);
+                        const flatValue = clampSeriesValue(generatorStart, selectedMeta);
+                        orderedYears.forEach((year, index) => {
+                          if (index >= rangeStart && index <= rangeEnd) next[year] = flatValue;
+                        });
+                        return next;
+                      })
+                    }
+                  >
+                    Fill selected range
+                  </button>
+                </div>
+              </div>
+              <div className="series-generator-grid series-generator-grid-stack">
+                <label className="series-generator-select">
+                  <span className="review-label">Method</span>
+                  <select value={generatorRule} onChange={(event) => setGeneratorRule(event.target.value)}>
+                    <option value="linear">Linear</option>
+                    <option value="step">Step</option>
+                    <option value="percent_decline">% decline</option>
+                    <option value="hold_then_drop">Hold then drop</option>
+                    <option value="s_curve">S-curve</option>
+                  </select>
+                </label>
+                <label>
+                  <span>From</span>
+                  <select value={applyStartYear} onChange={(event) => setApplyStartYear(event.target.value)}>
+                    {orderedYears.map((year) => <option key={`build-start-${year}`} value={year}>{year}</option>)}
+                  </select>
+                </label>
+                <label>
+                  <span>To</span>
+                  <select value={applyEndYear} onChange={(event) => setApplyEndYear(event.target.value)}>
+                    {orderedYears.map((year) => <option key={`build-end-${year}`} value={year}>{year}</option>)}
+                  </select>
+                </label>
+                <label>
+                  <span>Start</span>
+                  <input type="number" step={selectedMeta.step} min={selectedMeta.min} max={selectedMeta.max} value={generatorStart} onChange={(event) => setGeneratorStart(Number(event.target.value))} />
+                </label>
+                <label>
+                  <span>End</span>
+                  <input type="number" step={selectedMeta.step} min={selectedMeta.min} max={selectedMeta.max} value={generatorEnd} onChange={(event) => setGeneratorEnd(Number(event.target.value))} />
+                </label>
+                {generatorRule === "hold_then_drop" && (
+                  <label>
+                    <span>Hold until</span>
+                    <select value={holdUntilYear} onChange={(event) => setHoldUntilYear(event.target.value)}>
+                      {orderedYears.map((year) => <option key={`build-hold-${year}`} value={year}>{year}</option>)}
+                    </select>
+                  </label>
+                )}
+                {generatorRule === "percent_decline" && (
+                  <label>
+                    <span>% per step</span>
+                    <input type="number" step="0.1" min="0" max="100" value={percentRate} onChange={(event) => setPercentRate(Number(event.target.value))} />
+                  </label>
+                )}
+              </div>
+            </div>
+          </div>
         </div>
       </section>
       <section className="panel">
@@ -98,22 +262,12 @@ function BuildView({
           navigationTarget={navigationTarget}
         />
       </section>
-      {seriesField && (
-        <YearSeriesModal
-          title={getSeriesFieldMeta(seriesField).label}
-          field={seriesField}
-          years={scenario.years}
-          onClose={() => setSeriesField(null)}
-          onSave={onUpdateYearSeries}
-          description="Edit this market-rule trajectory across all years using a draggable chart or the numeric table."
-        />
-      )}
     </div>
   );
 }
 
 function ModelView({
-  scenario, yearObj, activeYear, onYearChange, selPart, setSelPart, onRunBase, onRunEdited, hasEditedChanges,
+  scenario, yearObj, activeYear, onYearChange, selPart, setSelPart, onRunBase, onRunEdited, onRunAll, hasEditedChanges,
 }) {
   const selectedIndex = selPart == null ? 0 : selPart;
   const selectedParticipant = yearObj.participants?.[selectedIndex] || null;
@@ -146,8 +300,9 @@ function ModelView({
               </div>
             </div>
             <div className="hero-actions">
-              <button className="ghost-btn" onClick={onRunBase}>Run loaded scenario</button>
-              <button className={"ghost-btn on " + (hasEditedChanges ? "edited-btn" : "")} onClick={onRunEdited}>Run edited</button>
+              <button className="ghost-btn ghost-btn-muted" onClick={onRunBase}>Run loaded scenario</button>
+              <button className={"ghost-btn ghost-btn-muted " + (hasEditedChanges ? "edited-btn" : "")} onClick={onRunEdited}>Run edited</button>
+              <button className="ghost-btn ghost-btn-muted" onClick={onRunAll}>Run all scenarios</button>
             </div>
           </div>
         )}
@@ -389,11 +544,17 @@ function AnalysisView({
           </div>
           <AnnualMarketChart scenario={scenario} results={results} onSelectYear={onYearChange} />
         </div>
-        <div className="panel panel-note">
-          <div className="panel-head"><div><div className="eyebrow">Calibration</div><h2>About the sample MACs</h2></div></div>
-          <p className="muted">The participant MACs bundled in the example scenarios are demonstration inputs. They are economically coherent, but they are not calibrated sector estimates.</p>
-          <p className="muted">For policy analysis, treat them as placeholders until you replace them with engineering, benchmarking, or observed-firm data for the selected participant.</p>
+        <div className="panel">
+          <div className="panel-head">
+            <div><div className="eyebrow">Figure 6</div><h2>Annual emissions pathway</h2><p className="muted">Gross and residual emissions across years, plus the participant-level residual-emissions breakdown behind the transition.</p></div>
+          </div>
+          <AnnualEmissionsChart scenario={scenario} results={results} onSelectYear={onYearChange} />
         </div>
+      </section>
+      <section className="panel panel-note">
+        <div className="panel-head"><div><div className="eyebrow">Calibration</div><h2>About the sample MACs</h2></div></div>
+        <p className="muted">The participant MACs bundled in the example scenarios are demonstration inputs. They are economically coherent, but they are not calibrated sector estimates.</p>
+        <p className="muted">For policy analysis, treat them as placeholders until you replace them with engineering, benchmarking, or observed-firm data for the selected participant.</p>
       </section>
       <AuctionPathwayPanel scenario={scenario} results={results} />
       <section className="panel">
@@ -415,7 +576,7 @@ function AnalysisView({
         </div>
       </section>
       <section className="panel">
-        <div className="panel-head"><div><div className="eyebrow">Figure 6</div><h2>Year-by-year market views</h2><p className="muted">Interactive small-multiple market views for each year. Click a card to jump to that year.</p></div></div>
+        <div className="panel-head"><div><div className="eyebrow">Figure 7</div><h2>Year-by-year market views</h2><p className="muted">Interactive small-multiple market views for each year. Click a card to jump to that year.</p></div></div>
         <MarketYearGallery scenario={scenario} results={results} activeYear={activeYear} onSelectYear={onYearChange} />
       </section>
       <footer className="foot">
@@ -427,15 +588,127 @@ function AnalysisView({
   );
 }
 
+function scenarioYearRows(scenarios, results, activeYear) {
+  return scenarios
+    .map((scenario) => {
+      const year = scenario.years.find((item) => String(item.year) === String(activeYear));
+      if (!year) return null;
+      const result = results[scenario.name]?.[String(year.year)];
+      if (!result) return null;
+      const residual = (result.perParticipant || []).reduce((sum, participant) => sum + Number(participant.residual || 0), 0);
+      const gross = (result.perParticipant || []).reduce((sum, participant) => sum + Number(participant.initial || 0), 0);
+      const totalComplianceCost = (result.perParticipant || []).reduce((sum, participant) => sum + Number(participant.total_compliance_cost || 0), 0);
+      const mixedParticipants = (result.perParticipant || []).filter((participant) => {
+        const mix = String(participant.technology_mix || "");
+        return mix.includes(";") || mix.includes("Mixed Portfolio");
+      }).length;
+      return {
+        scenario,
+        year,
+        result,
+        residual,
+        gross,
+        totalComplianceCost,
+        mixedParticipants,
+      };
+    })
+    .filter(Boolean);
+}
+
+function ComparisonMetricChart({ title, kicker, rows, scenarios, metricKey, valueFormatter, activeYear }) {
+  const W = 860;
+  const H = 260;
+  const PAD = { t: 22, r: 28, b: 42, l: 74 };
+  const years = [...new Set(scenarios.flatMap((scenario) => scenario.years.map((year) => String(year.year))))].sort();
+  const series = scenarios.map((scenario) => ({
+    name: scenario.name,
+    color: scenario.color,
+    values: years.map((year) => {
+      const result = rows?.[scenario.name]?.[year];
+      return Number(result?.[metricKey] ?? 0);
+    }),
+  }));
+  const maxValue = Math.max(1, ...series.flatMap((item) => item.values));
+  const xAt = (index) => {
+    const iw = W - PAD.l - PAD.r;
+    const n = Math.max(1, years.length - 1);
+    return PAD.l + (index / n) * iw;
+  };
+  const yAt = (value) => {
+    const ih = H - PAD.t - PAD.b;
+    return PAD.t + ih - (Number(value || 0) / maxValue) * ih;
+  };
+  const tickValues = [0, maxValue / 2, maxValue];
+
+  return (
+    <div className="panel">
+      <div className="panel-head">
+        <div>
+          <div className="eyebrow">{kicker}</div>
+          <h2>{title}</h2>
+          <p className="muted">Benchmark all scenarios across the full pathway while staying anchored on the selected year {activeYear}.</p>
+        </div>
+      </div>
+      <svg viewBox={`0 0 ${W} ${H}`} className="chart">
+        {tickValues.map((tick, index) => (
+          <g key={`${title}-tick-${index}`}>
+            <line x1={PAD.l} x2={W - PAD.r} y1={yAt(tick)} y2={yAt(tick)} className="gridline subtle" />
+            <text x={PAD.l - 10} y={yAt(tick)} className="axis-label" textAnchor="end" dy="0.32em">
+              {valueFormatter(tick)}
+            </text>
+          </g>
+        ))}
+        <line x1={PAD.l} x2={W - PAD.r} y1={H - PAD.b} y2={H - PAD.b} className="axis" />
+        <line x1={PAD.l} x2={PAD.l} y1={PAD.t} y2={H - PAD.b} className="axis" />
+        {years.map((year, index) => (
+          <g key={`${title}-year-${year}`}>
+            <line x1={xAt(index)} x2={xAt(index)} y1={PAD.t} y2={H - PAD.b} className="gridline subtle" />
+            <text x={xAt(index)} y={H - 12} className="axis-label" textAnchor="middle">{year}</text>
+          </g>
+        ))}
+        {series.map((item) => {
+          const path = item.values.map((value, index) => `${index === 0 ? "M" : "L"}${xAt(index)},${yAt(value)}`).join(" ");
+          return (
+            <g key={`${title}-${item.name}`}>
+              <path d={path} fill="none" stroke={item.color} strokeWidth="3" />
+              {item.values.map((value, index) => (
+                <circle key={`${item.name}-${years[index]}`} cx={xAt(index)} cy={yAt(value)} r={String(years[index]) === String(activeYear) ? "5.5" : "4"} fill={item.color} />
+              ))}
+              <text x={W - PAD.r + 6} y={yAt(item.values[item.values.length - 1])} className="line-label" fill={item.color}>
+                {item.name}
+              </text>
+            </g>
+          );
+        })}
+      </svg>
+    </div>
+  );
+}
+
 function Compare({ scenarios, results, activeYear, onYear }) {
   const allYears = [...new Set(scenarios.flatMap((scenario) => scenario.years.map((year) => String(year.year))))].sort();
+  const compareRows = scenarioYearRows(scenarios, results, activeYear);
+  const benchmarkPrice = [...compareRows].sort((left, right) => left.result.price - right.result.price)[0];
+  const benchmarkResidual = [...compareRows].sort((left, right) => left.residual - right.residual)[0];
+  const benchmarkRevenue = [...compareRows].sort((left, right) => right.result.revenue - left.result.revenue)[0];
+  const comparisonSeries = scenarios.reduce((acc, scenario) => {
+    const scenarioRuns = results?.[scenario.name] || {};
+    acc[scenario.name] = Object.fromEntries(
+      allYears.map((year) => {
+        const run = scenarioRuns[year];
+        const residual = (run?.perParticipant || []).reduce((sum, participant) => sum + Number(participant.residual || 0), 0);
+        return [year, { price: Number(run?.price || 0), residual }];
+      })
+    );
+    return acc;
+  }, {});
   return (
     <div className="cmp">
       <div className="cmp-head">
         <div>
-          <div className="eyebrow">Side-by-side</div>
-          <h1>Three futures, one market</h1>
-          <p className="lede">Equilibrium outcomes for each scenario in {activeYear}. The scarcer the cap, the higher the price.</p>
+          <div className="eyebrow">Scenario studio</div>
+          <h1>Scenario comparison dashboard</h1>
+          <p className="lede">Commercial-style comparison of price, emissions, auction performance, and transition outcomes for {activeYear}.</p>
         </div>
         <div className="year-picker">
           {allYears.map((year) => (
@@ -443,43 +716,118 @@ function Compare({ scenarios, results, activeYear, onYear }) {
           ))}
         </div>
       </div>
-      <div className="cmp-grid">
-        {scenarios.map((scenario) => {
-          const year = scenario.years.find((item) => String(item.year) === String(activeYear));
-          if (!year) return null;
-          const result = results[scenario.name]?.[String(year.year)];
-          if (!result) return null;
-          return (
-            <div key={scenario.id} className="cmp-card" style={{ "--c": scenario.color }}>
-              <div className="cmp-card-head"><i className="sw" style={{ background: scenario.color }}></i><h3>{scenario.name}</h3></div>
-              <div className="cmp-big"><div className="cmp-price">{fmt.price(result.price)}</div><div className="cmp-sub">per tCO₂ · {activeYear}</div></div>
-              <div className="cmp-kpis">
-                <div><div className="lbl">Abatement</div><div className="val">{fmt.num(result.totalAbate, 0)} Mt</div></div>
-                <div><div className="lbl">Auction revenue</div><div className="val">{fmt.money(result.revenue)}</div></div>
-                <div><div className="lbl">Auction sold</div><div className="val">{fmt.int(result.Q)}</div></div>
+      <div className="cmp-benchmark-grid">
+        <div className="cmp-benchmark-card">
+          <div className="eyebrow">Best price</div>
+          <strong>{benchmarkPrice?.scenario.name || "—"}</strong>
+          <div className="cmp-benchmark-value">{benchmarkPrice ? fmt.price(benchmarkPrice.result.price) : "—"}</div>
+        </div>
+        <div className="cmp-benchmark-card">
+          <div className="eyebrow">Lowest residual emissions</div>
+          <strong>{benchmarkResidual?.scenario.name || "—"}</strong>
+          <div className="cmp-benchmark-value">{benchmarkResidual ? `${fmt.num(benchmarkResidual.residual, 1)} Mt` : "—"}</div>
+        </div>
+        <div className="cmp-benchmark-card">
+          <div className="eyebrow">Highest auction revenue</div>
+          <strong>{benchmarkRevenue?.scenario.name || "—"}</strong>
+          <div className="cmp-benchmark-value">{benchmarkRevenue ? fmt.money(benchmarkRevenue.result.revenue) : "—"}</div>
+        </div>
+      </div>
+      <section className="panel cmp-matrix">
+        <div className="panel-head">
+          <div>
+            <div className="eyebrow">Current-year matrix</div>
+            <h2>Scenario performance in {activeYear}</h2>
+            <p className="muted">Use this as the commercial comparison sheet for price, emissions, revenue, auction friction, and transition activity.</p>
+          </div>
+        </div>
+        <div className="pathway-table-wrap">
+          <table className="pathway-table cmp-matrix-table">
+            <thead>
+              <tr>
+                <th>Scenario</th>
+                <th>Price</th>
+                <th>Residual emissions</th>
+                <th>Abatement</th>
+                <th>Auction sold</th>
+                <th>Unsold</th>
+                <th>Auction revenue</th>
+                <th>Compliance cost</th>
+                <th>Mixed adopters</th>
+              </tr>
+            </thead>
+            <tbody>
+              {compareRows.map((row) => (
+                <tr key={row.scenario.id}>
+                  <td>
+                    <div className="cmp-scenario-cell">
+                      <i className="sw" style={{ background: row.scenario.color }}></i>
+                      <span>{row.scenario.name}</span>
+                    </div>
+                  </td>
+                  <td>{fmt.price(row.result.price)}</td>
+                  <td>{fmt.num(row.residual, 1)} Mt</td>
+                  <td>{fmt.num(row.result.totalAbate, 1)} Mt</td>
+                  <td>{fmt.num(row.result.auctionSold || row.result.Q || 0, 0)}</td>
+                  <td>{fmt.num(row.result.unsoldAllowances || 0, 0)}</td>
+                  <td>{fmt.money(row.result.revenue)}</td>
+                  <td>{fmt.money(row.totalComplianceCost)}</td>
+                  <td>{row.mixedParticipants}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
+      <section className="wb-grid">
+        <ComparisonMetricChart
+          title="Carbon price pathway"
+          kicker="Cross-scenario trajectory"
+          rows={comparisonSeries}
+          scenarios={scenarios}
+          metricKey="price"
+          valueFormatter={(value) => fmt.price(value)}
+          activeYear={activeYear}
+        />
+        <ComparisonMetricChart
+          title="Residual emissions pathway"
+          kicker="Cross-scenario trajectory"
+          rows={comparisonSeries}
+          scenarios={scenarios}
+          metricKey="residual"
+          valueFormatter={(value) => `${fmt.num(value, 1)} Mt`}
+          activeYear={activeYear}
+        />
+      </section>
+      <section className="cmp-grid">
+        {compareRows.map((row) => (
+          <div key={row.scenario.id} className="cmp-card cmp-card-pro" style={{ "--c": row.scenario.color }}>
+            <div className="cmp-card-head">
+              <div className="cmp-card-title">
+                <i className="sw" style={{ background: row.scenario.color }}></i>
+                <h3>{row.scenario.name}</h3>
               </div>
-              <MiniMarket year={year} result={result} />
-              <div className="cmp-parts">
-                {result.perParticipant.map((participant, index) => (
-                  <div key={index} className="cmp-prow">
-                    <span className="n">{participant.name}</span>
-                    <span className={"v " + (participant.net_trade > 0 ? "buy" : participant.net_trade < 0 ? "sell" : "")}>
-                      {participant.net_trade > 0 ? "buys " : participant.net_trade < 0 ? "sells " : ""}
-                      {fmt.num(Math.abs(participant.net_trade), 1)}
-                    </span>
-                  </div>
-                ))}
-              </div>
+              <span className="cmp-chip">{activeYear}</span>
             </div>
-          );
-        })}
-      </div>
-      <div className="panel cmp-trajectory">
-        <div className="panel-head"><div><div className="eyebrow">Trajectory</div><h2>Price path to {allYears[allYears.length - 1]}</h2></div></div>
-        <TrajectoryChart scenarios={scenarios} results={results} />
-      </div>
+            <div className="cmp-big">
+              <div className="cmp-price">{fmt.price(row.result.price)}</div>
+              <div className="cmp-sub">equilibrium price</div>
+            </div>
+            <div className="cmp-kpis">
+              <div><div className="lbl">Residual</div><div className="val">{fmt.num(row.residual, 1)} Mt</div></div>
+              <div><div className="lbl">Revenue</div><div className="val">{fmt.money(row.result.revenue)}</div></div>
+              <div><div className="lbl">Unsold</div><div className="val">{fmt.num(row.result.unsoldAllowances || 0, 0)}</div></div>
+            </div>
+            <MiniMarket year={row.year} result={row.result} />
+            <div className="cmp-notes">
+              <div className="cmp-note"><span className="cmp-note-label">Technology mix</span><strong>{row.mixedParticipants} mixed participants</strong></div>
+              <div className="cmp-note"><span className="cmp-note-label">Compliance burden</span><strong>{fmt.money(row.totalComplianceCost)}</strong></div>
+            </div>
+          </div>
+        ))}
+      </section>
     </div>
   );
 }
 
-export { BuildView, ModelView, ValidationView, AnalysisView, Compare };
+export { BuildView, ValidationView, AnalysisView, Compare };
