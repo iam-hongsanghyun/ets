@@ -491,6 +491,7 @@ function Header({
     { id: "validation", label: "Validation" },
     { id: "analysis", label: "Analysis" },
     { id: "scenario", label: "Scenario" },
+    { id: "guide", label: "Guide" },
   ];
   useE(() => {
     if (templates.length && !templates.some((item) => item.id === selectedTemplate)) {

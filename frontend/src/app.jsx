@@ -10,6 +10,7 @@ import {
   Tweaks,
 } from "./components/AppShared.jsx";
 import { BuildView, ValidationView, AnalysisView, Compare } from "./components/AppViews.jsx";
+import { GuideView } from "./components/GuideView.jsx";
 
 export default function App() {
   const [templates, setTemplates] = useS([]);
@@ -400,6 +401,27 @@ export default function App() {
   };
 
   if (!activeScenario || !yearObj || !displayResult) {
+    if (activeSection === "guide") {
+      return (
+        <div className="app">
+          <Header
+            scenarios={scenarios}
+            templates={templates}
+            activeId={null}
+            onSelectScenario={setActiveScenarioId}
+            activeSection={activeSection}
+            onSelectSection={setActiveSection}
+            onAddScenario={addScenario}
+            onDuplicateScenario={duplicateScenario}
+            onRemoveScenario={removeScenario}
+            onLoadTemplate={loadTemplateIntoEditor}
+            onSaveScenario={saveActiveScenarioToLibrary}
+            status={status}
+          />
+          <GuideView />
+        </div>
+      );
+    }
     return <div className="wb"><p>{status}</p></div>;
   }
 
@@ -471,6 +493,8 @@ export default function App() {
       {activeSection === "scenario" && (
         <Compare scenarios={scenarios} results={results} activeYear={activeYear} onYear={setActiveYear} />
       )}
+
+      {activeSection === "guide" && <GuideView />}
 
       <Tweaks open={tweaksOpen} state={tweakState} setState={setTweakState} />
     </div>
