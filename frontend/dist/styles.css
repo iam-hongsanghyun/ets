@@ -130,6 +130,30 @@ body {
   flex-wrap: wrap;
   align-items: center;
 }
+.hdr-tools select {
+  font: inherit;
+  font-size: 13px;
+  background: transparent;
+  color: var(--ink);
+  border: 1px solid var(--line-2);
+  padding: 6px 30px 6px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+  background-image:
+    linear-gradient(45deg, transparent 50%, var(--ink-2) 50%),
+    linear-gradient(135deg, var(--ink-2) 50%, transparent 50%);
+  background-position:
+    calc(100% - 14px) calc(50% - 2px),
+    calc(100% - 8px) calc(50% - 2px);
+  background-size: 6px 6px, 6px 6px;
+  background-repeat: no-repeat;
+}
+.hdr-tools select:hover {
+  border-color: var(--line-2);
+  background-color: var(--panel-2);
+}
 .hdr-actions select {
   min-width: 280px;
   border: 1px solid var(--line);
@@ -155,11 +179,12 @@ body {
 }
 .pill-btn:hover { border-color: var(--line-2); color: var(--ink); }
 .pill-btn.on {
-  background: var(--ink);
-  color: var(--bg);
-  border-color: var(--ink);
+  background: color-mix(in srgb, var(--c, var(--accent)) 13%, var(--panel));
+  color: var(--ink);
+  border-color: var(--c, var(--accent));
+  font-weight: 500;
 }
-.pill-btn.on .sw { box-shadow: 0 0 0 2px var(--bg) inset; }
+.pill-btn.on .sw { box-shadow: 0 0 0 2px color-mix(in srgb, var(--c, var(--accent)) 13%, var(--panel)) inset; }
 
 .sw { display: inline-block; width: 10px; height: 10px; border-radius: 2px; }
 
