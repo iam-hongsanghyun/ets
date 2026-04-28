@@ -2592,3 +2592,30 @@ html[data-chart="terminal"][data-theme="light"] { --panel: #fafaf7; --bg: #eeede
   .cbam-jur-row { grid-template-columns: 1fr 80px 36px; }
   .traj-row { grid-template-columns: 1fr 70px 70px 36px; }
 }
+
+/* ── Scope 2 / Indirect Emissions Panel ─────────────────────────────────── */
+.scope2-panel {
+  margin: 12px 0 4px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  overflow: hidden;
+}
+.scope2-head {
+  padding: 8px 12px 6px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.scope2-label {
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+}
+.scope2-panel .builder-form-grid {
+  padding: 10px 12px 14px;
+  background: var(--bg);
+}

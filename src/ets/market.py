@@ -349,6 +349,29 @@ class CarbonMarket:
                     )
                 ensemble_records[f"CBAM Liability ({ename})"] = eliab
 
+            # ── Scope 2 / indirect emissions ────────────────────────────────
+            elec  = float(getattr(participant, "electricity_consumption", 0.0) or 0.0)
+            grid  = float(getattr(participant, "grid_emission_factor", 0.0) or 0.0)
+            s2cov = float(getattr(participant, "scope2_cbam_coverage", 0.0) or 0.0)
+            indirect_emissions = elec * grid
+
+            # Scope 2 CBAM liability — uses same price gap logic as direct CBAM
+            if jurisdictions:
+                scope2_cbam_liability = sum(
+                    max(0.0, float(jur.get("reference_price") or eua_prices.get(str(jur.get("name", ""))) or eua_price or 0.0) - kau_price)
+                    * indirect_emissions
+                    * float(jur.get("export_share", 0.0))
+                    * s2cov
+                    for jur in jurisdictions
+                )
+            else:
+                scope2_cbam_liability = (
+                    max(0.0, eua_price - kau_price)
+                    * indirect_emissions
+                    * cbam_export_share
+                    * s2cov
+                )
+
             record: Dict[str, float | str] = {
                 "Scenario": self.scenario_name,
                 "Participant": participant.name,
@@ -382,6 +405,11 @@ class CarbonMarket:
                 "CBAM Liable Emissions": cbam_liable_emissions,
                 "CBAM Liability": cbam_liability,
                 "Total Cost incl. CBAM": total_cost_incl_cbam,
+                "Electricity Consumption": elec,
+                "Grid Emission Factor": grid,
+                "Indirect Emissions": indirect_emissions,
+                "Scope 2 CBAM Coverage": s2cov,
+                "Scope 2 CBAM Liability": scope2_cbam_liability,
                 **jur_records,
                 **ensemble_records,
             }
@@ -467,14 +495,31 @@ class CarbonMarket:
             if col.startswith("CBAM Liability (") and col not in summary:
                 summary[f"Total {col}"] = float(participant_df[col].sum())
 
+        # ── Market-level Scope 2 / indirect totals ───────────────────────────
+        summary["Total Indirect Emissions"] = float(participant_df["Indirect Emissions"].sum()) if "Indirect Emissions" in participant_df.columns else 0.0
+        summary["Total Scope 2 CBAM Liability"] = float(participant_df["Scope 2 CBAM Liability"].sum()) if "Scope 2 CBAM Liability" in participant_df.columns else 0.0
+
         # ── Sector-group aggregates ──────────────────────────────────────────
         if "Sector Group" in participant_df.columns:
             for sg, grp in participant_df.groupby("Sector Group"):
                 if not sg:
                     continue
-                summary[f"{sg} Total Abatement"]      = float(grp["Abatement"].sum())
-                summary[f"{sg} Total Compliance Cost"] = float(grp["Total Compliance Cost"].sum())
-                summary[f"{sg} Total CBAM Liability"]  = float(grp["CBAM Liability"].sum())
+                summary[f"{sg} Total Abatement"]           = float(grp["Abatement"].sum())
+                summary[f"{sg} Total Compliance Cost"]      = float(grp["Total Compliance Cost"].sum())
+                summary[f"{sg} Total CBAM Liability"]       = float(grp["CBAM Liability"].sum())
+                # Auction revenue attribution: sector's share of total allowance buys × auction price
+                sector_buys = float(grp["Allowance Buys"].sum())
+                total_buys  = float(participant_df["Allowance Buys"].sum())
+                auction_rev = summary.get("Total Auction Revenue", 0.0)
+                summary[f"{sg} Allowance Buys"]             = sector_buys
+                summary[f"{sg} Allowance Cost"]             = float(grp["Allowance Cost"].sum())
+                summary[f"{sg} Auction Revenue Share"]      = (
+                    float(auction_rev) * (sector_buys / total_buys) if total_buys > 0 else 0.0
+                )
+                # Scope 2 by sector
+                if "Indirect Emissions" in grp.columns:
+                    summary[f"{sg} Indirect Emissions"]     = float(grp["Indirect Emissions"].sum())
+                    summary[f"{sg} Scope 2 CBAM Liability"] = float(grp["Scope 2 CBAM Liability"].sum())
 
         for _, row in participant_df.iterrows():
             participant_name = str(row["Participant"])

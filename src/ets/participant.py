@@ -100,6 +100,12 @@ class MarketParticipant:
     cbam_jurisdictions: list = field(default_factory=list)
     # Sector classification for grouped reporting (e.g. "Steel", "Petrochemical")
     sector_group: str = ""
+    # Indirect / Scope 2 emissions — electricity-based
+    # indirect_emissions = electricity_consumption × grid_emission_factor
+    # scope2_cbam_coverage: fraction of indirect embedded emissions covered by CBAM (0 = not covered)
+    electricity_consumption: float = 0.0   # MWh (or any consistent energy unit)
+    grid_emission_factor: float = 0.0      # tCO2/MWh (grid average or marginal)
+    scope2_cbam_coverage: float = 0.0      # 0–1; 0 = Scope 2 not in CBAM scope
 
     def __post_init__(self) -> None:
         self._validate_state(

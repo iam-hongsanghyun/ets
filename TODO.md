@@ -37,7 +37,7 @@ Items are grouped by theme. Checked items are complete. Unchecked items are pend
 ## Multi-year dynamics
 
 - [ ] Expected future price logic — replace the `next_year_baseline` heuristic with a proper dynamic expectations module
-- [ ] Policy trajectory constraints across years: auto-declining caps, changing free allocation rules, tightening penalties
+- [x] Policy trajectory constraints across years: `cap_trajectory`, `price_floor_trajectory`, `price_ceiling_trajectory` — linearly interpolated scenario-level overrides; same pattern as `free_allocation_trajectories`
 - [ ] BAU trajectory: per-sector automatic Business-as-Usual emissions path generation (currently requires manual entry per year)
 
 ---
@@ -46,7 +46,7 @@ Items are grouped by theme. Checked items are complete. Unchecked items are pend
 
 - [ ] Model calibration: fit MACC parameters to reproduce historically observed carbon prices
 - [ ] Import workflow for participant/year data from CSV or structured tables
-- [ ] Validation rules for inconsistent scenarios (cap < free allocation, unrealistic cost combinations, etc.)
+- [x] Validation rules for inconsistent scenarios: duplicate participant names, cap < supply (post-trajectory), penalty below price floor
 
 ---
 
@@ -54,8 +54,8 @@ Items are grouped by theme. Checked items are complete. Unchecked items are pend
 
 - [ ] Batch/sensitivity runner: run N parameter combinations automatically, output distributions of prices and outcomes
 - [x] EUA ensemble / fan chart: `eua_price_ensemble` dict per year (EC / Enerdata / BNEF); per-source CBAM liability columns in participant results; native output format without duplicating scenarios
-- [ ] Sector-level auction revenue breakdown (currently aggregated; needs per-participant/per-sector split)
-- [ ] Indirect emissions (Scope 2): `electricity_consumption` + `grid_emission_factor` per participant; post-equilibrium indirect CBAM exposure block analogous to direct CBAM
+- [x] Sector-level auction revenue breakdown: `{sg} Allowance Buys`, `{sg} Allowance Cost`, `{sg} Auction Revenue Share` added to scenario_summary
+- [x] Indirect emissions (Scope 2): `electricity_consumption` + `grid_emission_factor` + `scope2_cbam_coverage` per participant; `Indirect Emissions` and `Scope 2 CBAM Liability` columns in results
 
 ---
 
@@ -80,7 +80,7 @@ Items are grouped by theme. Checked items are complete. Unchecked items are pend
 | Multi-jurisdiction CBAM | ✅ Yes | ✅ Done | `cbam_jurisdictions` array + `eua_prices` dict per year; per-jurisdiction liability columns |
 | Sector grouping / sub-sector aggregation | ✅ Yes | ✅ Done | `sector_group` label on participants; sector-level aggregated rows in output |
 | EUA ensemble / fan chart | ✅ Yes | ✅ Done | `eua_price_ensemble` dict per year; per-source CBAM liability columns |
-| Indirect emissions (Scope 2) | ✅ Yes | Missing | `electricity_consumption` + `grid_emission_factor`; indirect CBAM block |
+| Indirect emissions (Scope 2) | ✅ Yes | ✅ Done | `electricity_consumption` + `grid_emission_factor` + `scope2_cbam_coverage`; `Indirect Emissions` + `Scope 2 CBAM Liability` columns |
 | Batch/Sensitivity runner | ✅ Yes | Missing | Run N parameter combinations automatically, output distributions |
 | BAU trajectory | Data only | Manual only | Per-sector BAU emissions path (11th Power Plan / NDC) |
 | Model calibration | Data only | Missing | Fit MACC params to observed KAU prices |
