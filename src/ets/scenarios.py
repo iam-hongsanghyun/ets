@@ -30,6 +30,11 @@ def blank_scenario() -> dict[str, Any]:
         # ── Free-allocation phase-out trajectories ───────────────────────────
         # List of {participant_name, start_year, end_year, start_ratio, end_ratio}
         "free_allocation_trajectories": [],
+        # ── Policy cap and price-bound trajectories ──────────────────────────
+        # Each: {start_year, end_year, start_value, end_value} — empty dict = disabled
+        "cap_trajectory": {},            # auto-declining total_cap
+        "price_floor_trajectory": {},    # rising price floor (MSR / carbon floor)
+        "price_ceiling_trajectory": {},  # declining/rising price ceiling
         # ── MSR settings ────────────────────────────────────────────────────
         **MSR_DEFAULTS,
         # ── Solver / model settings (all user-overridable) ──────────────────
@@ -92,6 +97,10 @@ def blank_participant() -> dict[str, Any]:
         "cbam_coverage_ratio": 1.0,
         "cbam_jurisdictions": [],   # [{name, export_share, coverage_ratio}] overrides single fields
         "sector_group": "",
+        # Scope 2 / indirect emissions
+        "electricity_consumption": 0.0,  # MWh
+        "grid_emission_factor": 0.0,     # tCO2/MWh
+        "scope2_cbam_coverage": 0.0,     # 0–1
     }
 
 
@@ -177,6 +186,9 @@ def normalize_scenario(raw_scenario: dict[str, Any]) -> dict[str, Any]:
         "solver_nash_convergence_tol": _fval("solver_nash_convergence_tol", 0.001),
         "solver_penalty_price_multiplier": _fval("solver_penalty_price_multiplier", 1.25),
         "free_allocation_trajectories": list(scenario.get("free_allocation_trajectories") or []),
+        "cap_trajectory": _normalize_trajectory(scenario.get("cap_trajectory")),
+        "price_floor_trajectory": _normalize_trajectory(scenario.get("price_floor_trajectory")),
+        "price_ceiling_trajectory": _normalize_trajectory(scenario.get("price_ceiling_trajectory")),
         "years": scenario["years"],
     }
 
@@ -276,6 +288,31 @@ def normalize_year(raw_year: dict[str, Any]) -> dict[str, Any]:
             f"Year '{year_config['year']}' participants must be provided as a list."
         )
     year_config["participants"] = [normalize_participant(item) for item in participants]
+
+    # ── Validation rules (config-time, before trajectory overrides) ─────────
+    yr = year_config["year"]
+    # Duplicate participant names
+    names = [p["name"] for p in year_config["participants"]]
+    seen: set = set()
+    dupes: set = set()
+    for n in names:
+        (dupes if n in seen else seen).add(n)
+    if dupes:
+        raise ValueError(
+            f"Year '{yr}' has duplicate participant name(s): {sorted(dupes)}."
+        )
+    # Penalty price below price floor — compliance never buys, always pays penalty
+    floor = year_config["price_lower_bound"]
+    for p in year_config["participants"]:
+        pp = float(p["penalty_price"])
+        if 0 < pp < floor:
+            raise ValueError(
+                f"Year '{yr}', participant '{p['name']}': penalty_price ({pp:.1f}) is below "
+                f"price_lower_bound ({floor:.1f}). Participants would always pay penalty instead of complying."
+            )
+    # Note: cap consistency (free_alloc + auction ≤ total_cap) is validated in
+    # build_market_from_year() after trajectory overrides are applied.
+
     return year_config
 
 
@@ -327,6 +364,16 @@ def normalize_participant(raw_participant: dict[str, Any]) -> dict[str, Any]:
         if isinstance(j, dict)
     ]
     participant["sector_group"] = str(participant.get("sector_group") or "")
+    # Scope 2 / indirect emissions
+    for s2_field in ("electricity_consumption", "grid_emission_factor", "scope2_cbam_coverage"):
+        try:
+            participant[s2_field] = float(participant.get(s2_field) or 0.0)
+        except (TypeError, ValueError):
+            participant[s2_field] = 0.0
+    if not 0.0 <= participant["scope2_cbam_coverage"] <= 1.0:
+        raise ValueError(
+            f"Participant '{participant['name']}' scope2_cbam_coverage must be between 0 and 1."
+        )
     technology_options = participant.get("technology_options", [])
     if not isinstance(technology_options, list):
         raise ValueError(
@@ -452,6 +499,9 @@ def build_markets_from_config(config: dict[str, Any]) -> list[CarbonMarket]:
             "risk_premium": scenario.get("risk_premium", 0.0),
             "nash_strategic_participants": scenario.get("nash_strategic_participants", []),
             "free_allocation_trajectories": scenario.get("free_allocation_trajectories", []),
+            "cap_trajectory": scenario.get("cap_trajectory", {}),
+            "price_floor_trajectory": scenario.get("price_floor_trajectory", {}),
+            "price_ceiling_trajectory": scenario.get("price_ceiling_trajectory", {}),
             # MSR
             "msr_enabled": scenario.get("msr_enabled", False),
             "msr_upper_threshold": scenario.get("msr_upper_threshold", 200.0),
@@ -473,6 +523,43 @@ def build_markets_from_config(config: dict[str, Any]) -> list[CarbonMarket]:
         for year_config in scenario["years"]:
             markets.append(build_market_from_year(scenario["name"], year_config, scenario_meta))
     return markets
+
+
+def _normalize_trajectory(raw: Any) -> dict:
+    """Normalise a cap/price trajectory object, returning {} if empty/missing."""
+    if not raw or not isinstance(raw, dict):
+        return {}
+    out: dict = {}
+    for k in ("start_year", "end_year"):
+        if raw.get(k) is not None:
+            out[k] = str(raw[k])
+    for k in ("start_value", "end_value"):
+        try:
+            out[k] = float(raw[k])
+        except (KeyError, TypeError, ValueError):
+            pass
+    # Must have all four keys to be valid
+    if not all(k in out for k in ("start_year", "end_year", "start_value", "end_value")):
+        return {}
+    return out
+
+
+def _interp_value(year_num: float, traj: dict) -> float | None:
+    """Linearly interpolate a scalar value trajectory, or return None if disabled."""
+    if not traj:
+        return None
+    t_start = _year_to_float(str(traj.get("start_year", "")))
+    t_end   = _year_to_float(str(traj.get("end_year", "")))
+    v_start = float(traj.get("start_value", 0.0))
+    v_end   = float(traj.get("end_value", 0.0))
+    if t_end <= t_start:
+        return None
+    if year_num <= t_start:
+        return v_start
+    if year_num >= t_end:
+        return v_end
+    frac = (year_num - t_start) / (t_end - t_start)
+    return round(v_start + frac * (v_end - v_start), 6)
 
 
 def _interp_ratio(year_num: float, traj: dict) -> float | None:
@@ -528,9 +615,23 @@ def build_market_from_year(
     reserved_allowances = float(year_config.get("reserved_allowances", 0.0))
     cancelled_allowances = float(year_config.get("cancelled_allowances", 0.0))
 
+    # Apply cap / price-bound trajectories — override per-year values
+    total_cap = float(year_config["total_cap"])
+    price_lower_bound = year_config.get("price_lower_bound")
+    price_upper_bound = year_config.get("price_upper_bound")
+    cap_override = _interp_value(year_num, meta.get("cap_trajectory") or {})
+    floor_override = _interp_value(year_num, meta.get("price_floor_trajectory") or {})
+    ceiling_override = _interp_value(year_num, meta.get("price_ceiling_trajectory") or {})
+    if cap_override is not None:
+        total_cap = cap_override
+    if floor_override is not None:
+        price_lower_bound = floor_override
+    if ceiling_override is not None:
+        price_upper_bound = ceiling_override
+
     if year_config["auction_mode"] == "derive_from_cap":
         auction_offered = (
-            year_config["total_cap"]
+            total_cap
             - free_allocations
             - reserved_allowances
             - cancelled_allowances
@@ -544,9 +645,20 @@ def build_market_from_year(
             "auction offered. Raise the cap or lower free allocation."
         )
 
+    # Cap consistency check — post-trajectory, with actual effective values
+    effective_supply = (
+        free_allocations + auction_offered + reserved_allowances + cancelled_allowances
+    )
+    if total_cap > 0 and effective_supply - total_cap > 1e-6:
+        raise ValueError(
+            f"Scenario '{scenario_name}' year '{year_config['year']}': allowance supply "
+            f"({effective_supply:.2f}) exceeds total_cap ({total_cap:.2f}). "
+            "Reduce auction_offered, free_allocation_ratio, or increase total_cap."
+        )
+
     market = CarbonMarket(
         participants=participants,
-        total_cap=year_config["total_cap"],
+        total_cap=total_cap,
         auction_offered=auction_offered,
         reserved_allowances=reserved_allowances,
         cancelled_allowances=cancelled_allowances,
@@ -555,8 +667,8 @@ def build_market_from_year(
         unsold_treatment=year_config["unsold_treatment"],
         scenario_name=scenario_name,
         year=year_config["year"],
-        price_lower_bound=year_config["price_lower_bound"],
-        price_upper_bound=year_config["price_upper_bound"],
+        price_lower_bound=price_lower_bound,
+        price_upper_bound=price_upper_bound,
         banking_allowed=year_config["banking_allowed"],
         borrowing_allowed=year_config["borrowing_allowed"],
         borrowing_limit=year_config["borrowing_limit"],
@@ -570,6 +682,9 @@ def build_market_from_year(
     market.risk_premium = float(meta.get("risk_premium") or 0.0)
     market.nash_strategic_participants = list(meta.get("nash_strategic_participants") or [])
     market.carbon_budget = float(year_config.get("carbon_budget") or 0.0)
+    market.cap_trajectory = dict(meta.get("cap_trajectory") or {})
+    market.price_floor_trajectory = dict(meta.get("price_floor_trajectory") or {})
+    market.price_ceiling_trajectory = dict(meta.get("price_ceiling_trajectory") or {})
     market.eua_price = float(year_config.get("eua_price") or 0.0)
     market.eua_prices = dict(year_config.get("eua_prices") or {})
     market.eua_price_ensemble = dict(year_config.get("eua_price_ensemble") or {})
@@ -635,6 +750,9 @@ def build_participant(participant: dict[str, Any]) -> MarketParticipant:
         cbam_coverage_ratio=float(participant.get("cbam_coverage_ratio") or 1.0),
         cbam_jurisdictions=list(participant.get("cbam_jurisdictions") or []),
         sector_group=str(participant.get("sector_group") or ""),
+        electricity_consumption=float(participant.get("electricity_consumption") or 0.0),
+        grid_emission_factor=float(participant.get("grid_emission_factor") or 0.0),
+        scope2_cbam_coverage=float(participant.get("scope2_cbam_coverage") or 0.0),
     )
 
 

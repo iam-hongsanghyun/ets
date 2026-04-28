@@ -46,6 +46,10 @@ function makeBlankParticipant(index = 1) {
     cbam_coverage_ratio: 1,
     cbam_jurisdictions: [],
     sector_group: "",
+    // Scope 2 / indirect emissions
+    electricity_consumption: 0,
+    grid_emission_factor: 0,
+    scope2_cbam_coverage: 0,
   };
 }
 
@@ -86,6 +90,9 @@ function makeBlankScenario(index = 1) {
     risk_premium: 0.0,
     nash_strategic_participants: [],
     free_allocation_trajectories: [],
+    cap_trajectory: {},
+    price_floor_trajectory: {},
+    price_ceiling_trajectory: {},
     // ── Solver settings (user-overridable, defaults match backend) ──────────
     solver_competitive_max_iters: 25,
     solver_competitive_tolerance: 0.001,

@@ -1092,6 +1092,48 @@ export function Editor({
             ))}
           </div>
 
+          {/* ── Cap & Price Bound Trajectories ─────────────────────────────── */}
+          {[
+            { key: "cap_trajectory",           label: "Cap trajectory",         hint: "Auto-declining total_cap. Overrides per-year total_cap when active.", unit: "Mt" },
+            { key: "price_floor_trajectory",   label: "Price floor trajectory", hint: "Rising price floor. Overrides per-year price_lower_bound.",             unit: "$/t" },
+            { key: "price_ceiling_trajectory", label: "Price ceiling trajectory", hint: "Rising/declining price ceiling. Overrides per-year price_upper_bound.", unit: "$/t" },
+          ].map(({ key, label, hint, unit }) => {
+            const traj = workingScenario[key] || {};
+            const active = !!(traj.start_year && traj.end_year && traj.start_value !== undefined && traj.end_value !== undefined);
+            return (
+              <div key={key} className="traj-section">
+                <div className="traj-head">
+                  <span className="traj-label">{label}</span>
+                  <span className="approach-params-hint">{hint}</span>
+                  {active
+                    ? <button type="button" className="ghost-btn" style={{fontSize:11, padding:"2px 8px"}} onClick={() => updateScenario({ [key]: {} })}>Clear</button>
+                    : <button type="button" className="ghost-btn on" style={{fontSize:11, padding:"2px 8px"}} onClick={() => updateScenario({ [key]: { start_year: "2026", end_year: "2035", start_value: 0, end_value: 0 } })}>Enable</button>
+                  }
+                </div>
+                {active && (
+                  <div className="traj-row" style={{gridTemplateColumns:"80px 80px 110px 110px", gap: 8, padding: "8px 12px"}}>
+                    <div className="builder-form-field" style={{margin:0}}>
+                      <label style={{fontSize:11}}>Start year</label>
+                      <input type="text" value={traj.start_year ?? ""} onChange={(e) => updateScenario({ [key]: { ...traj, start_year: e.target.value } })} />
+                    </div>
+                    <div className="builder-form-field" style={{margin:0}}>
+                      <label style={{fontSize:11}}>End year</label>
+                      <input type="text" value={traj.end_year ?? ""} onChange={(e) => updateScenario({ [key]: { ...traj, end_year: e.target.value } })} />
+                    </div>
+                    <div className="builder-form-field" style={{margin:0}}>
+                      <label style={{fontSize:11}}>Start value ({unit})</label>
+                      <input type="number" step="1" value={traj.start_value ?? ""} onChange={(e) => updateScenario({ [key]: { ...traj, start_value: +e.target.value } })} />
+                    </div>
+                    <div className="builder-form-field" style={{margin:0}}>
+                      <label style={{fontSize:11}}>End value ({unit})</label>
+                      <input type="number" step="1" value={traj.end_value ?? ""} onChange={(e) => updateScenario({ [key]: { ...traj, end_value: +e.target.value } })} />
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+
           <div className="builder-form-grid">
             <label>
               <span className="ekey">Year label <span className="field-flag required">required</span></span>
@@ -1649,6 +1691,36 @@ export function Editor({
                             }}>✕</button>
                           </div>
                         ))}
+                      </div>
+                    </div>
+
+                    {/* ── Scope 2 / Indirect Emissions ─────────────────── */}
+                    <div className="scope2-panel">
+                      <div className="scope2-head">
+                        <span className="scope2-label">Scope 2 / Indirect Emissions</span>
+                        <span className="approach-params-hint">Electricity-based indirect emissions and CBAM exposure. Indirect emissions = consumption × emission factor.</span>
+                      </div>
+                      <div className="builder-form-grid">
+                        <div className="builder-form-field">
+                          <label>Electricity consumption (MWh)</label>
+                          <input type="number" min="0" step="100"
+                            value={participant.electricity_consumption ?? 0}
+                            onChange={(e) => updateParticipant(selectedParticipantIndex, { electricity_consumption: +e.target.value })} />
+                        </div>
+                        <div className="builder-form-field">
+                          <label>Grid emission factor (tCO₂/MWh)</label>
+                          <input type="number" min="0" step="0.001"
+                            value={participant.grid_emission_factor ?? 0}
+                            onChange={(e) => updateParticipant(selectedParticipantIndex, { grid_emission_factor: +e.target.value })} />
+                          <span className="approach-params-hint">Indirect emissions = consumption × factor. Korean grid ≈ 0.45 tCO₂/MWh.</span>
+                        </div>
+                        <div className="builder-form-field">
+                          <label>Scope 2 CBAM coverage (0–1)</label>
+                          <input type="number" min="0" max="1" step="0.1"
+                            value={participant.scope2_cbam_coverage ?? 0}
+                            onChange={(e) => updateParticipant(selectedParticipantIndex, { scope2_cbam_coverage: +e.target.value })} />
+                          <span className="approach-params-hint">0 = Scope 2 not covered by CBAM (current default). 1 = fully covered (6-month extension scenario).</span>
+                        </div>
                       </div>
                     </div>
 
