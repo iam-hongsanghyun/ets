@@ -79,6 +79,7 @@ function makeBlankScenario(index = 1) {
     description: "Describe the policy design, participants, and transition logic for this scenario.",
     model_approach: "competitive",
     discount_rate: 0.04,
+    risk_premium: 0.0,
     nash_strategic_participants: [],
     // ── Solver settings (user-overridable, defaults match backend) ──────────
     solver_competitive_max_iters: 25,

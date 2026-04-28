@@ -217,6 +217,7 @@ def run_simulation(markets: list[CarbonMarket]) -> tuple[pd.DataFrame, pd.DataFr
         def _hot_kwargs():
             return dict(
                 discount_rate=float(getattr(m0, "discount_rate", 0.04) or 0.04),
+                risk_premium=float(getattr(m0, "risk_premium", 0.0) or 0.0),
                 max_bisection_iters=int(getattr(m0, "solver_hotelling_max_bisection_iters", 80) or 80),
                 max_lambda_expansions=int(getattr(m0, "solver_hotelling_max_lambda_expansions", 20) or 20),
                 convergence_tol=float(getattr(m0, "solver_hotelling_convergence_tol", 1e-4) or 1e-4),

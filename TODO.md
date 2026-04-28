@@ -17,6 +17,7 @@ Items are grouped by theme. Checked items are complete. Unchecked items are pend
 - [x] Add Nash-Cournot strategic equilibrium (best-response iteration)
 - [x] Add Market Stability Reserve (MSR) — withhold/release based on aggregate bank
 - [x] Add CBAM liability calculation (post-equilibrium, export-share weighted)
+- [ ] Hotelling risk premium (`risk_premium` param ρ): price path `P(t) = λ·(1+r+ρ)^t` — policy uncertainty premium on top of discount rate; needed to calibrate theoretical path against observed market prices
 - [ ] Allow participant-specific production or output assumptions (needed for output-based allocation)
 
 ---
@@ -27,7 +28,9 @@ Items are grouped by theme. Checked items are complete. Unchecked items are pend
 - [ ] Benchmark-based free allocation (move beyond simple `free_allocation_ratio`)
 - [ ] Output-based allocation (requires production/output decision above)
 - [ ] Auction design variants: full auction, reserve price bands, limited release schedules
-- [ ] Free-allocation phase-out trajectory: auto linear/step-down of `free_allocation_ratio` across years (currently must be set manually per year)
+- [ ] Free-allocation phase-out auto-calculator: given `(sector_type, scenario, start_year, end_year)` compute `free_allocation_ratio` per year per participant — currently requires manual entry per year
+- [ ] Multi-jurisdiction CBAM: replace single `cbam_export_share` with a `cbam_jurisdictions` array `[(jurisdiction, export_share, coverage_ratio, reference_price)]`; output per-jurisdiction liability columns (EU, UK, US, Japan GX-ETS)
+- [ ] Sector grouping: `sector_group` label on participants so output tables can aggregate Steel sub-sectors (general / special / electric arc) and Petrochemical sub-sectors (NCC / BTX / polymers) into sector-level rows
 
 ---
 
@@ -50,8 +53,9 @@ Items are grouped by theme. Checked items are complete. Unchecked items are pend
 ## Analysis and sensitivity
 
 - [ ] Batch/sensitivity runner: run N parameter combinations automatically, output distributions of prices and outcomes
+- [ ] EUA ensemble / fan chart: run same K-ETS scenario with multiple external EUA trajectories (EC / Enerdata / BNEF), return price uncertainty bands as a native output format (not just duplicated scenarios)
 - [ ] Sector-level auction revenue breakdown (currently aggregated; needs per-participant/per-sector split)
-- [ ] Indirect emissions (Scope 2): electricity-price linkage module for covered indirect emissions
+- [ ] Indirect emissions (Scope 2): `electricity_consumption` + `grid_emission_factor` per participant; post-equilibrium indirect CBAM exposure block analogous to direct CBAM
 
 ---
 
@@ -68,14 +72,18 @@ Items are grouped by theme. Checked items are complete. Unchecked items are pend
 
 ## Remaining work — summary table
 
-| Item | Status | What's needed |
-|---|---|---|
-| Batch/Sensitivity runner | Missing | Run N parameter combinations automatically, output price and outcome distributions |
-| BAU trajectory | Manual only | Per-sector automatic BAU emissions path generation |
-| Free-allocation phase-out | Manual only | Auto linear/step-down trajectory for `free_allocation_ratio` across years |
-| Model calibration | Missing | Fit MACC parameters to reproduce historically observed prices |
-| Sector-level auction revenue | Aggregate only | Break auction revenue down by participant/sector |
-| Indirect emissions (Scope 2) | Missing | Electricity price linkage module for covered indirect emissions |
-| Benchmark-based free allocation | Missing | Replace ratio-based allocation with benchmark/output-based rules |
-| Output-based allocation | Blocked | Requires production/output decision module |
-| CSV import | Missing | Import participant and year data from structured tables |
+| Item | Requires code? | Status | What's needed |
+|---|---|---|---|
+| Hotelling risk premium `ρ` | ✅ Yes | Missing | Add `risk_premium` param to Hotelling solver; `P(t) = λ·(1+r+ρ)^t` |
+| Sector-level auction revenue | ✅ Yes | Aggregate only | Attribute auction proceeds per participant in summary output |
+| Free-allocation phase-out calculator | ✅ Yes | Manual only | Auto-compute `free_allocation_ratio` trajectory from scenario type + timeline |
+| Multi-jurisdiction CBAM | ✅ Yes | Missing | `cbam_jurisdictions` array; per-jurisdiction liability columns |
+| Sector grouping / sub-sector aggregation | ✅ Yes | Missing | `sector_group` label; grouped summary rows in output |
+| EUA ensemble / fan chart | ✅ Yes | Missing | Multiple EUA inputs → price uncertainty bands as native output |
+| Indirect emissions (Scope 2) | ✅ Yes | Missing | `electricity_consumption` + `grid_emission_factor`; indirect CBAM block |
+| Batch/Sensitivity runner | ✅ Yes | Missing | Run N parameter combinations automatically, output distributions |
+| BAU trajectory | Data only | Manual only | Per-sector BAU emissions path (11th Power Plan / NDC) |
+| Model calibration | Data only | Missing | Fit MACC params to observed KAU prices |
+| Benchmark-based free allocation | ✅ Yes | Missing | Replace ratio-based with product benchmark/output-based rules |
+| Output-based allocation | ✅ Yes | Blocked | Requires production/output decision module |
+| CSV import | ✅ Yes | Missing | Import participant and year data from structured tables |

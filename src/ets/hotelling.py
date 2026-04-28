@@ -2,18 +2,29 @@
 Hotelling Rule solver for ETS.
 
 The Hotelling Rule treats emission allowances as an exhaustible resource.
-The optimal price path must rise at the discount rate (arbitrage condition):
+The optimal price path must rise at the effective discount rate (arbitrage condition):
 
-    P*(t) = λ · (1 + r)^(t - t₀)
+    P*(t) = λ · (1 + r + ρ)^(t - t₀)
 
-where λ (shadow price / royalty) is chosen so that cumulative residual emissions
-equal the cumulative carbon budget across all years.
+where:
+  λ  — shadow price (royalty) at the base year t₀
+  r  — risk-free discount rate (discount_rate, e.g. 0.04 = 4%)
+  ρ  — policy/market risk premium (risk_premium, e.g. 0.02 = 2%)
+
+The risk premium ρ captures the additional return required by market participants
+to hold allowances under policy uncertainty (e.g. future cap tightening ambiguity,
+MSR rule changes, CBAM schedule revisions).  Setting ρ = 0 recovers the pure
+Hotelling path.  A positive ρ steepens the price path relative to the risk-free
+case, consistent with calibrating the model to observed market prices that rise
+faster than the risk-free rate.
+
+λ is chosen so that cumulative residual emissions equal the cumulative carbon
+budget across all years.
 
 Implementation: for each candidate λ we PIN each year's equilibrium price to the
-Hotelling value by setting price_lower_bound = price_upper_bound = P_hotelling(t)
-on temporary market copies.  The competitive Brent solver then evaluates participant
-outcomes at exactly that price.  We bisect on λ until cumulative residual emissions
-match the cumulative carbon budget.
+Hotelling value by calling market.participant_results(P_hotelling(t)) directly.
+We bisect on λ until cumulative residual emissions match the cumulative carbon
+budget.
 """
 
 from __future__ import annotations
@@ -40,14 +51,25 @@ def _year_to_float(year_label: str) -> float:
         return 0.0
 
 
-def _hotelling_price(lam: float, discount_rate: float, t_offset: float) -> float:
-    return max(0.0, lam * ((1.0 + discount_rate) ** t_offset))
+def _hotelling_price(lam: float, effective_rate: float, t_offset: float) -> float:
+    """Compute Hotelling price at offset t from base year.
+
+    Parameters
+    ----------
+    lam : float
+        Shadow price λ at base year.
+    effective_rate : float
+        Combined rate r + ρ  (discount_rate + risk_premium).
+    t_offset : float
+        Years elapsed since base year.
+    """
+    return max(0.0, lam * ((1.0 + effective_rate) ** t_offset))
 
 
 def _simulate_at_hotelling_prices(
     ordered_markets,
     lam: float,
-    discount_rate: float,
+    effective_rate: float,
     base_year_num: float,
 ) -> tuple[list[dict], float]:
     """
@@ -55,7 +77,7 @@ def _simulate_at_hotelling_prices(
 
     In Hotelling mode the price is set by the shadow-price rule — we don't need
     the Brent market-clearing step.  Instead we:
-      1. Compute P_hotelling(t) = λ · (1+r)^(t-t₀)
+      1. Compute P_hotelling(t) = λ · (1+r+ρ)^(t-t₀)
       2. Call market.participant_results(P_hotelling)  directly
       3. Propagate bank balances exactly as in the competitive path
     """
@@ -66,14 +88,14 @@ def _simulate_at_hotelling_prices(
 
     for market in ordered_markets:
         t_offset     = _year_to_float(str(market.year)) - base_year_num
-        p_hotelling  = _hotelling_price(lam, discount_rate, t_offset)
+        p_hotelling  = _hotelling_price(lam, effective_rate, t_offset)
         # Clamp to the scenario's own price bounds
         p_floor      = market.price_lower_bound or 0.0
         p_ceiling    = market.price_upper_bound or 1e9
         p_effective  = max(p_floor, min(p_ceiling, p_hotelling))
 
         # Next-year expected price follows the same Hotelling rule
-        expected_future_price = _hotelling_price(lam, discount_rate, t_offset + 1.0)
+        expected_future_price = _hotelling_price(lam, effective_rate, t_offset + 1.0)
 
         starting_bank = dict(bank_balances)
         participant_df = market.participant_results(
@@ -130,6 +152,7 @@ def _competitive_fallback(ordered_markets) -> list[dict]:
 def solve_hotelling_path(
     ordered_markets,
     discount_rate: float = 0.04,
+    risk_premium: float = 0.0,
     max_bisection_iters: int = _MAX_BISECTION_ITERS,
     max_lambda_expansions: int = _MAX_LAMBDA_EXPANSIONS,
     convergence_tol: float = _CONVERGENCE_TOL,
@@ -142,7 +165,13 @@ def solve_hotelling_path(
     ordered_markets : list[CarbonMarket]
         Markets sorted chronologically.
     discount_rate : float
-        Annual discount rate r (e.g. 0.04 = 4%).
+        Risk-free annual discount rate r (e.g. 0.04 = 4%).
+    risk_premium : float
+        Policy/market risk premium ρ (e.g. 0.02 = 2%).  Added to discount_rate
+        to form the effective growth rate used in the Hotelling price formula:
+        P*(t) = λ · (1 + r + ρ)^(t − t₀).  Defaults to 0 (pure Hotelling).
+        A positive value steepens the price path and is useful when calibrating
+        to observed market prices that rise faster than the risk-free rate.
 
     Returns
     -------
@@ -169,8 +198,16 @@ def solve_hotelling_path(
             "to your target cumulative emissions budget."
         )
 
-    year_nums    = [_year_to_float(str(m.year)) for m in ordered_markets]
+    year_nums     = [_year_to_float(str(m.year)) for m in ordered_markets]
     base_year_num = year_nums[0]
+
+    # Effective growth rate = risk-free rate + policy risk premium
+    effective_rate = float(discount_rate) + float(risk_premium)
+    if risk_premium != 0.0:
+        logger.debug(
+            f"Hotelling: effective rate = {effective_rate:.4f} "
+            f"(discount_rate={discount_rate:.4f} + risk_premium={risk_premium:.4f})"
+        )
 
     # Total carbon budget: per-year carbon_budget field; fall back to total_cap
     total_budget = sum(
@@ -182,7 +219,7 @@ def solve_hotelling_path(
 
     def run(lam):
         return _simulate_at_hotelling_prices(
-            ordered_markets, lam, discount_rate, base_year_num
+            ordered_markets, lam, effective_rate, base_year_num
         )
 
     # ── Bracket λ ────────────────────────────────────────────────────────────

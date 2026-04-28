@@ -25,6 +25,7 @@ def blank_scenario() -> dict[str, Any]:
         "name": "New Scenario",
         "model_approach": "competitive",
         "discount_rate": 0.04,
+        "risk_premium": 0.0,
         "nash_strategic_participants": [],
         # ── MSR settings ────────────────────────────────────────────────────
         **MSR_DEFAULTS,
@@ -149,6 +150,7 @@ def normalize_scenario(raw_scenario: dict[str, Any]) -> dict[str, Any]:
         "name": scenario["name"],
         "model_approach": model_approach,
         "discount_rate": _fval("discount_rate", 0.04),
+        "risk_premium": _fval("risk_premium", 0.0),
         "nash_strategic_participants": list(scenario.get("nash_strategic_participants") or []),
         # MSR
         "msr_enabled": bool(scenario.get("msr_enabled", False)),
@@ -421,6 +423,7 @@ def build_markets_from_config(config: dict[str, Any]) -> list[CarbonMarket]:
         scenario_meta = {
             "model_approach": scenario.get("model_approach", "competitive"),
             "discount_rate": scenario.get("discount_rate", 0.04),
+            "risk_premium": scenario.get("risk_premium", 0.0),
             "nash_strategic_participants": scenario.get("nash_strategic_participants", []),
             # MSR
             "msr_enabled": scenario.get("msr_enabled", False),
@@ -495,6 +498,7 @@ def build_market_from_year(
     # Attach scenario-level and year-level modelling approach fields
     market.model_approach = meta.get("model_approach", "competitive")
     market.discount_rate = float(meta.get("discount_rate") or 0.04)
+    market.risk_premium = float(meta.get("risk_premium") or 0.0)
     market.nash_strategic_participants = list(meta.get("nash_strategic_participants") or [])
     market.carbon_budget = float(year_config.get("carbon_budget") or 0.0)
     market.eua_price = float(year_config.get("eua_price") or 0.0)

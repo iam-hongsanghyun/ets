@@ -963,7 +963,20 @@ export function Editor({
                     value={workingScenario.discount_rate ?? 0.04}
                     onChange={(e) => updateScenario({ discount_rate: parseFloat(e.target.value) || 0.04 })}
                   />
-                  <span className="approach-params-hint">Annual discount rate r — Hotelling price path grows at (1+r)^t. Default 0.04 = 4%.</span>
+                  <span className="approach-params-hint">Risk-free annual discount rate r. Hotelling price path grows at (1+r+ρ)^t. Default 0.04 = 4%.</span>
+                </label>
+                <label>
+                  <span className="ekey">Risk premium (ρ) <span className="field-flag optional">optional</span></span>
+                  <input
+                    type="number"
+                    className="text"
+                    step="0.005"
+                    min="0"
+                    max="0.5"
+                    value={workingScenario.risk_premium ?? 0.0}
+                    onChange={(e) => updateScenario({ risk_premium: parseFloat(e.target.value) || 0 })}
+                  />
+                  <span className="approach-params-hint">Policy/market risk premium ρ added to discount rate. Steepens the Hotelling price path to match observed prices. Default 0 = pure Hotelling.</span>
                 </label>
                 <label>
                   <span className="ekey">Carbon budget (this year) <span className="field-flag optional">optional</span></span>
