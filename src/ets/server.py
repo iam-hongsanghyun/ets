@@ -6,11 +6,17 @@ from pathlib import Path
 from urllib.parse import parse_qs
 
 from .config import FRONTEND_DIST_DIR
-from .webapp import ASSET_CONTENT_TYPES, _build_dashboard_payload, _predefined_templates
+from .webapp import (
+    ASSET_CONTENT_TYPES,
+    _build_dashboard_payload,
+    _json_safe,
+    _predefined_templates,
+    _save_user_scenario,
+)
 
 
 def _json_response(start_response, payload: dict, status: HTTPStatus = HTTPStatus.OK):
-    data = json.dumps(payload).encode("utf-8")
+    data = json.dumps(_json_safe(payload), allow_nan=False).encode("utf-8")
     start_response(
         f"{status.value} {status.phrase}",
         [
@@ -62,6 +68,18 @@ def app(environ, start_response):
         except Exception as exc:  # pragma: no cover - deployment path
             return _json_response(start_response, {"error": str(exc)}, HTTPStatus.BAD_REQUEST)
 
+    if method == "POST" and path == "/api/save-scenario":
+        try:
+            length = int(environ.get("CONTENT_LENGTH") or "0")
+        except ValueError:
+            length = 0
+        raw = environ["wsgi.input"].read(length) if length > 0 else b"{}"
+        try:
+            payload = _save_user_scenario(json.loads(raw.decode("utf-8")))
+            return _json_response(start_response, payload)
+        except Exception as exc:  # pragma: no cover - deployment path
+            return _json_response(start_response, {"error": str(exc)}, HTTPStatus.BAD_REQUEST)
+
     if method != "GET":
         return _json_response(start_response, {"error": "Method not allowed"}, HTTPStatus.METHOD_NOT_ALLOWED)
 
@@ -77,4 +95,3 @@ def app(environ, start_response):
     if safe.exists() and safe.is_file():
         return _file_response(start_response, safe)
     return _file_response(start_response, FRONTEND_DIST_DIR / "index.html")
-

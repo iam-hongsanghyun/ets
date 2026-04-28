@@ -1,129 +1,81 @@
 # ETS Model TODO
 
-This roadmap is ordered by modeling value and implementation dependency. The early items improve the economic validity of the simulator; later items extend realism, usability, and diagnostics.
+Items are grouped by theme. Checked items are complete. Unchecked items are pending.
 
-## Phase 1: Core Economic Upgrade
+---
 
-- [x] Replace the reduced-form abatement rule with explicit firm-level compliance optimization.
-  - Goal: each participant minimizes compliance cost by choosing among abatement, allowance purchases, and penalty payment.
-  - Why first: this is the biggest conceptual improvement in the current model.
-  - Deliverables:
-    - participant optimization method
-    - revised allowance demand logic
-    - updated equilibrium solver using optimized firm responses
-    - tests for boundary cases
+## Core economic modelling
 
-- [x] Separate compliance decisions into three explicit channels.
-  - Channels:
-    - abate emissions
-    - buy allowances
-    - pay penalty for uncovered emissions
-  - Goal: make the cost comparison transparent and inspectable in outputs.
+- [x] Replace reduced-form abatement with firm-level compliance optimisation
+- [x] Separate compliance into three channels: abate, buy allowances, pay penalty
+- [x] Add richer per-participant result outputs (abatement cost, allowance cost, penalty cost, total)
+- [x] Replace `cost_slope`-only linear MAC with explicit piecewise MAC blocks
+- [x] Support discrete technology-switch decisions (blast furnace → hydrogen DRI, etc.)
+- [x] Add banking and borrowing of allowances across years
+- [x] Add configurable expectation-formation rules (myopic, next_year_baseline, perfect_foresight, manual)
+- [x] Add Hotelling Rule solver (shadow price bisection over carbon budget)
+- [x] Add Nash-Cournot strategic equilibrium (best-response iteration)
+- [x] Add Market Stability Reserve (MSR) — withhold/release based on aggregate bank
+- [x] Add CBAM liability calculation (post-equilibrium, export-share weighted)
+- [ ] Allow participant-specific production or output assumptions (needed for output-based allocation)
 
-- [x] Add richer participant result outputs.
-  - Show, per participant:
-    - abatement cost
-    - allowance purchase cost
-    - penalty cost
-    - total compliance cost
-  - Goal: make model outputs economically interpretable.
+---
 
-## Phase 2: Better Abatement Representation
+## Policy mechanisms
 
-- [x] Replace `cost_slope`-only linear response with explicit marginal abatement cost curves.
-  - Options:
-    - piecewise linear blocks
-    - nonlinear curves
-    - technology-step curves
-  - Goal: better represent industrial decarbonization and threshold behavior.
+- [x] Price floor, price ceiling, reserve price, minimum bid coverage, unsold treatment
+- [ ] Benchmark-based free allocation (move beyond simple `free_allocation_ratio`)
+- [ ] Output-based allocation (requires production/output decision above)
+- [ ] Auction design variants: full auction, reserve price bands, limited release schedules
+- [ ] Free-allocation phase-out trajectory: auto linear/step-down of `free_allocation_ratio` across years (currently must be set manually per year)
 
-- [x] Support technology-switch decisions.
-  - Examples:
-    - blast furnace vs hydrogen DRI
-    - coal vs cleaner generation pathways
-  - Goal: model structural transition, not just incremental abatement.
+---
 
-- [ ] Allow participant-specific production or output assumptions.
-  - Goal: prepare for output-based free allocation and intensity-style benchmarking.
+## Multi-year dynamics
 
-## Phase 3: Multi-Year Strategic Design
+- [ ] Expected future price logic — replace the `next_year_baseline` heuristic with a proper dynamic expectations module
+- [ ] Policy trajectory constraints across years: auto-declining caps, changing free allocation rules, tightening penalties
+- [ ] BAU trajectory: per-sector automatic Business-as-Usual emissions path generation (currently requires manual entry per year)
 
-- [x] Add banking and borrowing of allowances across years.
-  - Goal: let firms shift compliance across time.
-  - Impact: makes annual price paths economically meaningful.
+---
 
-- [ ] Add expected future price logic.
-  - Goal: allow current decisions to depend on future scarcity.
+## Calibration and data
 
-- [ ] Add policy trajectory constraints across years.
-  - Examples:
-    - declining caps
-    - changing free allocation
-    - tightening penalty rules
+- [ ] Model calibration: fit MACC parameters to reproduce historically observed carbon prices
+- [ ] Import workflow for participant/year data from CSV or structured tables
+- [ ] Validation rules for inconsistent scenarios (cap < free allocation, unrealistic cost combinations, etc.)
 
-## Phase 4: Policy Mechanism Realism
+---
 
-- [ ] Add price floor, price ceiling, and reserve mechanisms.
-  - Goal: reflect real ETS design options.
+## Analysis and sensitivity
 
-- [ ] Add benchmark-based free allocation.
-  - Goal: move beyond simple free-allocation ratios.
+- [ ] Batch/sensitivity runner: run N parameter combinations automatically, output distributions of prices and outcomes
+- [ ] Sector-level auction revenue breakdown (currently aggregated; needs per-participant/per-sector split)
+- [ ] Indirect emissions (Scope 2): electricity-price linkage module for covered indirect emissions
 
-- [ ] Add auction design variants.
-  - Examples:
-    - full auction
-    - reserve price
-    - limited release schedules
+---
 
-## Phase 5: Sector Calibration and Data
+## UX and outputs
 
-- [ ] Create a calibration layer for participant parameters.
-  - Goal: fit model inputs to real data instead of purely illustrative assumptions.
+- [x] Side-by-side scenario comparison charts
+- [x] Visual MAC block editor
+- [x] Technology transition wizard with archetypes
+- [ ] Spreadsheet conveniences: duplicate row, paste from clipboard, CSV import/export per table, inline validation highlighting
+- [ ] Automatic narrative summaries for policy interpretation
+- [ ] Indirect emissions (Scope 2) display in participant outputs
 
-- [ ] Add import workflow for participant/year data from CSV or Excel-like tables.
-  - Goal: make empirical setup practical.
+---
 
-- [ ] Add validation rules for inconsistent scenarios.
-  - Examples:
-    - cap inconsistent with allocation
-    - negative implied auction supply
-    - unrealistic penalty/cost combinations
+## Remaining work — summary table
 
-## Phase 6: Analysis and UX
-
-- [ ] Add side-by-side scenario comparison charts.
-  - Show:
-    - annual equilibrium price
-    - abatement
-    - auction revenue
-    - compliance burden
-
-- [ ] Add spreadsheet conveniences to the GUI.
-  - Features:
-    - duplicate row
-    - paste rows from Excel
-    - CSV import/export per table
-    - inline validation highlighting
-
-- [ ] Add automatic narrative summaries for policy interpretation.
-  - Goal: produce decision-oriented summaries from model outputs.
-
-## Recommended Order
-
-1. Firm-level compliance optimization
-2. Explicit cost decomposition in outputs
-3. Better abatement/MAC curves
-4. Technology switching
-5. Banking/borrowing across years
-6. Policy mechanism realism
-7. Calibration and import workflows
-8. Advanced comparison UX
-
-## Immediate Next Step
-
-- [ ] Add expected future price logic.
-  - Proposed approach:
-    - replace the current next-year baseline-price heuristic
-    - allow configurable expectation rules
-    - support perfect foresight or user-defined expected prices
-    - expose the expectation assumption in scenario outputs
+| Item | Status | What's needed |
+|---|---|---|
+| Batch/Sensitivity runner | Missing | Run N parameter combinations automatically, output price and outcome distributions |
+| BAU trajectory | Manual only | Per-sector automatic BAU emissions path generation |
+| Free-allocation phase-out | Manual only | Auto linear/step-down trajectory for `free_allocation_ratio` across years |
+| Model calibration | Missing | Fit MACC parameters to reproduce historically observed prices |
+| Sector-level auction revenue | Aggregate only | Break auction revenue down by participant/sector |
+| Indirect emissions (Scope 2) | Missing | Electricity price linkage module for covered indirect emissions |
+| Benchmark-based free allocation | Missing | Replace ratio-based allocation with benchmark/output-based rules |
+| Output-based allocation | Blocked | Requires production/output decision module |
+| CSV import | Missing | Import participant and year data from structured tables |

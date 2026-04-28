@@ -1,8 +1,8 @@
 # Multi-Year Simulation, Banking, Borrowing & Expectation Formation
 
-**Files:** `src/ets/simulation.py`, `src/ets/expectations.py`
+**Files:** `src/ets/simulation.py`, `src/ets/expectations.py`, `src/ets/hotelling.py`, `src/ets/nash.py`, `src/ets/msr.py`
 
-A single-year equilibrium is straightforward — find the price where supply meets demand. The multi-year simulation adds three complications: (1) allowances can be saved between years (banking), (2) allowances can be borrowed from the future (borrowing), and (3) both decisions depend on what participants *expect* future prices to be. This document explains how all three interact.
+A single-year equilibrium is straightforward — find the price where supply meets demand. The multi-year simulation adds three complications: (1) allowances can be saved between years (banking), (2) allowances can be borrowed from the future (borrowing), and (3) both decisions depend on what participants *expect* future prices to be. This document explains how all three interact, and how the Hotelling and Nash-Cournot price paths extend the base competitive model.
 
 ---
 
@@ -20,7 +20,7 @@ The multi-year simulation captures these dynamics by passing **bank balances** a
 
 ## State carried between years
 
-Two pieces of state propagate from year `t` to year `t+1`:
+Three pieces of state propagate from year `t` to year `t+1`:
 
 ### 1. Bank balances
 
@@ -33,11 +33,13 @@ bank_balances_t+1 = {
 }
 ```
 
-`ending_bank_balance` is determined by `_finalize_inventory()` in `participant.py` (see below).
+### 2. MSR reserve pool
 
-### 2. Carry-forward allowances
+When `msr_enabled = true`, the `MSRState.reserve_pool` accumulates withheld allowances and persists across years. See the [MSR Integration](#msr-integration) section below.
 
-Unsold auction allowances can re-enter the next year's supply if `unsold_treatment = "carry_forward"`:
+### 3. Carry-forward allowances
+
+Unsold auction allowances re-enter the next year's supply if `unsold_treatment = "carry_forward"`:
 
 ```python
 carry_forward_t+1 = (
@@ -47,43 +49,36 @@ carry_forward_t+1 = (
 )
 ```
 
-These are added to the next year's `auction_offered`:
-
-```python
-def effective_auction_offered(self, carry_forward_in=0.0):
-    return max(0.0, self.auction_offered + carry_forward_in)
-```
-
 ---
 
 ## Banking: saving allowances for the future
 
 **Enabled by:** `banking_allowed: true` in year config
 
-When a participant ends a year with surplus allowances (free allocation exceeds compliance need), they can either sell the surplus immediately or bank it for a future year.
+When a participant ends a year with surplus allowances, they can either sell the surplus immediately or bank it for a future year.
 
-### Banking decision rule (`_finalize_inventory`)
+### Banking decision rule
 
 ```python
 natural_balance = free_allocation + starting_bank_balance - residual_emissions
 
-if natural_balance >= 0.0:                          # participant has surplus
+if natural_balance >= 0.0:                          # surplus
     if banking_allowed and expected_future_price > carbon_price:
-        ending_bank_balance = natural_balance       # bank it — future is more valuable
+        ending_bank_balance = natural_balance       # bank it
     else:
         ending_bank_balance = 0.0                   # sell now
 ```
 
-**Intuition:** Bank if and only if the future price exceeds the current price. Saving an allowance today and selling it next year is like investing at a rate equal to the price appreciation. If you expect prices to rise, banking is rational.
+**Intuition:** Bank if and only if the future price exceeds the current price. Saving an allowance and selling it next year is like investing at the price-appreciation rate.
 
 ### Balance sheet mechanics
 
 ```
 Starting bank balance   B₀   (carried from previous year)
 Free allocation         F    (= initial_emissions × free_allocation_ratio)
-Residual emissions      E_r  (= initial_emissions - abatement)
-─────────────────────────────────────────────────────────
-Natural position        N = F + B₀ - E_r
+Residual emissions      E_r  (= initial_emissions − abatement)
+────────────────────────────────────────────────────────
+Natural position        N = F + B₀ − E_r
 
   N > 0: surplus → can bank or sell
   N < 0: shortage → must buy or borrow
@@ -91,7 +86,7 @@ Natural position        N = F + B₀ - E_r
 
 ### Effect on market equilibrium
 
-Banked allowances reduce a participant's net demand in the current year (they don't sell their surplus). In future years, they increase supply (the participant sells the banked allowances). This creates a **price-smoothing effect**: participants arbitrage price differences across time, pulling high-price years down and low-price years up.
+Banked allowances reduce a participant's net demand in the current year. In future years, they increase supply. This creates a **price-smoothing effect**: participants arbitrage price differences across time.
 
 ---
 
@@ -99,38 +94,25 @@ Banked allowances reduce a participant's net demand in the current year (they do
 
 **Enabled by:** `borrowing_allowed: true` + `borrowing_limit > 0`
 
-When a participant faces a shortage, they can borrow allowances from their future allocation up to the `borrowing_limit`.
-
 ### Borrowing decision rule
 
 ```python
-if natural_balance < 0.0:                           # participant has shortage
-    if borrowing_allowed and effective_current_price > expected_future_price:
-        ending_bank_balance = max(-borrowing_limit, natural_balance)  # borrow
+if natural_balance < 0.0:                           # shortage
+    if borrowing_allowed and carbon_price > expected_future_price:
+        ending_bank_balance = max(-borrowing_limit, natural_balance)
     else:
-        ending_bank_balance = 0.0                   # buy on market instead
+        ending_bank_balance = 0.0                   # buy on market
 ```
 
-**Intuition:** Borrow if and only if the current price exceeds the expected future price. Borrowing now means you'll need to return the allowances next year; if next year's price is lower, this is a net saving.
+**Intuition:** Borrow if the current price exceeds the expected future price — you'll repay at a lower price.
 
-Note: `ending_bank_balance` is negative when borrowing. The magnitude is the borrowed amount. The `borrowing_limit` field sets the maximum negative balance.
-
-### Borrowing repayment
-
-There is no explicit repayment mechanism — the model handles this implicitly. In the year following borrowing, the participant's `starting_bank_balance` is negative, so their effective shortage is larger:
-
-```
-Effective shortage = residual_emissions - free_allocation - starting_bank_balance
-                   = residual_emissions - free_allocation + |borrowed|
-```
-
-This increases their demand in the next year, which is economically equivalent to repaying the borrowed allowances.
+`ending_bank_balance` is negative when borrowing. Repayment is implicit: in the following year, the negative starting balance increases the participant's effective shortage, raising demand.
 
 ---
 
 ## Expectation formation rules
 
-How participants form beliefs about `P_future` is configured per year via the `expectation_rule` field. The rule determines whether participants bank or borrow and at what rate.
+Configured per year via `expectation_rule`. Governs the `P_future` used in banking and borrowing decisions.
 
 ### Rule 1: `myopic`
 
@@ -138,11 +120,9 @@ How participants form beliefs about `P_future` is configured per year via the `e
 expected_future_price = 0.0
 ```
 
-Participants ignore the future entirely. No banking or borrowing occurs regardless of the settings (because `P_future = 0 < P_current` always holds when prices are positive, so borrowing is always rational, but `P_future = 0 < P_current` means banking is never rational either — in practice, with zero expected future value, surplus is sold immediately).
+Participants ignore the future. No banking occurs (surplus is sold immediately). Borrowing logic fires vacuously (current price always exceeds zero), but is bounded by `borrowing_limit`.
 
-**Use case:** Baseline calibration, stress-testing, markets where participants genuinely cannot plan ahead.
-
----
+**Use case:** Baseline calibration, stress-testing, short-horizon compliance behaviour.
 
 ### Rule 2: `next_year_baseline` (default)
 
@@ -150,13 +130,9 @@ Participants ignore the future entirely. No banking or borrowing occurs regardle
 expected_future_price = baseline_prices.get(next_year, 0.0)
 ```
 
-Where `baseline_prices` is computed at the start of simulation as the independent equilibrium price of each year (solved without banking effects, in isolation).
+`baseline_prices` is the independent equilibrium price of each year solved in isolation (no banking effects). A reasonable, model-consistent expectation that does not require a fixed-point problem.
 
-**Intuition:** Participants expect next year to look like its standalone equilibrium — a reasonable, model-consistent expectation that does not require solving a fixed-point problem.
-
-**Use case:** The standard setting for most simulations. Captures forward-looking behaviour with reasonable computational cost.
-
----
+**Use case:** Standard setting for most simulations.
 
 ### Rule 3: `perfect_foresight`
 
@@ -164,13 +140,9 @@ Where `baseline_prices` is computed at the start of simulation as the independen
 expected_future_price = realized_prices[next_year]
 ```
 
-Participants know the actual future equilibrium price exactly. This requires solving a **fixed-point problem** because the realised price depends on participants' decisions, which depend on their expectations.
+Participants know the actual future equilibrium price. Requires a **fixed-point iteration** — see the [Rational Expectations section](#perfect-foresight--rational-expectations-equilibrium) below.
 
-See the [Perfect Foresight section](#perfect-foresight--rational-expectations-equilibrium) below.
-
-**Use case:** Economic theory benchmark, long-run policy analysis, testing whether a scenario is internally consistent.
-
----
+**Use case:** Economic theory benchmark, long-run policy analysis, internal consistency checks.
 
 ### Rule 4: `manual`
 
@@ -178,114 +150,180 @@ See the [Perfect Foresight section](#perfect-foresight--rational-expectations-eq
 expected_future_price = market.manual_expected_price
 ```
 
-The user specifies the expected future price directly. The simulation uses this value without modification.
+User-specified expected price. No iteration required.
 
-**Use case:** Sensitivity analysis ("what if participants expect $100/t regardless of the market?"), calibrating to observed market futures prices, modelling irrational or anchored expectations.
+**Use case:** Sensitivity analysis, calibration to observed futures prices, anchored expectations.
 
 ---
 
 ## Perfect foresight — rational expectations equilibrium
 
-`perfect_foresight` creates a circular dependency:
-
-```
-Participants need P_future to decide banking today
-    ↓
-Their banking decisions change supply/demand next year
-    ↓
-Which changes P_future
-    ↓
-Which changes their banking decisions today
-    ↓ (loop)
-```
-
-This is resolved using **fixed-point iteration** — repeatedly simulating the path until expected prices converge to realised prices.
-
-### Algorithm
+`perfect_foresight` creates a circular dependency (expectations → decisions → outcomes → prices → expectations). Resolved by **fixed-point iteration**:
 
 ```
 Step 0: Initial guess
     expected_prices = { year: baseline_equilibrium_price(year) }
-    (independent equilibrium for each year, ignoring banking)
 
 Step 1–25: Iterate
-    For i = 1 to max_iterations (25):
-
-        a) Simulate full path using current expected_prices
-               → get realised_prices from simulation
-
-        b) Update: expected_prices ← realised_prices
-               (for perfect_foresight years only;
-                other years keep their own rule)
-
-        c) Compute convergence criterion:
-               max_delta = max |new_expected[y] - old_expected[y]|  for all years y
-
-        d) If max_delta ≤ tolerance (1e-3):
-               CONVERGED → stop
+    a) Simulate full path using expected_prices → realised_prices
+    b) Update: expected_prices ← realised_prices (for perfect_foresight years)
+    c) max_delta = max |new_expected[y] − old_expected[y]|
+    d) If max_delta ≤ solver_competitive_tolerance: CONVERGED
 ```
 
-### Code
+Convergence is not mathematically guaranteed for all configurations but holds empirically for well-posed ETS models because the demand function is monotone and banking effects are bounded.
 
-```python
-def solve_scenario_path(ordered_markets, max_iterations=25, tolerance=1e-3):
-    # Step 0
-    baseline_prices = {str(m.year): m.find_equilibrium_price() for m in ordered_markets}
-    expected_prices = derive_expected_prices(years, specs, baseline_prices)
-
-    if any(spec.rule == "perfect_foresight" for spec in specs.values()):
-        for _ in range(max_iterations):
-            # Steps a–b
-            realised_prices = _simulate_realized_prices(ordered_markets, expected_prices)
-            updated = derive_expected_prices(years, specs, baseline_prices,
-                                             realized_prices=realised_prices)
-            # Step c
-            max_delta = max(abs(updated[y] - expected_prices[y]) for y in years)
-            expected_prices = updated
-            # Step d
-            if max_delta <= tolerance:
-                break
-
-    return _simulate_path_details(ordered_markets, expected_prices)
-```
-
-### Convergence behaviour
-
-The iteration converges when participants' price expectations are self-consistent — what they expect is exactly what the market produces given those expectations. This is the **Rational Expectations Equilibrium (REE)**.
-
-Convergence is not mathematically guaranteed for all configurations, but holds empirically in well-posed ETS models because:
-- The demand function is monotone and continuous
-- Banking/borrowing effects are bounded (by limits and penalty prices)
-- The price-expectation map is a contraction in typical parameter ranges
-
-If convergence fails (rare), the simulation uses the best available approximation after 25 iterations.
-
-### Example: 3-year perfect foresight
+### Example: 3-year convergence
 
 ```
-Year    Baseline P*   Iteration 1   Iteration 2   Converged
-2030       $45           $52           $50          $50
-2035       $55           $50           $51          $51
-2040       $65           $65           $65          $65
-
-In iteration 1:
-  Participants expect P_2035 = $55 (baseline)
-  → They bank heavily in 2030 (P rises to $52)
-  → Less banking pressure in 2035 (P falls to $50)
-
-In iteration 2:
-  Participants now expect P_2035 = $50
-  → Less incentive to bank in 2030 (P falls to $50)
-  → 2035 recovers slightly to $51
-
-Converged at iteration 3: $50, $51, $65
+Year    Baseline   Iteration 1   Iteration 2   Converged
+2030      $45          $52           $50          $50
+2035      $55          $50           $51          $51
+2040      $65          $65           $65          $65
 ```
+
+---
+
+## Hotelling price path
+
+**File:** `src/ets/hotelling.py`  
+**Activated by:** `model_approach: "hotelling"`
+
+### Theory
+
+The Hotelling Rule (1931) states that for an exhaustible resource in competitive equilibrium, the net price (royalty) must rise at the rate of interest — otherwise owners would rearrange extraction to exploit arbitrage. Applied to carbon allowances:
+
+```
+P*(t) = λ · (1 + r)^(t − t₀)
+```
+
+If prices rose faster than `r`, participants would bank heavily today, cutting current supply and driving prices up. If prices rose slower, they would front-load compliance, reducing future demand. The Hotelling condition is the no-arbitrage price path consistent with using the allowance budget exactly over the policy horizon.
+
+### Implementation
+
+1. **Pin prices:** For a given candidate `λ`, set `price_lower_bound = price_upper_bound = P_hotelling(t)` on a copy of each year's market. Run all participants at the pinned price (Layer 1 compliance optimisation). Sum residual emissions.
+
+2. **Bisect on `λ`:** The total residual emissions across all years is a decreasing function of `λ` (higher `λ` → higher prices → more abatement). Bisect `λ` until:
+
+   ```
+   |Σ_t residual_emissions(t) − carbon_budget| / carbon_budget ≤ solver_hotelling_convergence_tol
+   ```
+
+3. **Bracket expansion:** If the initial bracket `[0, λ_max]` does not contain a sign change, `λ_max` is doubled up to `solver_hotelling_max_lambda_expansions` times.
+
+### Config fields
+
+| Field | Role |
+|---|---|
+| `carbon_budget` | Cumulative Mt CO₂e limit across all years in the scenario |
+| `discount_rate` | Annual discount rate `r` used in `(1+r)^t` |
+| `solver_hotelling_max_bisection_iters` | Maximum bisection steps (default 80) |
+| `solver_hotelling_max_lambda_expansions` | Bracket-expansion attempts (default 20) |
+| `solver_hotelling_convergence_tol` | Relative tolerance on cumulative emissions (default 1e-4) |
+
+### Key difference from competitive
+
+In competitive mode, each year's price is determined by supply-demand clearing. In Hotelling mode, prices are **pinned** to the theoretical path; the solver finds the `λ` that exhausts the budget. Participants are still price-takers at the pinned price — they do not know `λ` explicitly.
+
+---
+
+## Nash-Cournot price path
+
+**File:** `src/ets/nash.py`  
+**Activated by:** `model_approach: "nash_cournot"`
+
+### Theory
+
+In the competitive model, all participants are price-takers: each believes its own actions do not affect the market price. In the Nash-Cournot model, **strategic participants** internalise their price impact. A large buyer knows that buying more raises the price it pays, so it voluntarily under-demands — reducing total abatement below the competitive level and raising the equilibrium price paid by non-strategic participants.
+
+The equilibrium concept is a **Cournot-Nash equilibrium in abatement quantities**: a profile of abatement levels `(a₁*, …, aₙ*)` such that no strategic participant `i` can lower its total compliance cost by unilaterally deviating from `aᵢ*`.
+
+### Strategic vs non-strategic participants
+
+Participants named in `nash_strategic_participants` are treated as strategic. All others are price-takers throughout the iteration. This allows mixed markets — e.g. one dominant industrial buyer who is strategic, and many small participants who are competitive.
+
+### Best-response iteration algorithm
+
+```
+1. Initialise strategies from competitive equilibrium
+   a_i^(0) = competitive abatement for each strategic participant i
+
+2. For each iteration k:
+   For each strategic participant i:
+     a. Compute residual demand excluding i:
+        Q_residual(P) = Σ_{j ≠ i} net_demand_j(P) (non-strategic at current equilibrium)
+     b. Derive residual inverse demand: P(Q_i) from Q_total = Q_residual + Q_i
+     c. Solve i's best response:
+        min_{a_i} compliance_cost_i(a_i) + P(net_demand_i(a_i)) · net_demand_i(a_i)
+   Update all strategies simultaneously (Jacobi-style)
+
+3. Convergence: max|a_i^(k) − a_i^(k-1)| ≤ solver_nash_convergence_tol → STOP
+```
+
+`solver_nash_price_step` (default 0.5 $/t) controls the discretisation step when constructing the residual demand curve numerically.
+
+### Config fields
+
+| Field | Role |
+|---|---|
+| `nash_strategic_participants` | List of participant names treated as strategic |
+| `solver_nash_price_step` | Step size for residual demand curve ($/t) |
+| `solver_nash_max_iters` | Maximum best-response iterations (default 120) |
+| `solver_nash_convergence_tol` | Convergence tolerance on abatement (Mt) (default 0.001) |
+
+### Interpretation
+
+Nash-Cournot produces **higher equilibrium prices and lower abatement** than the competitive model when strategic participants have market power. The gap between competitive and Nash prices measures the market-power distortion. This is useful for assessing how concentrated compliance demand affects price formation.
+
+---
+
+## MSR integration
+
+**File:** `src/ets/msr.py`  
+**Enabled by:** `msr_enabled: true`
+
+The MSR adjusts auction supply **before each year's market clearing**. The sequence within Layer 3 for each year `t` is:
+
+```
+1. Compute total_bank = Σ_i starting_bank_balance_i
+
+2. Apply MSR:
+   effective_auction, withheld, released = msr_state.apply(
+       total_bank, auction_offered, upper_threshold, lower_threshold,
+       withhold_rate, release_rate, cancel_excess, cancel_threshold
+   )
+
+3. Solve equilibrium with effective_auction as the supply target
+
+4. Update msr_state.reserve_pool (persists to year t+1)
+```
+
+The equilibrium solver (Layer 2) receives `effective_auction` — it has no visibility into whether supply was adjusted by the MSR. MSR withholding/release amounts appear in the year-level outputs alongside `auction_sold` and `unsold_allowances`.
+
+**The MSR does not interact with banking decisions directly.** Participants form banking expectations based on `expected_future_price`, not on the MSR rule. However, MSR adjustments change the actual equilibrium price, which feeds back into banking behaviour in subsequent years through the `next_year_baseline` or `perfect_foresight` expectation rules.
+
+---
+
+## CBAM: post-equilibrium computation
+
+**Does not affect market clearing.**
+
+CBAM liability is computed after `P*` is determined for each year, using:
+
+```
+cbam_liability_i = max(0, eua_price − P*) × residual_emissions_i
+                   × cbam_export_share_i × cbam_coverage_ratio_i
+```
+
+where `eua_price` is set in the year config and `P*` is the domestic equilibrium price from the competitive, Hotelling, or Nash-Cournot solver.
+
+Because CBAM is additive to compliance costs without affecting net allowance demand, it does not feed back into the clearing equation. It appears in participant-level outputs as an additional cost item.
 
 ---
 
 ## Sequential year execution
 
-The inner simulation loop (`_simulate_path_details`) runs sequentially — each year depends on the previous year's output:
+The inner simulation loop runs each year in order — each year depends on the previous year's output:
 
 ```python
 bank_balances = {p.name: 0.0 for p in first_year_participants}
@@ -294,22 +332,26 @@ carry_forward = 0.0
 for market in ordered_markets:
     expected_future_price = expected_prices[str(market.year)]
 
-    # Solve equilibrium for this year
+    # MSR adjustment (if enabled)
+    if market.msr_enabled:
+        total_bank = sum(bank_balances.values())
+        effective_auction, withheld, released = msr_state.apply(total_bank, ...)
+    else:
+        effective_auction = market.auction_offered
+
+    # Equilibrium
     equilibrium = market.solve_equilibrium(
         bank_balances=bank_balances,
         expected_future_price=expected_future_price,
         carry_forward_in=carry_forward,
+        auction_override=effective_auction,
     )
     P_star = equilibrium["price"]
 
-    # Compute participant outcomes
-    participant_df = market.participant_results(
-        P_star,
-        bank_balances=bank_balances,
-        expected_future_price=expected_future_price,
-    )
+    # Participant outcomes + CBAM
+    participant_df = market.participant_results(P_star, bank_balances, expected_future_price)
 
-    # Update state for next year
+    # State update
     carry_forward = (
         equilibrium["unsold_allowances"]
         if market.unsold_treatment == "carry_forward" else 0.0
@@ -334,11 +376,11 @@ Banking creates a **price-smoothing arbitrage**. Consider a scenario where the c
 
 **With banking + next_year_baseline expectations:**
 ```
-2030: P* = $55   (participants bank, reducing supply → price rises)
-2035: P* = $60   (banked allowances re-enter market → price falls from $90)
+2030: P* = $55   (participants bank → less current supply → price rises)
+2035: P* = $60   (banked allowances re-enter → price falls from $90)
 ```
 
-Banking arbitrages the $60 price difference down until the price differential just equals the opportunity cost of capital (which is zero in this model — there is no discounting).
+Banking arbitrages the price difference down until the differential equals the opportunity cost of holding allowances (zero here — no discounting in the base competitive model).
 
 ---
 
@@ -348,9 +390,12 @@ Banking arbitrages the $60 price difference down until the price differential ju
 |---|---|
 | First year (no prior bank balance) | All `starting_bank_balance = 0` |
 | Last year (no next year) | `expected_future_price = 0` regardless of rule |
-| Participant added mid-pathway | They start with `bank_balance = 0` |
-| Borrowing limit = 0 | Effectively disables borrowing even if `borrowing_allowed = true` |
+| Participant added mid-pathway | Starts with `bank_balance = 0` |
+| Borrowing limit = 0 | Disables borrowing even if `borrowing_allowed = true` |
 | `perfect_foresight` on only some years | Other years use their own rules; iteration only updates perfect_foresight years |
+| MSR disabled | `reserve_pool` never created; `effective_auction = auction_offered` |
+| `carbon_budget = 0` with Hotelling | Solver raises an error — a finite budget is required to bisect `λ` |
+| Nash with no strategic participants | Falls back to competitive equilibrium |
 
 ---
 
@@ -358,4 +403,4 @@ Banking arbitrages the $60 price difference down until the price differential ju
 
 - [Market Equilibrium Solver](market-equilibrium.md) — how each year's price is found
 - [MAC & Abatement Models](mac-abatement.md) — how participant demand responds to price
-- [Algorithm Overview](algorithm-overview.md) — full execution flow
+- [Algorithm Overview](algorithm-overview.md) — full execution flow and modelling approaches
