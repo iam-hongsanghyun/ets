@@ -38,6 +38,7 @@ from .expectations import build_expectation_specs, derive_expected_prices
 
 logger = logging.getLogger(__name__)
 
+# Module-level defaults (used when caller does not supply solver settings)
 _MAX_ITERS = 120
 _CONVERGENCE_TOL = 1e-3
 _PRICE_STEP = 0.5          # $/t step for numerical price-impact estimation
@@ -49,6 +50,7 @@ def _estimate_price_impact(
     expected_future_price: float,
     carry_forward_in: float,
     delta: float = _PRICE_STEP,
+    convergence_tol: float = _CONVERGENCE_TOL,
 ) -> float:
     """
     Estimate dP/dQ (price impact per Mt of additional demand) via finite difference.
@@ -84,6 +86,9 @@ def _solve_nash_year(
     expected_future_price: float,
     carry_forward_in: float,
     strategic_names: set[str],
+    price_step: float = _PRICE_STEP,
+    max_iters: int = _MAX_ITERS,
+    convergence_tol: float = _CONVERGENCE_TOL,
 ) -> dict:
     """
     Solve Nash-Cournot equilibrium for a single year.
@@ -103,7 +108,8 @@ def _solve_nash_year(
         return eq  # all price takers → competitive equilibrium
 
     price_impact = _estimate_price_impact(
-        market, bank_balances, expected_future_price, carry_forward_in
+        market, bank_balances, expected_future_price, carry_forward_in,
+        delta=price_step, convergence_tol=convergence_tol,
     )
 
     # --- Best-response iteration ---
@@ -116,7 +122,7 @@ def _solve_nash_year(
         )
         abatements[p.name] = float(outcome.abatement)
 
-    for iteration in range(_MAX_ITERS):
+    for iteration in range(max_iters):
         new_abatements = dict(abatements)
         price_changed = False
 
@@ -209,7 +215,7 @@ def _solve_nash_year(
         old_price = current_price
         current_price = new_price
 
-        if max_delta <= _CONVERGENCE_TOL and abs(new_price - old_price) <= _CONVERGENCE_TOL:
+        if max_delta <= convergence_tol and abs(new_price - old_price) <= convergence_tol:
             logger.debug(f"Nash converged after {iteration + 1} iterations.")
             break
     else:
@@ -231,6 +237,9 @@ def _solve_nash_year(
 def solve_nash_path(
     ordered_markets,
     strategic_participants: list[str] | None = None,
+    price_step: float = _PRICE_STEP,
+    max_iters: int = _MAX_ITERS,
+    convergence_tol: float = _CONVERGENCE_TOL,
 ) -> list[dict]:
     """
     Simulate multi-year path using Nash-Cournot equilibrium per year.
@@ -271,7 +280,8 @@ def solve_nash_path(
         starting_bank_balances = dict(bank_balances)
 
         equilibrium = _solve_nash_year(
-            market, bank_balances, expected_future_price, carry_forward, strategic_names
+            market, bank_balances, expected_future_price, carry_forward, strategic_names,
+            price_step=price_step, max_iters=max_iters, convergence_tol=convergence_tol,
         )
         equilibrium_price = float(equilibrium["price"])
 

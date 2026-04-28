@@ -20,9 +20,14 @@ def _market_year_sort_key(market: CarbonMarket) -> tuple[float, str]:
 
 def solve_scenario_path(
     ordered_markets: list[CarbonMarket],
-    max_iterations: int = 25,
-    tolerance: float = 1e-3,
+    max_iterations: int | None = None,
+    tolerance: float | None = None,
 ) -> list[dict]:
+    # Use solver settings from the first market if not explicitly supplied
+    if max_iterations is None:
+        max_iterations = int(getattr(ordered_markets[0], "solver_competitive_max_iters", 25) or 25)
+    if tolerance is None:
+        tolerance = float(getattr(ordered_markets[0], "solver_competitive_tolerance", 1e-3) or 1e-3)
     if not ordered_markets:
         return []
 
@@ -171,28 +176,40 @@ def run_simulation(markets: list[CarbonMarket]) -> tuple[pd.DataFrame, pd.DataFr
         ordered_markets = sorted(scenario_markets, key=_market_year_sort_key)
         approach = getattr(ordered_markets[0], "model_approach", "competitive") or "competitive"
 
+        m0 = ordered_markets[0]
+
+        def _hot_kwargs():
+            return dict(
+                discount_rate=float(getattr(m0, "discount_rate", 0.04) or 0.04),
+                max_bisection_iters=int(getattr(m0, "solver_hotelling_max_bisection_iters", 80) or 80),
+                max_lambda_expansions=int(getattr(m0, "solver_hotelling_max_lambda_expansions", 20) or 20),
+                convergence_tol=float(getattr(m0, "solver_hotelling_convergence_tol", 1e-4) or 1e-4),
+            )
+
+        def _nash_kwargs():
+            return dict(
+                strategic_participants=list(getattr(m0, "nash_strategic_participants", None) or []) or None,
+                price_step=float(getattr(m0, "solver_nash_price_step", 0.5) or 0.5),
+                max_iters=int(getattr(m0, "solver_nash_max_iters", 120) or 120),
+                convergence_tol=float(getattr(m0, "solver_nash_convergence_tol", 1e-3) or 1e-3),
+            )
+
         if approach == "hotelling":
-            discount_rate = float(getattr(ordered_markets[0], "discount_rate", 0.04) or 0.04)
-            path = solve_hotelling_path(ordered_markets, discount_rate=discount_rate)
+            path = solve_hotelling_path(ordered_markets, **_hot_kwargs())
             _collect_path_results(ordered_markets, path, scenario_summaries, participant_frames)
 
         elif approach == "nash_cournot":
-            strategic = getattr(ordered_markets[0], "nash_strategic_participants", None) or []
-            path = solve_nash_path(ordered_markets, strategic_participants=strategic or None)
+            path = solve_nash_path(ordered_markets, **_nash_kwargs())
             _collect_path_results(ordered_markets, path, scenario_summaries, participant_frames)
 
         elif approach == "all":
-            # Run all three approaches and label results
-            discount_rate = float(getattr(ordered_markets[0], "discount_rate", 0.04) or 0.04)
-            strategic = getattr(ordered_markets[0], "nash_strategic_participants", None) or []
-
             comp_markets = _rename_markets(ordered_markets, "Competitive")
             hot_markets  = _rename_markets(ordered_markets, "Hotelling")
             nash_markets = _rename_markets(ordered_markets, "Nash-Cournot")
 
             comp_path = solve_scenario_path(comp_markets)
-            hot_path  = solve_hotelling_path(hot_markets, discount_rate=discount_rate)
-            nash_path = solve_nash_path(nash_markets, strategic_participants=strategic or None)
+            hot_path  = solve_hotelling_path(hot_markets, **_hot_kwargs())
+            nash_path = solve_nash_path(nash_markets, **_nash_kwargs())
 
             for path, mkt_list in [(comp_path, comp_markets), (hot_path, hot_markets), (nash_path, nash_markets)]:
                 _collect_path_results(mkt_list, path, scenario_summaries, participant_frames)

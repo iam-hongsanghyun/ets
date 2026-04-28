@@ -27,6 +27,7 @@ from .expectations import build_expectation_specs, derive_expected_prices
 
 logger = logging.getLogger(__name__)
 
+# Module-level defaults (used when caller does not supply solver settings)
 _MAX_LAMBDA_EXPANSIONS = 20
 _MAX_BISECTION_ITERS   = 80
 _CONVERGENCE_TOL       = 1e-4   # relative tolerance on cumulative emissions
@@ -124,6 +125,9 @@ def _competitive_fallback(ordered_markets) -> list[dict]:
 def solve_hotelling_path(
     ordered_markets,
     discount_rate: float = 0.04,
+    max_bisection_iters: int = _MAX_BISECTION_ITERS,
+    max_lambda_expansions: int = _MAX_LAMBDA_EXPANSIONS,
+    convergence_tol: float = _CONVERGENCE_TOL,
 ) -> list[dict]:
     """
     Find shadow price λ and simulate the Hotelling-optimal path.
@@ -169,14 +173,14 @@ def solve_hotelling_path(
     _, em_high = run(lam_high)
 
     # Shrink lam_low until emissions exceed budget
-    for _ in range(_MAX_LAMBDA_EXPANSIONS):
+    for _ in range(max_lambda_expansions):
         if em_low > total_budget:
             break
         lam_low /= 2.0
         _, em_low = run(lam_low)
 
     # Expand lam_high until emissions fall below budget
-    for _ in range(_MAX_LAMBDA_EXPANSIONS):
+    for _ in range(max_lambda_expansions):
         if em_high < total_budget:
             break
         lam_high *= 3.0
@@ -192,12 +196,12 @@ def solve_hotelling_path(
 
     # ── Bisection on λ ───────────────────────────────────────────────────────
     best_details = None
-    for _ in range(_MAX_BISECTION_ITERS):
+    for _ in range(max_bisection_iters):
         lam_mid = (lam_low + lam_high) / 2.0
         details_mid, em_mid = run(lam_mid)
         best_details = details_mid
 
-        if abs(em_mid - total_budget) / max(total_budget, 1.0) < _CONVERGENCE_TOL:
+        if abs(em_mid - total_budget) / max(total_budget, 1.0) < convergence_tol:
             break
 
         if em_mid > total_budget:   # too many emissions → need higher price → higher λ

@@ -76,6 +76,16 @@ function makeBlankScenario(index = 1) {
     model_approach: "competitive",
     discount_rate: 0.04,
     nash_strategic_participants: [],
+    // ── Solver settings (user-overridable, defaults match backend) ──────────
+    solver_competitive_max_iters: 25,
+    solver_competitive_tolerance: 0.001,
+    solver_hotelling_max_bisection_iters: 80,
+    solver_hotelling_max_lambda_expansions: 20,
+    solver_hotelling_convergence_tol: 0.0001,
+    solver_nash_price_step: 0.5,
+    solver_nash_max_iters: 120,
+    solver_nash_convergence_tol: 0.001,
+    solver_penalty_price_multiplier: 1.25,
     years: [makeBlankYear("2030")],
   };
 }

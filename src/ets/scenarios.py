@@ -25,6 +25,20 @@ def blank_scenario() -> dict[str, Any]:
         "model_approach": "competitive",
         "discount_rate": 0.04,
         "nash_strategic_participants": [],
+        # ── Solver / model settings (all user-overridable) ──────────────────
+        # Competitive perfect-foresight iteration
+        "solver_competitive_max_iters": 25,
+        "solver_competitive_tolerance": 0.001,
+        # Hotelling bisection
+        "solver_hotelling_max_bisection_iters": 80,
+        "solver_hotelling_max_lambda_expansions": 20,
+        "solver_hotelling_convergence_tol": 0.0001,
+        # Nash best-response iteration
+        "solver_nash_price_step": 0.5,
+        "solver_nash_max_iters": 120,
+        "solver_nash_convergence_tol": 0.001,
+        # Market clearing
+        "solver_penalty_price_multiplier": 1.25,
         "years": [blank_year_config()],
     }
 
@@ -119,11 +133,26 @@ def normalize_scenario(raw_scenario: dict[str, Any]) -> dict[str, Any]:
     if model_approach not in ALLOWED_MODEL_APPROACHES:
         model_approach = "competitive"
 
+    def _fval(key, default):
+        try:
+            return float(scenario.get(key) or default)
+        except (TypeError, ValueError):
+            return float(default)
+
     return {
         "name": scenario["name"],
         "model_approach": model_approach,
-        "discount_rate": float(scenario.get("discount_rate") or 0.04),
+        "discount_rate": _fval("discount_rate", 0.04),
         "nash_strategic_participants": list(scenario.get("nash_strategic_participants") or []),
+        "solver_competitive_max_iters": int(_fval("solver_competitive_max_iters", 25)),
+        "solver_competitive_tolerance": _fval("solver_competitive_tolerance", 0.001),
+        "solver_hotelling_max_bisection_iters": int(_fval("solver_hotelling_max_bisection_iters", 80)),
+        "solver_hotelling_max_lambda_expansions": int(_fval("solver_hotelling_max_lambda_expansions", 20)),
+        "solver_hotelling_convergence_tol": _fval("solver_hotelling_convergence_tol", 0.0001),
+        "solver_nash_price_step": _fval("solver_nash_price_step", 0.5),
+        "solver_nash_max_iters": int(_fval("solver_nash_max_iters", 120)),
+        "solver_nash_convergence_tol": _fval("solver_nash_convergence_tol", 0.001),
+        "solver_penalty_price_multiplier": _fval("solver_penalty_price_multiplier", 1.25),
         "years": scenario["years"],
     }
 
@@ -368,6 +397,15 @@ def build_markets_from_config(config: dict[str, Any]) -> list[CarbonMarket]:
             "model_approach": scenario.get("model_approach", "competitive"),
             "discount_rate": scenario.get("discount_rate", 0.04),
             "nash_strategic_participants": scenario.get("nash_strategic_participants", []),
+            "solver_competitive_max_iters": scenario.get("solver_competitive_max_iters", 25),
+            "solver_competitive_tolerance": scenario.get("solver_competitive_tolerance", 0.001),
+            "solver_hotelling_max_bisection_iters": scenario.get("solver_hotelling_max_bisection_iters", 80),
+            "solver_hotelling_max_lambda_expansions": scenario.get("solver_hotelling_max_lambda_expansions", 20),
+            "solver_hotelling_convergence_tol": scenario.get("solver_hotelling_convergence_tol", 0.0001),
+            "solver_nash_price_step": scenario.get("solver_nash_price_step", 0.5),
+            "solver_nash_max_iters": scenario.get("solver_nash_max_iters", 120),
+            "solver_nash_convergence_tol": scenario.get("solver_nash_convergence_tol", 0.001),
+            "solver_penalty_price_multiplier": scenario.get("solver_penalty_price_multiplier", 1.25),
         }
         for year_config in scenario["years"]:
             markets.append(build_market_from_year(scenario["name"], year_config, scenario_meta))
@@ -419,12 +457,22 @@ def build_market_from_year(
         borrowing_limit=year_config["borrowing_limit"],
         expectation_rule=year_config["expectation_rule"],
         manual_expected_price=year_config["manual_expected_price"],
+        penalty_price_multiplier=float(meta.get("solver_penalty_price_multiplier") or 1.25),
     )
     # Attach scenario-level and year-level modelling approach fields
     market.model_approach = meta.get("model_approach", "competitive")
     market.discount_rate = float(meta.get("discount_rate") or 0.04)
     market.nash_strategic_participants = list(meta.get("nash_strategic_participants") or [])
     market.carbon_budget = float(year_config.get("carbon_budget") or 0.0)
+    # Attach solver settings
+    market.solver_competitive_max_iters = int(meta.get("solver_competitive_max_iters") or 25)
+    market.solver_competitive_tolerance = float(meta.get("solver_competitive_tolerance") or 0.001)
+    market.solver_hotelling_max_bisection_iters = int(meta.get("solver_hotelling_max_bisection_iters") or 80)
+    market.solver_hotelling_max_lambda_expansions = int(meta.get("solver_hotelling_max_lambda_expansions") or 20)
+    market.solver_hotelling_convergence_tol = float(meta.get("solver_hotelling_convergence_tol") or 0.0001)
+    market.solver_nash_price_step = float(meta.get("solver_nash_price_step") or 0.5)
+    market.solver_nash_max_iters = int(meta.get("solver_nash_max_iters") or 120)
+    market.solver_nash_convergence_tol = float(meta.get("solver_nash_convergence_tol") or 0.001)
     return market
 
 

@@ -29,6 +29,7 @@ class CarbonMarket:
         borrowing_limit: float = 0.0,
         expectation_rule: str = "next_year_baseline",
         manual_expected_price: float = 0.0,
+        penalty_price_multiplier: float = 1.25,
     ) -> None:
         if not participants:
             raise ValueError("CarbonMarket requires at least one participant.")
@@ -52,6 +53,7 @@ class CarbonMarket:
         self.borrowing_limit = float(borrowing_limit)
         self.expectation_rule = str(expectation_rule)
         self.manual_expected_price = float(manual_expected_price)
+        self.penalty_price_multiplier = float(penalty_price_multiplier)
 
         free_allocations = sum(participant.free_allocation for participant in participants)
         allowance_supply = (
@@ -105,7 +107,7 @@ class CarbonMarket:
                 max_penalty = max(
                     participant.penalty_price for participant in self.participants
                 )
-                upper_bound = max_penalty * 1.25
+                upper_bound = max_penalty * self.penalty_price_multiplier
 
         floor_price = max(lower_bound, self.auction_reserve_price)
         offered = self.effective_auction_offered(carry_forward_in)
