@@ -7,6 +7,9 @@ Items are grouped by theme. Checked items are complete. Unchecked items are pend
 ## Infrastructure
 
 - [x] Backend modular sub-package restructuring: split `src/ets/` into `participant/`, `market/`, `config_io/`, `solvers/`, `web/` sub-packages; backward-compat shims kept at old flat paths
+- [x] Solver settings UX: each solver's convergence settings shown inline within its approach panel; removed separate accordion
+- [x] Nash participant list grouped by `sector_group` with per-sector Select all / Deselect all toggle
+- [x] Sector-participants level: optional `sectors[]` in scenario config; each sector has `cap_trajectory`, `auction_share_trajectory`, `carbon_budget`; participants get `sector_allocation_share`; `total_cap` and `auction_offered` derived from sector sums; backward-compatible with per-participant mode
 
 ---
 
