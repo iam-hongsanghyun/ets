@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Dict
 
+import numpy as np
 import pandas as pd
 
 from .core import CarbonMarket
@@ -218,6 +219,13 @@ def scenario_summary(
     if market.year is not None:
         summary["Year"] = market.year
 
+    # ── Auction revenue reinvestment tracker ─────────────────────────────
+    auction_rev = float(summary.get("Total Auction Revenue", 0.0))
+    cbam_liability = float(summary.get("Total CBAM Liability", 0.0))
+    summary["Domestic Retained Revenue"] = auction_rev
+    summary["CBAM Foregone Revenue"] = cbam_liability  # flows to EU instead of domestic fund
+    summary["Potential Revenue if KAU=EUA"] = auction_rev + cbam_liability
+
     # ── Per-jurisdiction CBAM totals ─────────────────────────────────────
     for col in participant_df.columns:
         if col.startswith("CBAM Liability (") or col.startswith("CBAM Gap ("):
@@ -253,6 +261,17 @@ def scenario_summary(
             if "Indirect Emissions" in grp.columns:
                 summary[f"{sg} Indirect Emissions"]     = float(grp["Indirect Emissions"].sum())
                 summary[f"{sg} Scope 2 CBAM Liability"] = float(grp["Scope 2 CBAM Liability"].sum())
+
+    # ── Per-sector compliance cost distribution (P10, P50, P90) ──────────
+    if "Sector Group" in participant_df.columns:
+        for sg, grp in participant_df.groupby("Sector Group"):
+            if not sg or len(grp) < 2:
+                continue
+            costs = grp["Total Compliance Cost"].values
+            summary[f"{sg} P10 Compliance Cost"] = float(np.percentile(costs, 10))
+            summary[f"{sg} P50 Compliance Cost"] = float(np.percentile(costs, 50))
+            summary[f"{sg} P90 Compliance Cost"] = float(np.percentile(costs, 90))
+            summary[f"{sg} Cost Std Dev"] = float(np.std(costs))
 
     for _, row in participant_df.iterrows():
         participant_name = str(row["Participant"])

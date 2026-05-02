@@ -193,6 +193,9 @@ def _build_dashboard_payload(config: dict) -> dict:
                         "penalty_cost": row["Penalty Cost"],
                         "sales_revenue": row["Sales Revenue"],
                         "total_compliance_cost": row["Total Compliance Cost"],
+                        "indirect_emissions": row.get("Indirect Emissions", 0.0),
+                        "scope2_cbam_liability": row.get("Scope 2 CBAM Liability", 0.0),
+                        "cbam_liability": row.get("CBAM Liability", 0.0),
                         "sector": _lookup_sector(frontend_config, market.scenario_name, market.year, row["Participant"]),
                     }
                     for row in participant_rows
@@ -281,6 +284,80 @@ def _json_safe(value):
     return value
 
 
+def _handle_calibrate(data: dict) -> dict:
+    """Handle POST /api/calibrate — fit abatement slopes to observed prices."""
+    from ..analysis.calibration import calibrate_slopes
+    config = data.get("config")
+    observed_prices = data.get("observed_prices", {})
+    participant_names = data.get("participant_names", [])
+    if not config:
+        raise ValueError("Request must include a 'config' field.")
+    if not observed_prices:
+        raise ValueError("Request must include 'observed_prices' dict.")
+    if not participant_names:
+        raise ValueError("Request must include 'participant_names' list.")
+    initial_slopes = data.get("initial_slopes")
+    max_iter = int(data.get("max_iter", 500))
+    return calibrate_slopes(
+        base_config=config,
+        observed_prices=observed_prices,
+        participant_names=participant_names,
+        initial_slopes=initial_slopes,
+        max_iter=max_iter,
+    )
+
+
+def _handle_batch_run(data: dict) -> dict:
+    """Handle POST /api/batch-run — sweep parameters and aggregate results."""
+    from ..analysis.batch import run_batch
+    config = data.get("config")
+    sweeps = data.get("sweeps", [])
+    if not config:
+        raise ValueError("Request must include a 'config' field.")
+    if not sweeps:
+        raise ValueError("Request must include a 'sweeps' list.")
+    return run_batch(base_config=config, sweeps=sweeps)
+
+
+def _handle_narrative(data: dict) -> dict:
+    """Handle POST /api/narrative — generate plain-language summary."""
+    from ..analysis.narrative import generate_narrative
+    results = data.get("results", [])
+    scenario_name = str(data.get("scenario_name", ""))
+    narrative = generate_narrative(results, scenario_name=scenario_name)
+    return {"narrative": narrative}
+
+
+def _handle_csv_import(body: bytes, headers) -> dict:
+    """Handle POST /api/import-csv — convert CSV to ETS config."""
+    from ..analysis.csv_import import csv_to_config
+    content_type = headers.get("Content-Type", "") or headers.get("content-type", "") or ""
+
+    if "multipart/form-data" in content_type:
+        # Parse multipart — extract 'file' and optional 'scenario_name' fields
+        # Use a simple boundary-based parser
+        import email
+        full = b"Content-Type: " + content_type.encode() + b"\r\n\r\n" + body
+        msg = email.message_from_bytes(full)
+        csv_text = None
+        scenario_name = "Imported Scenario"
+        for part in msg.walk():
+            cd = part.get("Content-Disposition", "")
+            if 'name="file"' in cd:
+                csv_text = part.get_payload(decode=True).decode("utf-8", errors="replace")
+            elif 'name="scenario_name"' in cd:
+                scenario_name = part.get_payload(decode=True).decode("utf-8", errors="replace").strip()
+        if csv_text is None:
+            raise ValueError("Multipart form must include a 'file' field with CSV content.")
+    else:
+        # Treat entire body as CSV text
+        csv_text = body.decode("utf-8", errors="replace")
+        scenario_name = "Imported Scenario"
+
+    config = csv_to_config(csv_text, scenario_name=scenario_name)
+    return {"config": config, "ok": True}
+
+
 class ETSRequestHandler(BaseHTTPRequestHandler):
     server_version = "ETSWebApp/2.0"
 
@@ -303,14 +380,23 @@ class ETSRequestHandler(BaseHTTPRequestHandler):
         length = int(self.headers.get("Content-Length", "0"))
         body = self.rfile.read(length)
         try:
-            data = json.loads(body.decode("utf-8")) if body else {}
-            if parsed.path == "/api/run":
-                payload = _build_dashboard_payload(data)
-            elif parsed.path == "/api/save-scenario":
-                payload = _save_user_scenario(data)
+            if parsed.path == "/api/import-csv":
+                payload = _handle_csv_import(body, self.headers)
             else:
-                self.send_error(HTTPStatus.NOT_FOUND, "Not found")
-                return
+                data = json.loads(body.decode("utf-8")) if body else {}
+                if parsed.path == "/api/run":
+                    payload = _build_dashboard_payload(data)
+                elif parsed.path == "/api/save-scenario":
+                    payload = _save_user_scenario(data)
+                elif parsed.path == "/api/calibrate":
+                    payload = _handle_calibrate(data)
+                elif parsed.path == "/api/batch-run":
+                    payload = _handle_batch_run(data)
+                elif parsed.path == "/api/narrative":
+                    payload = _handle_narrative(data)
+                else:
+                    self.send_error(HTTPStatus.NOT_FOUND, "Not found")
+                    return
             self._write_json(payload)
         except Exception as exc:
             self._write_json({"error": str(exc)}, status=HTTPStatus.BAD_REQUEST)

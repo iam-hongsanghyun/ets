@@ -51,6 +51,13 @@ function makeBlankParticipant(index = 1) {
     electricity_consumption: 0,
     grid_emission_factor: 0,
     scope2_cbam_coverage: 0,
+    // BAU emissions trajectory
+    initial_emissions_trajectory: {},
+    // Grid emission factor trajectory
+    grid_emission_factor_trajectory: {},
+    // Output-based allocation (OBA) / benchmark
+    production_output: 0,
+    benchmark_emission_intensity: 0,
   };
 }
 

@@ -102,6 +102,13 @@ def blank_participant() -> dict[str, Any]:
         "electricity_consumption": 0.0,  # MWh
         "grid_emission_factor": 0.0,     # tCO2/MWh
         "scope2_cbam_coverage": 0.0,     # 0–1
+        # BAU emissions trajectory — auto-overrides initial_emissions year by year
+        "initial_emissions_trajectory": {},
+        # Grid emission factor trajectory — auto-overrides grid_emission_factor year by year
+        "grid_emission_factor_trajectory": {},
+        # Output-based allocation (OBA) / benchmark
+        "production_output": 0.0,              # units/yr (e.g. Mt steel)
+        "benchmark_emission_intensity": 0.0,   # tCO2/unit
     }
 
 
@@ -112,3 +119,35 @@ def blank_technology_option() -> dict[str, Any]:
     option["max_activity_share"] = 1.0
     option.pop("technology_options", None)
     return option
+
+
+def convergence_scenario_template(
+    current_kau: float,
+    target_eua: float,
+    start_year: str,
+    end_year: str,
+    total_cap: float = 500.0,
+) -> dict[str, Any]:
+    """
+    Return a scenario config snippet that ramps the domestic price floor
+    from current_kau toward target_eua over [start_year, end_year].
+
+    Args:
+        current_kau: Current KAU (domestic ETS) price floor (e.g. 18.0).
+        target_eua: Target EUA (EU ETS) price level (e.g. 85.0).
+        start_year: First year of ramp (str, e.g. "2026").
+        end_year: Final year of ramp (str, e.g. "2035").
+        total_cap: Default total cap in Mt (used as placeholder; override via years).
+
+    Returns:
+        A scenario dict with price_floor_trajectory set to ramp current_kau -> target_eua.
+    """
+    s = blank_scenario()
+    s["name"] = f"KAU-EUA Convergence ({start_year}-{end_year})"
+    s["price_floor_trajectory"] = {
+        "start_year": start_year,
+        "end_year": end_year,
+        "start_value": current_kau,
+        "end_value": target_eua,
+    }
+    return s

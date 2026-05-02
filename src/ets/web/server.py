@@ -12,6 +12,10 @@ from .handlers import (
     _json_safe,
     _predefined_templates,
     _save_user_scenario,
+    _handle_calibrate,
+    _handle_batch_run,
+    _handle_narrative,
+    _handle_csv_import,
 )
 
 
@@ -78,6 +82,64 @@ def app(environ, start_response):
             payload = _save_user_scenario(json.loads(raw.decode("utf-8")))
             return _json_response(start_response, payload)
         except Exception as exc:  # pragma: no cover - deployment path
+            return _json_response(start_response, {"error": str(exc)}, HTTPStatus.BAD_REQUEST)
+
+    if method == "POST" and path == "/api/calibrate":
+        try:
+            length = int(environ.get("CONTENT_LENGTH") or "0")
+        except ValueError:
+            length = 0
+        raw = environ["wsgi.input"].read(length) if length > 0 else b"{}"
+        try:
+            payload = _handle_calibrate(json.loads(raw.decode("utf-8")))
+            return _json_response(start_response, payload)
+        except Exception as exc:
+            return _json_response(start_response, {"error": str(exc)}, HTTPStatus.BAD_REQUEST)
+
+    if method == "POST" and path == "/api/batch-run":
+        try:
+            length = int(environ.get("CONTENT_LENGTH") or "0")
+        except ValueError:
+            length = 0
+        raw = environ["wsgi.input"].read(length) if length > 0 else b"{}"
+        try:
+            payload = _handle_batch_run(json.loads(raw.decode("utf-8")))
+            return _json_response(start_response, payload)
+        except Exception as exc:
+            return _json_response(start_response, {"error": str(exc)}, HTTPStatus.BAD_REQUEST)
+
+    if method == "POST" and path == "/api/narrative":
+        try:
+            length = int(environ.get("CONTENT_LENGTH") or "0")
+        except ValueError:
+            length = 0
+        raw = environ["wsgi.input"].read(length) if length > 0 else b"{}"
+        try:
+            payload = _handle_narrative(json.loads(raw.decode("utf-8")))
+            return _json_response(start_response, payload)
+        except Exception as exc:
+            return _json_response(start_response, {"error": str(exc)}, HTTPStatus.BAD_REQUEST)
+
+    if method == "POST" and path == "/api/import-csv":
+        try:
+            length = int(environ.get("CONTENT_LENGTH") or "0")
+        except ValueError:
+            length = 0
+        raw = environ["wsgi.input"].read(length) if length > 0 else b""
+
+        class _FakeHeaders:
+            def __init__(self, environ):
+                self._ct = environ.get("CONTENT_TYPE", "")
+
+            def get(self, key, default=""):
+                if key.lower() in ("content-type", "Content-Type"):
+                    return self._ct
+                return default
+
+        try:
+            payload = _handle_csv_import(raw, _FakeHeaders(environ))
+            return _json_response(start_response, payload)
+        except Exception as exc:
             return _json_response(start_response, {"error": str(exc)}, HTTPStatus.BAD_REQUEST)
 
     if method != "GET":

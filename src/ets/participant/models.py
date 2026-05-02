@@ -105,6 +105,10 @@ class MarketParticipant:
     electricity_consumption: float = 0.0   # MWh (or any consistent energy unit)
     grid_emission_factor: float = 0.0      # tCO2/MWh (grid average or marginal)
     scope2_cbam_coverage: float = 0.0      # 0–1; 0 = Scope 2 not in CBAM scope
+    # Output-based allocation (OBA) / benchmark
+    # free_allocation = benchmark_emission_intensity × production_output (overrides ratio when set)
+    production_output: float = 0.0             # units/yr (e.g. Mt steel)
+    benchmark_emission_intensity: float = 0.0  # tCO2/unit
 
     def __post_init__(self) -> None:
         self._validate_state(

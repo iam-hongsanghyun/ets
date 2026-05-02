@@ -299,6 +299,37 @@ def build_market_from_year(
     else:
         raw_participants = list(year_config.get("participants", []))
 
+    # Apply initial_emissions_trajectory and grid_emission_factor_trajectory per participant
+    patched_participants = []
+    for p in raw_participants:
+        p = dict(p)  # shallow copy to avoid mutating caller's data
+        ie_traj = p.get("initial_emissions_trajectory") or {}
+        if ie_traj:
+            overridden = _interp_value(year_num, ie_traj)
+            if overridden is not None:
+                p["initial_emissions"] = max(0.0, overridden)
+        gef_traj = p.get("grid_emission_factor_trajectory") or {}
+        if gef_traj:
+            overridden = _interp_value(year_num, gef_traj)
+            if overridden is not None:
+                p["grid_emission_factor"] = max(0.0, overridden)
+        patched_participants.append(p)
+    raw_participants = patched_participants
+
+    # Apply Output-Based Allocation (OBA) overrides BEFORE building participants
+    # free_allocation = benchmark_emission_intensity × production_output
+    # This overrides free_allocation_ratio when both OBA fields are set.
+    oba_patched = []
+    for p in raw_participants:
+        po = float(p.get("production_output") or 0.0)
+        bei = float(p.get("benchmark_emission_intensity") or 0.0)
+        ie = float(p.get("initial_emissions") or 0.0)
+        if po > 0 and bei > 0 and ie > 0:
+            free_alloc_mt = bei * po
+            p = {**p, "free_allocation_ratio": min(1.0, free_alloc_mt / ie)}
+        oba_patched.append(p)
+    raw_participants = oba_patched
+
     participants = [build_participant(item) for item in raw_participants]
 
     # Apply free-allocation phase-out trajectories — override per-participant ratio
@@ -469,6 +500,8 @@ def build_participant(participant: dict[str, Any]) -> MarketParticipant:
         electricity_consumption=float(participant.get("electricity_consumption") or 0.0),
         grid_emission_factor=float(participant.get("grid_emission_factor") or 0.0),
         scope2_cbam_coverage=float(participant.get("scope2_cbam_coverage") or 0.0),
+        production_output=float(participant.get("production_output") or 0.0),
+        benchmark_emission_intensity=float(participant.get("benchmark_emission_intensity") or 0.0),
     )
 
 

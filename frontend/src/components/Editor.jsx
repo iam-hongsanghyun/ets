@@ -1811,7 +1811,74 @@ export function Editor({
                         <span className="ekey">{fieldWithPathButton("Initial emissions", () => openParticipantSeriesEditor("initial_emissions"), true)}</span>
                         {numInput(participant.initial_emissions, (value) => updateParticipant(selectedParticipantIndex, { initial_emissions: value }), 1, 0)}
                       </label>
+                      {/* ── BAU Emissions Trajectory ───────────────────── */}
                       {(() => {
+                        const traj = participant.initial_emissions_trajectory || {};
+                        const active = !!(traj.start_year && traj.end_year && traj.start_value !== undefined && traj.end_value !== undefined);
+                        const years = workingScenario.years || [];
+                        const startY = years.length ? String(years[0].year) : "2026";
+                        const endY = years.length ? String(years[years.length - 1].year) : "2035";
+                        return (
+                          <div className="traj-section" style={{ gridColumn: "1 / -1", marginBottom: 4 }}>
+                            <div className="traj-head">
+                              <span className="traj-label" style={{ fontSize: 11 }}>BAU emissions trajectory <span className="field-flag optional">optional</span></span>
+                              <span className="approach-params-hint" style={{ fontSize: 10 }}>Auto-overrides initial_emissions each year via linear interpolation.</span>
+                              {active
+                                ? <button type="button" className="ghost-btn" style={{ fontSize: 10, padding: "1px 6px" }} onClick={() => updateParticipant(selectedParticipantIndex, { initial_emissions_trajectory: {} })}>Clear</button>
+                                : <button type="button" className="ghost-btn on" style={{ fontSize: 10, padding: "1px 6px" }} onClick={() => updateParticipant(selectedParticipantIndex, { initial_emissions_trajectory: { start_year: startY, end_year: endY, start_value: Number(participant.initial_emissions || 0), end_value: Number(participant.initial_emissions || 0) * 0.8 } })}>Enable trajectory</button>
+                              }
+                            </div>
+                            {active && (
+                              <div className="traj-row" style={{ gridTemplateColumns: "70px 70px 110px 110px", gap: 6, padding: "6px 10px" }}>
+                                <div className="builder-form-field" style={{ margin: 0 }}>
+                                  <label style={{ fontSize: 10 }}>Start year</label>
+                                  <input type="text" value={traj.start_year ?? ""} onChange={(e) => updateParticipant(selectedParticipantIndex, { initial_emissions_trajectory: { ...traj, start_year: e.target.value } })} />
+                                </div>
+                                <div className="builder-form-field" style={{ margin: 0 }}>
+                                  <label style={{ fontSize: 10 }}>End year</label>
+                                  <input type="text" value={traj.end_year ?? ""} onChange={(e) => updateParticipant(selectedParticipantIndex, { initial_emissions_trajectory: { ...traj, end_year: e.target.value } })} />
+                                </div>
+                                <div className="builder-form-field" style={{ margin: 0 }}>
+                                  <label style={{ fontSize: 10 }}>Start value (Mt)</label>
+                                  <input type="number" step="1" value={traj.start_value ?? ""} onChange={(e) => updateParticipant(selectedParticipantIndex, { initial_emissions_trajectory: { ...traj, start_value: +e.target.value } })} />
+                                </div>
+                                <div className="builder-form-field" style={{ margin: 0 }}>
+                                  <label style={{ fontSize: 10 }}>End value (Mt)</label>
+                                  <input type="number" step="1" value={traj.end_value ?? ""} onChange={(e) => updateParticipant(selectedParticipantIndex, { initial_emissions_trajectory: { ...traj, end_value: +e.target.value } })} />
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })()}
+                      {/* ── OBA / Benchmark fields ─────────────────────── */}
+                      {(() => {
+                        const po = Number(participant.production_output ?? 0);
+                        const bei = Number(participant.benchmark_emission_intensity ?? 0);
+                        const obaActive = po > 0 && bei > 0;
+                        return (
+                          <>
+                            <label>
+                              <span className="ekey">Production output (units/yr) <span className="field-flag optional">optional</span></span>
+                              {numInput(po, (v) => updateParticipant(selectedParticipantIndex, { production_output: Math.max(0, v) }), 0.1, 0)}
+                            </label>
+                            <label>
+                              <span className="ekey">Benchmark intensity (tCO₂/unit) <span className="field-flag optional">optional</span></span>
+                              {numInput(bei, (v) => updateParticipant(selectedParticipantIndex, { benchmark_emission_intensity: Math.max(0, v) }), 0.01, 0)}
+                              {obaActive && (
+                                <span className="approach-params-hint" style={{ fontWeight: 600, color: "#1f6f55" }}>
+                                  OBA free allocation: {(bei * po).toFixed(1)} Mt
+                                </span>
+                              )}
+                              <span className="approach-params-hint">When both are &gt; 0, free allocation = intensity × output (overrides free_allocation_ratio).</span>
+                            </label>
+                          </>
+                        );
+                      })()}
+                      {(() => {
+                        const po = Number(participant.production_output ?? 0);
+                        const bei = Number(participant.benchmark_emission_intensity ?? 0);
+                        const obaActive = po > 0 && bei > 0;
                         const definedSectors = workingScenario.sectors || [];
                         const participantSectorGroup = participant.sector_group ?? "";
                         const sectorMatch = definedSectors.find((s) => s.name === participantSectorGroup);
@@ -1856,6 +1923,15 @@ export function Editor({
                               <span className="approach-params-hint">
                                 Share of the {sectorMatch.name} sector's free allocation pool (0–1). Replaces free_allocation_ratio.
                               </span>
+                            </label>
+                          );
+                        }
+                        if (obaActive) {
+                          return (
+                            <label style={{ opacity: 0.4 }}>
+                              <span className="ekey">Free allocation ratio <span className="field-flag optional">optional</span></span>
+                              {numInput(participant.free_allocation_ratio, (value) => updateParticipant(selectedParticipantIndex, { free_allocation_ratio: value }), 0.05, 0)}
+                              <span className="approach-params-hint">Overridden by OBA (production_output × benchmark_intensity).</span>
                             </label>
                           );
                         }
@@ -1974,6 +2050,46 @@ export function Editor({
                             value={participant.grid_emission_factor ?? 0}
                             onChange={(e) => updateParticipant(selectedParticipantIndex, { grid_emission_factor: +e.target.value })} />
                           <span className="approach-params-hint">Indirect emissions = consumption × factor. Korean grid ≈ 0.45 tCO₂/MWh.</span>
+                          {/* Grid emission factor trajectory */}
+                          {(() => {
+                            const traj = participant.grid_emission_factor_trajectory || {};
+                            const active = !!(traj.start_year && traj.end_year && traj.start_value !== undefined && traj.end_value !== undefined);
+                            const years = workingScenario.years || [];
+                            const startY = years.length ? String(years[0].year) : "2026";
+                            const endY = years.length ? String(years[years.length - 1].year) : "2035";
+                            const curGef = Number(participant.grid_emission_factor || 0.45);
+                            return (
+                              <div className="traj-section" style={{ marginTop: 4 }}>
+                                <div className="traj-head">
+                                  <span className="traj-label" style={{ fontSize: 10 }}>Grid EF trajectory</span>
+                                  {active
+                                    ? <button type="button" className="ghost-btn" style={{ fontSize: 10, padding: "1px 6px" }} onClick={() => updateParticipant(selectedParticipantIndex, { grid_emission_factor_trajectory: {} })}>Clear</button>
+                                    : <button type="button" className="ghost-btn on" style={{ fontSize: 10, padding: "1px 6px" }} onClick={() => updateParticipant(selectedParticipantIndex, { grid_emission_factor_trajectory: { start_year: startY, end_year: endY, start_value: curGef, end_value: curGef * 0.5 } })}>Enable trajectory</button>
+                                  }
+                                </div>
+                                {active && (
+                                  <div className="traj-row" style={{ gridTemplateColumns: "60px 60px 90px 90px", gap: 5, padding: "5px 8px" }}>
+                                    <div className="builder-form-field" style={{ margin: 0 }}>
+                                      <label style={{ fontSize: 10 }}>Start yr</label>
+                                      <input type="text" value={traj.start_year ?? ""} onChange={(e) => updateParticipant(selectedParticipantIndex, { grid_emission_factor_trajectory: { ...traj, start_year: e.target.value } })} />
+                                    </div>
+                                    <div className="builder-form-field" style={{ margin: 0 }}>
+                                      <label style={{ fontSize: 10 }}>End yr</label>
+                                      <input type="text" value={traj.end_year ?? ""} onChange={(e) => updateParticipant(selectedParticipantIndex, { grid_emission_factor_trajectory: { ...traj, end_year: e.target.value } })} />
+                                    </div>
+                                    <div className="builder-form-field" style={{ margin: 0 }}>
+                                      <label style={{ fontSize: 10 }}>Start (tCO₂/MWh)</label>
+                                      <input type="number" step="0.001" value={traj.start_value ?? ""} onChange={(e) => updateParticipant(selectedParticipantIndex, { grid_emission_factor_trajectory: { ...traj, start_value: +e.target.value } })} />
+                                    </div>
+                                    <div className="builder-form-field" style={{ margin: 0 }}>
+                                      <label style={{ fontSize: 10 }}>End (tCO₂/MWh)</label>
+                                      <input type="number" step="0.001" value={traj.end_value ?? ""} onChange={(e) => updateParticipant(selectedParticipantIndex, { grid_emission_factor_trajectory: { ...traj, end_value: +e.target.value } })} />
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })()}
                         </div>
                         <div className="builder-form-field">
                           <label>Scope 2 CBAM coverage (0–1)</label>

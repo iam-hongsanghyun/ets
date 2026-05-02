@@ -5,6 +5,24 @@ from typing import Any
 from ..expectations import ALLOWED_EXPECTATION_RULES, validate_expectation_rule
 
 ALLOWED_AUCTION_MODES = {"explicit", "derive_from_cap"}
+
+
+def _norm_traj(raw: Any) -> dict:
+    """Normalise a 4-key trajectory dict, returning {} if empty/missing."""
+    if not raw or not isinstance(raw, dict):
+        return {}
+    out: dict = {}
+    for k in ("start_year", "end_year"):
+        if raw.get(k) is not None:
+            out[k] = str(raw[k])
+    for k in ("start_value", "end_value"):
+        try:
+            out[k] = float(raw[k])
+        except (KeyError, TypeError, ValueError):
+            pass
+    if not all(k in out for k in ("start_year", "end_year", "start_value", "end_value")):
+        return {}
+    return out
 ALLOWED_ABATEMENT_TYPES = {"linear", "threshold", "piecewise"}
 ALLOWED_MODEL_APPROACHES = {"competitive", "hotelling", "nash_cournot", "all"}
 
@@ -190,6 +208,23 @@ def normalize_participant(raw_participant: dict[str, Any]) -> dict[str, Any]:
         raise ValueError(
             f"Participant '{participant['name']}' scope2_cbam_coverage must be between 0 and 1."
         )
+    # BAU emissions trajectory — overrides initial_emissions year by year
+    participant["initial_emissions_trajectory"] = _norm_traj(
+        participant.get("initial_emissions_trajectory")
+    )
+    # Grid emission factor trajectory — overrides grid_emission_factor year by year
+    participant["grid_emission_factor_trajectory"] = _norm_traj(
+        participant.get("grid_emission_factor_trajectory")
+    )
+    # Output-based allocation (OBA) / benchmark fields
+    try:
+        participant["production_output"] = float(participant.get("production_output") or 0.0)
+    except (TypeError, ValueError):
+        participant["production_output"] = 0.0
+    try:
+        participant["benchmark_emission_intensity"] = float(participant.get("benchmark_emission_intensity") or 0.0)
+    except (TypeError, ValueError):
+        participant["benchmark_emission_intensity"] = 0.0
     technology_options = participant.get("technology_options", [])
     if not isinstance(technology_options, list):
         raise ValueError(

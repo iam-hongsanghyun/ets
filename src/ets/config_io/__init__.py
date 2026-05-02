@@ -22,6 +22,7 @@ from .templates import (
     blank_participant,
     blank_technology_option,
     blank_sector,
+    convergence_scenario_template,
 )
 
 __all__ = [
@@ -46,4 +47,5 @@ __all__ = [
     "blank_participant",
     "blank_technology_option",
     "blank_sector",
+    "convergence_scenario_template",
 ]
