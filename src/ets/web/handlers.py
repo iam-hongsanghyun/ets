@@ -37,7 +37,11 @@ def _predefined_templates() -> list[dict]:
         }
     ]
     for path in sorted(EXAMPLES_DIR.glob("*.json")):
-        config = load_config(path)
+        try:
+            config = load_config(path)
+        except Exception:
+            # Skip non-scenario JSONs (e.g. API request payload examples)
+            continue
         template_id = path.stem
         label = path.stem.replace("_", " ").title()
         templates.append(
