@@ -2,6 +2,19 @@ import React from "react";
 import { fmt } from "./MarketChart.jsx";
 import { YearSeriesModal, getSeriesFieldMeta, makeBlankSector } from "./AppShared.jsx";
 
+function CollapsibleGroup({ title, defaultOpen = true, children, badge = null }) {
+  return (
+    <details className="cg" open={defaultOpen || undefined}>
+      <summary className="cg-summary">
+        <span className="cg-title">{title}</span>
+        {badge ? <span className="cg-badge">{badge}</span> : null}
+        <span className="cg-chevron">▾</span>
+      </summary>
+      <div className="cg-body">{children}</div>
+    </details>
+  );
+}
+
 export function Editor({
   scenario,
   year,
@@ -882,44 +895,46 @@ export function Editor({
             <span className="field-flag required">required</span>
             <span className="field-flag optional">optional</span>
           </div>
-          <div className="builder-form-grid">
-            <label>
-              <span className="ekey">Scenario name <span className="field-flag required">required</span></span>
-              <input
-                className="text"
-                value={workingScenario.name || ""}
-                onChange={(event) => updateScenario({ name: event.target.value })}
-              />
-            </label>
-            <label>
-              <span className="ekey">Scenario color <span className="field-flag optional">optional</span></span>
-              <div className="color-input">
-                <input
-                  type="color"
-                  value={workingScenario.color || "#1f6f55"}
-                  onChange={(event) => updateScenario({ color: event.target.value })}
-                />
+          <CollapsibleGroup title="Scenario identity" defaultOpen={true}>
+            <div className="builder-form-grid">
+              <label>
+                <span className="ekey">Scenario name <span className="field-flag required">required</span></span>
                 <input
                   className="text"
-                  value={workingScenario.color || "#1f6f55"}
-                  onChange={(event) => updateScenario({ color: event.target.value })}
+                  value={workingScenario.name || ""}
+                  onChange={(event) => updateScenario({ name: event.target.value })}
                 />
-              </div>
-            </label>
-            <label className="builder-span-2">
-              <span className="ekey">Scenario description <span className="field-flag optional">optional</span></span>
-              <textarea
-                className="text builder-textarea"
-                value={workingScenario.description || ""}
-                onChange={(event) => updateScenario({ description: event.target.value })}
-              />
-            </label>
-          </div>
+              </label>
+              <label>
+                <span className="ekey">Scenario color <span className="field-flag optional">optional</span></span>
+                <div className="color-input">
+                  <input
+                    type="color"
+                    value={workingScenario.color || "#1f6f55"}
+                    onChange={(event) => updateScenario({ color: event.target.value })}
+                  />
+                  <input
+                    className="text"
+                    value={workingScenario.color || "#1f6f55"}
+                    onChange={(event) => updateScenario({ color: event.target.value })}
+                  />
+                </div>
+              </label>
+              <label className="builder-span-2">
+                <span className="ekey">Scenario description <span className="field-flag optional">optional</span></span>
+                <textarea
+                  className="text builder-textarea"
+                  value={workingScenario.description || ""}
+                  onChange={(event) => updateScenario({ description: event.target.value })}
+                />
+              </label>
+            </div>
+          </CollapsibleGroup>
 
           {/* ── Sectors panel ─────────────────────────────────────────── */}
+          <CollapsibleGroup title="Sectors" defaultOpen={true} badge={(workingScenario.sectors||[]).length ? String((workingScenario.sectors||[]).length) : null}>
           <div className="sector-panel">
             <div className="sector-panel-head">
-              <span className="sector-panel-label">Sectors <span className="field-flag optional">optional</span></span>
               <button
                 type="button"
                 className="ghost-btn on"
@@ -1101,6 +1116,7 @@ export function Editor({
               )}
             </div>
           </div>
+          </CollapsibleGroup>
         </section>
       )}
 
@@ -1113,6 +1129,7 @@ export function Editor({
           </div>
 
           {/* ── Modelling approach selector ── */}
+          <CollapsibleGroup title="Modelling approach" defaultOpen={true}>
           <div className="approach-selector">
             <div className="approach-selector-label">Modelling approach</div>
             <div className="approach-selector-options">
@@ -1377,7 +1394,10 @@ export function Editor({
               </div>
             </div>
           </div>
+          </CollapsibleGroup>
 
+          {/* ── Allocation & policy trajectories ─────────────────────────── */}
+          <CollapsibleGroup title="Allocation & policy trajectories" defaultOpen={false}>
           {/* ── Free allocation trajectories ─────────────────────────────── */}
           <div className="eua-prices-panel">
             <div className="eua-prices-head">
@@ -1472,7 +1492,9 @@ export function Editor({
               </div>
             );
           })}
+          </CollapsibleGroup>
 
+          <CollapsibleGroup title="Supply & price bounds" defaultOpen={true}>
           <div className="builder-form-grid">
             <label>
               <span className="ekey">Year label <span className="field-flag required">required</span></span>
@@ -1540,6 +1562,11 @@ export function Editor({
               <span className="ekey">{fieldWithPathButton("Price ceiling", () => openMarketSeriesEditor("price_upper_bound"), true)}</span>
               {numInput(workingYear.price_upper_bound, (value) => updateYear({ price_upper_bound: value }), 1, 0)}
             </label>
+          </div>
+          </CollapsibleGroup>
+
+          <CollapsibleGroup title="Banking, borrowing & expectations" defaultOpen={false}>
+          <div className="builder-form-grid">
             <label>
               <span className="ekey">Banking allowed <span className="field-flag optional">optional</span></span>
               <select
@@ -1586,7 +1613,10 @@ export function Editor({
               <span className="approach-params-hint">EU ETS reference price used as default for CBAM gap calculation.</span>
             </label>
           </div>
+          </CollapsibleGroup>
 
+          {/* ── EUA & external prices ─────────────────────────────────────── */}
+          <CollapsibleGroup title="EUA & external prices" defaultOpen={false}>
           {/* ── EUA prices (per-jurisdiction) ────────────────────────────── */}
           <div className="eua-prices-panel">
             <div className="eua-prices-head">
@@ -1648,8 +1678,10 @@ export function Editor({
               </div>
             ))}
           </div>
+          </CollapsibleGroup>
 
           {/* ── MSR panel ────────────────────────────────────────────────── */}
+          <CollapsibleGroup title="Market Stability Reserve (MSR)" defaultOpen={false}>
           <div className="msr-panel">
             <div className="msr-panel-head">
               <div className="msr-panel-title-row">
@@ -1709,6 +1741,7 @@ export function Editor({
               </div>
             )}
           </div>
+          </CollapsibleGroup>
 
         </section>
       )}
@@ -1787,6 +1820,7 @@ export function Editor({
                         <button className="ghost-btn danger-btn" type="button" onClick={() => removeParticipant(selectedParticipantIndex)}>Remove</button>
                       </div>
                     </div>
+                    <CollapsibleGroup title="Identity & emissions" defaultOpen={true}>
                     <div className="builder-form-grid">
                       <label>
                         <span className="ekey">Participant name <span className="field-flag required">required</span></span>
@@ -1851,6 +1885,11 @@ export function Editor({
                           </div>
                         );
                       })()}
+                    </div>
+                    </CollapsibleGroup>
+
+                    <CollapsibleGroup title="Allocation" defaultOpen={true}>
+                    <div className="builder-form-grid">
                       {/* ── OBA / Benchmark fields ─────────────────────── */}
                       {(() => {
                         const po = Number(participant.production_output ?? 0);
@@ -1946,10 +1985,7 @@ export function Editor({
                         <span className="ekey">{fieldWithPathButton("Penalty price", () => openParticipantSeriesEditor("penalty_price"), true)}</span>
                         {numInput(participant.penalty_price, (value) => updateParticipant(selectedParticipantIndex, { penalty_price: value }), 1, 0)}
                       </label>
-                    </div>
-
-                    {/* ── Sector group ─────────────────────────────────── */}
-                    <div className="builder-form-grid">
+                      {/* ── Sector group ─────────────────────────────────── */}
                       <label>
                         <span className="ekey">Sector group <span className="field-flag optional">optional</span></span>
                         <input
@@ -1962,8 +1998,10 @@ export function Editor({
                         <span className="approach-params-hint">Groups this participant with others for sector-level aggregated output rows.</span>
                       </label>
                     </div>
+                    </CollapsibleGroup>
 
                     {/* ── CBAM exposure ────────────────────────────────── */}
+                    <CollapsibleGroup title="CBAM exposure" defaultOpen={false}>
                     <div className="cbam-participant-panel">
                       <div className="cbam-participant-head">
                         <span className="cbam-participant-label">CBAM exposure</span>
@@ -2030,8 +2068,10 @@ export function Editor({
                         ))}
                       </div>
                     </div>
+                    </CollapsibleGroup>
 
                     {/* ── Scope 2 / Indirect Emissions ─────────────────── */}
+                    <CollapsibleGroup title="Scope 2 / Indirect emissions" defaultOpen={false}>
                     <div className="scope2-panel">
                       <div className="scope2-head">
                         <span className="scope2-label">Scope 2 / Indirect Emissions</span>
@@ -2100,11 +2140,14 @@ export function Editor({
                         </div>
                       </div>
                     </div>
+                    </CollapsibleGroup>
 
+                    <CollapsibleGroup title="Abatement" defaultOpen={true}>
                     {renderAbatementFields(
                       participant,
                       (patch) => updateParticipant(selectedParticipantIndex, patch),
                     )}
+                    </CollapsibleGroup>
                   </div>
 
                   <div className="builder-card">
@@ -2234,6 +2277,7 @@ export function Editor({
                               Remove technology
                             </button>
                           </div>
+                          <CollapsibleGroup title="Technology parameters" defaultOpen={true}>
                           <div className="builder-form-grid">
                             <label>
                               <span className="ekey">Technology name <span className="field-flag required">required</span></span>
@@ -2264,11 +2308,14 @@ export function Editor({
                               {numInput(selectedTechnology.penalty_price || 0, (value) => updateTechnologyOption(selectedParticipantIndex, selectedTechnologyIndex, { penalty_price: value }), 1, 0)}
                             </label>
                           </div>
+                          </CollapsibleGroup>
+                          <CollapsibleGroup title="Technology abatement" defaultOpen={true}>
                           {renderAbatementFields(
                             selectedTechnology,
                             (patch) => updateTechnologyOption(selectedParticipantIndex, selectedTechnologyIndex, patch),
                             "Technology ",
                           )}
+                          </CollapsibleGroup>
                         </div>
                       ) : null}
                     </div>
