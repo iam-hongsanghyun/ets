@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ETS Tool — Build Your First Scenario</title>
+<style>
+  :root{
+    --bg:#0f1714; --panel:#15201c; --card:#1b2826; --ink:#e8efe9; --muted:#9fb3a8;
+    --line:#26352f; --accent:#3fae84; --accent2:#5ec6f2; --warn:#e0a13c; --code:#0c1411;
+    --maxw:920px;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{
+    margin:0;background:linear-gradient(180deg,#0d1512,#0f1714 240px);color:var(--ink);
+    font:16px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:var(--maxw);margin:0 auto;padding:0 20px 96px}
+  header.hero{padding:56px 20px 40px;text-align:center;border-bottom:1px solid var(--line);
+    background:radial-gradient(120% 140% at 50% 0%,rgba(63,174,132,.14),transparent 60%)}
+  header.hero .wrap{padding-bottom:0}
+  .eyebrow{letter-spacing:.18em;text-transform:uppercase;font-size:12px;color:var(--accent);font-weight:700}
+  h1{font-size:34px;line-height:1.15;margin:.35em 0 .25em}
+  h2{font-size:25px;margin:2.4em 0 .5em;padding-top:.4em;border-top:1px solid var(--line)}
+  h3{font-size:19px;margin:1.8em 0 .4em;color:#d6e6dc}
+  .lede{color:var(--muted);font-size:18px;max-width:640px;margin:0 auto}
+  a{color:var(--accent2);text-decoration:none}
+  a:hover{text-decoration:underline}
+  code{font-family:"SF Mono", "JetBrains Mono",Menlo,Consolas,monospace;font-size:.92em;
+    background:#11201a;border:1px solid var(--line);border-radius:5px;padding:.08em .38em;color:#bfe7d3}
+  pre{position:relative;background:var(--code);border:1px solid var(--line);border-radius:12px;
+    padding:18px 18px;overflow:auto;margin:.8em 0}
+  pre code{background:none;border:none;padding:0;color:#d7e7df;font-size:13.5px;line-height:1.55}
+  .copy{position:absolute;top:10px;right:10px;font:600 11px/1 inherit;letter-spacing:.04em;
+    background:#1d2e27;border:1px solid var(--line);color:var(--muted);border-radius:6px;
+    padding:6px 9px;cursor:pointer;text-transform:uppercase}
+  .copy:hover{color:var(--ink);border-color:var(--accent)}
+  .copy.ok{color:var(--accent);border-color:var(--accent)}
+  table{border-collapse:collapse;width:100%;margin:.6em 0;font-size:14px}
+  .scroll{overflow-x:auto}
+  th,td{border:1px solid var(--line);padding:8px 11px;text-align:left;white-space:nowrap}
+  th{background:#16241e;color:#cfe3d8;font-weight:600}
+  td.n{text-align:right;font-variant-numeric:tabular-nums}
+  .note,.tip,.try{border-radius:11px;padding:14px 16px;margin:1.1em 0;border:1px solid var(--line)}
+  .note{background:#13201b}
+  .tip{background:#11211d;border-left:4px solid var(--accent)}
+  .try{background:#1d1a10;border-left:4px solid var(--warn)}
+  .try b,.tip b{display:block;margin-bottom:.2em;letter-spacing:.02em}
+  .try b{color:var(--warn)} .tip b{color:var(--accent)}
+  .pill{display:inline-block;font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;
+    padding:3px 9px;border-radius:999px;border:1px solid var(--line);color:var(--accent);background:#12211b;margin-left:8px;vertical-align:middle}
+  nav.toc{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:18px 22px;margin:30px 0}
+  nav.toc ol{margin:.3em 0 0;padding-left:1.3em}
+  nav.toc li{margin:.25em 0}
+  .step{display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;border-radius:50%;
+    background:var(--accent);color:#04130c;font-weight:800;font-size:15px;margin-right:10px;vertical-align:middle}
+  .ladder{display:grid;gap:10px;margin:1em 0}
+  .rung{display:grid;grid-template-columns:120px 1fr;gap:14px;align-items:start;background:var(--card);
+    border:1px solid var(--line);border-radius:10px;padding:12px 14px}
+  .rung .k{font-weight:700;color:#d6e6dc}
+  .muted{color:var(--muted)}
+  footer{margin-top:60px;padding-top:22px;border-top:1px solid var(--line);color:var(--muted);font-size:14px}
+  kbd{font-family:inherit;background:#1d2e27;border:1px solid var(--line);border-bottom-width:2px;border-radius:5px;padding:1px 6px;font-size:.85em}
+  @media (max-width:560px){h1{font-size:27px}.rung{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<header class="hero">
+  <div class="wrap">
+    <div class="eyebrow">ETS Clearing Tool · Tutorial</div>
+    <h1>Build Your First Scenario</h1>
+    <p class="lede">A hands-on, copy-along guide. Start from a two-firm carbon market and finish with full
+    price↔activity feedback — one runnable step at a time.</p>
+  </div>
+</header>
+
+<div class="wrap">
+
+<nav class="toc">
+  <strong>What you'll build</strong>
+  <ol>
+    <li><a href="#concept">The big picture — a partial-equilibrium market</a></li>
+    <li><a href="#setup">Setup &amp; how to run a scenario</a></li>
+    <li><a href="#base">Step 1 · Your first scenario (base market)</a></li>
+    <li><a href="#msr">Step 2 · Add a policy mechanism (MSR)</a></li>
+    <li><a href="#ccr">Step 3 · An adaptive cap (Carbon Cap Rule)</a></li>
+    <li><a href="#feedbackA">Step 4 · Feedback A — price-elastic baseline</a></li>
+    <li><a href="#feedbackB">Step 5 · Feedback B — couple to an external model</a></li>
+    <li><a href="#next">Where to go next</a></li>
+  </ol>
+</nav>
+
+<!-- ─────────────────────────────────────────────────────────── -->
+<h2 id="concept">1 · The big picture</h2>
+<p>This tool is a <b>dynamic partial-equilibrium model of the emission-allowance market</b>. Each year it
+finds the single carbon price at which the market clears:</p>
+<pre><code>net allowance demand (across all firms)  =  allowances supplied (auction + carry)</code></pre>
+<p>Every firm reacts to that price by abating up to the point where its marginal abatement cost equals the
+price, then buying or selling the rest. Everything else — output, energy prices, the macro-economy — is an
+<em>input</em>. As you go down this tutorial you'll progressively let the market <em>talk back</em> to those inputs:</p>
+
+<div class="ladder">
+  <div class="rung"><div class="k">Base</div><div>Fixed cap, exogenous baseline emissions. The classic clearing model. <span class="muted">(Step 1)</span></div></div>
+  <div class="rung"><div class="k">Mechanisms</div><div>Supply-side policy on top of the cap: MSR reserve, or the Taylor-rule <b>Carbon Cap Rule</b>. <span class="muted">(Steps 2–3)</span></div></div>
+  <div class="rung"><div class="k">Feedback A</div><div>Carbon-intensive <b>activity contracts as the price rises</b>, solved inside clearing. Still partial equilibrium. <span class="muted">(Step 4)</span></div></div>
+  <div class="rung"><div class="k">Feedback B</div><div>Iterate the market to a joint equilibrium with an <b>external</b> energy / CGE / DSGE model. <span class="muted">(Step 5)</span></div></div>
+</div>
+
+<!-- ─────────────────────────────────────────────────────────── -->
+<h2 id="setup">2 · Setup &amp; how to run</h2>
+<p>From the repository root, install the dependencies once:</p>
+<pre><code>pip install -r requirements.txt      # numpy, pandas, scipy, matplotlib</code></pre>
+<p>A scenario is a single <code>.json</code> file. Run one and print the results table with:</p>
+<pre><code>python ets_framework.py --config path/to/your_scenario.json</code></pre>
+<p>Or open the browser-based editor to build and run scenarios visually:</p>
+<pre><code>python ets_framework.py --gui          # opens the scenario editor</code></pre>
+<div class="tip"><b>Tip</b>Every bundled example lives in <code>examples/</code>. List the built-in sample modes with
+<code>python ets_framework.py --list-modes</code>, or just point <code>--config</code> at any example file.</div>
+
+<!-- ─────────────────────────────────────────────────────────── -->
+<h2 id="base"><span class="step">1</span>Your first scenario</h2>
+<p>Save this as <code>my_first_scenario.json</code>. It's one year, a fixed cap of 300 Mt, and two firms — a
+cheap-to-abate <b>Power</b> sector and a costlier <b>Steel</b> sector. Each has a linear marginal abatement
+cost (MAC) curve.</p>
+<pre><code class="lang-json">{
+  "scenarios": [{
+    "name": "My First Scenario",
+    "model_approach": "competitive",
+    "years": [{
+      "year": "2030",
+      "total_cap": 300.0,
+      "auction_mode": "explicit",
+      "auction_offered": 180.0,
+      "price_lower_bound": 0.0,
+      "price_upper_bound": 200.0,
+      "banking_allowed": false,
+      "participants": [
+        {"name": "Power", "initial_emissions": 200.0, "free_allocation_ratio": 0.2,
+         "penalty_price": 200.0, "abatement_type": "linear", "max_abatement": 80.0, "cost_slope": 1.5},
+        {"name": "Steel", "initial_emissions": 120.0, "free_allocation_ratio": 0.4,
+         "penalty_price": 200.0, "abatement_type": "linear", "max_abatement": 36.0, "cost_slope": 2.5}
+      ]
+    }]
+  }]
+}</code></pre>
+<p>Run it:</p>
+<pre><code>python ets_framework.py --config my_first_scenario.json</code></pre>
+<p>You should see an equilibrium carbon price of <b>48.75</b> and these per-firm results:</p>
+<div class="scroll"><table>
+  <tr><th>Participant</th><th>Abatement (Mt)</th><th>Residual emissions (Mt)</th><th>Allowances bought (Mt)</th></tr>
+  <tr><td>Power</td><td class="n">32.5</td><td class="n">167.5</td><td class="n">127.5</td></tr>
+  <tr><td>Steel</td><td class="n">19.5</td><td class="n">100.5</td><td class="n">52.5</td></tr>
+</table></div>
+<p><b>Reading it:</b> the price settles where total purchases (127.5 + 52.5 = 180 Mt) exactly absorb the 180 Mt
+auctioned. Power, with the flatter MAC (<code>cost_slope</code> 1.5), abates more than Steel (2.5). That's the
+whole engine in miniature: one price, each firm on its own cost curve.</p>
+
+<h3>Anatomy of the fields</h3>
+<div class="scroll"><table>
+  <tr><th>Field</th><th>Meaning</th></tr>
+  <tr><td><code>total_cap</code></td><td>Total allowances the system permits this year (Mt CO₂e).</td></tr>
+  <tr><td><code>auction_offered</code></td><td>Allowances sold at auction. The clearing solves price so demand = this.</td></tr>
+  <tr><td><code>free_allocation_ratio</code></td><td>Share of a firm's baseline given free (reduces what it must buy).</td></tr>
+  <tr><td><code>initial_emissions</code></td><td>Business-as-usual emissions before any abatement (Mt). The <em>baseline</em>.</td></tr>
+  <tr><td><code>max_abatement</code>, <code>cost_slope</code></td><td>Linear MAC: marginal cost rises with slope up to a cap.</td></tr>
+  <tr><td><code>penalty_price</code></td><td>Cost of non-compliance — the de-facto price ceiling per firm.</td></tr>
+</table></div>
+<div class="try"><b>Try it</b>Halve Steel's <code>cost_slope</code> to <code>1.25</code> and re-run. Steel now abates more
+cheaply, so total abatement rises and the clearing price <em>falls</em>. Then set <code>auction_offered</code>
+to <code>140</code> (a tighter market) and watch the price climb.</div>
+
+<!-- ─────────────────────────────────────────────────────────── -->
+<h2 id="msr"><span class="step">2</span>Add a policy mechanism — the MSR</h2>
+<p>The <b>Market Stability Reserve</b> (Kollenberg &amp; Taschini 2019) is a supply valve: it withholds auction
+volume into a reserve when the banked surplus is too large, and releases it when the bank runs short. Turn it
+on with scenario-level fields (it needs multiple years and banking to do anything):</p>
+<pre><code class="lang-json">{
+  "name": "With MSR",
+  "model_approach": "competitive",
+  "msr_enabled": true,
+  "msr_upper_threshold": 60.0,
+  "msr_lower_threshold": 10.0,
+  "msr_withhold_rate": 0.15,
+  "msr_release_rate": 20.0,
+  "years": [ /* multiple years, banking_allowed: true … */ ]
+}</code></pre>
+<p>Each year, before clearing: if the total bank &gt; <code>msr_upper_threshold</code>, withhold
+<code>msr_withhold_rate ×</code> auction volume into the reserve; if the bank &lt; <code>msr_lower_threshold</code>,
+release <code>msr_release_rate</code> Mt back. Watch the <code>MSR Withheld</code>, <code>MSR Released</code> and
+<code>MSR Reserve Pool</code> columns in the output.</p>
+<div class="tip"><b>Run the worked example</b><code>python ets_framework.py --config examples/climate_solutions_msr_stability.json</code>
+— two scenarios, identical market, MSR on vs off. Full details in <a href="../multi-year-simulation.md">docs/multi-year-simulation.md</a>.</div>
+
+<!-- ─────────────────────────────────────────────────────────── -->
+<h2 id="ccr"><span class="step">3</span>An adaptive cap — the Carbon Cap Rule <span class="pill">new</span></h2>
+<p>The <b>Carbon Cap Rule</b> (Benmir, Roman &amp; Taschini 2025) is the cap-and-trade analogue of a Taylor rule.
+Instead of a fixed cap, it nudges each year's permit quantity using the <em>previous</em> year's deviation of
+emissions and abatement cost from reference (steady-state) levels:</p>
+<pre><code>Q_t = Qbar + phi_e · (e − ebar)/ebar  +  phi_z · (z − zbar)/zbar</code></pre>
+<p>with <code>phi_z &gt; 0</code> (loosen the cap when abatement costs run hot) and <code>phi_e &lt; 0</code>
+(tighten when emissions overshoot). Enable it scenario-side:</p>
+<pre><code class="lang-json">{
+  "name": "Carbon Cap Rule (CCR)",
+  "model_approach": "competitive",
+  "ccr_enabled": true,
+  "ccr_phi_emissions": -30.0,
+  "ccr_phi_abatement_cost": 15.0,
+  "ccr_reference_emissions": 424.0,
+  "ccr_reference_abatement_cost": 2600.0,
+  "years": [ /* … */ ]
+}</code></pre>
+<p>Run the bundled comparison (fixed cap vs CCR, under a persistent shock):</p>
+<pre><code>python ets_framework.py --config examples/benmir_ccr_carbon_cap_rule.json</code></pre>
+<p>The CCR loosens the cap while abatement costs are elevated, holding the post-shock price peak down and cutting
+price volatility by <b>≈27%</b>:</p>
+<div class="scroll"><table>
+  <tr><th>Year</th><th>Fixed cap — price</th><th>CCR — price</th><th>CCR cap adjustment (Mt)</th></tr>
+  <tr><td>2026</td><td class="n">57.9</td><td class="n">57.9</td><td class="n">0.0</td></tr>
+  <tr><td>2027</td><td class="n">68.7</td><td class="n">70.6</td><td class="n">−2.5</td></tr>
+  <tr><td>2028</td><td class="n">113.4</td><td class="n">110.4</td><td class="n">+3.9</td></tr>
+  <tr><td>2029</td><td class="n">128.4</td><td class="n">105.7</td><td class="n">+29.4</td></tr>
+  <tr><td>2030</td><td class="n">122.3</td><td class="n">103.5</td><td class="n">+24.3</td></tr>
+</table></div>
+<p>See the formula, sign conventions, and config reference in <a href="../carbon-cap-rule.md">docs/carbon-cap-rule.md</a>.</p>
+<div class="try"><b>Try it</b>Set <code>ccr_phi_abatement_cost</code> to <code>0</code> (respond to emissions only) and re-run.
+The cap stops chasing the cost spike and the 2029–30 prices climb back toward the fixed-cap path — showing how
+much of the CCR's stabilising power comes from the cost term.</div>
+
+<!-- ─────────────────────────────────────────────────────────── -->
+<h2 id="feedbackA"><span class="step">4</span>Feedback A — the price-elastic baseline <span class="pill">new</span></h2>
+<p>So far the baseline (<code>initial_emissions</code>) is fixed: the only price response is abatement. Feedback A
+adds the missing channel — <b>carbon-intensive activity contracts as the price rises</b> ("demand destruction"),
+solved jointly with the price inside clearing:</p>
+<pre><code>activity multiplier   m(P) = max(0, 1 − ε · (P − P_ref)/P_ref)
+effective baseline    E(P) = initial_emissions · m(P)</code></pre>
+<p>Switch it on with a scenario anchor price plus a per-firm elasticity:</p>
+<pre><code class="lang-json">{
+  "name": "Price-Elastic Baseline",
+  "model_approach": "competitive",
+  "reference_carbon_price": 55.0,
+  "years": [{
+    "year": "2030", "total_cap": 480.0, "auction_mode": "explicit", "auction_offered": 216.0,
+    "price_lower_bound": 0.0, "price_upper_bound": 400.0, "banking_allowed": false,
+    "participants": [
+      {"name": "Steel",  "initial_emissions": 180.0, "free_allocation_ratio": 0.3, "penalty_price": 400.0,
+       "abatement_type": "linear", "max_abatement": 54.0, "cost_slope": 2.6, "output_price_elasticity": 0.5},
+      {"name": "Power",  "initial_emissions": 220.0, "free_allocation_ratio": 0.2, "penalty_price": 400.0,
+       "abatement_type": "linear", "max_abatement": 99.0, "cost_slope": 1.5, "output_price_elasticity": 0.5},
+      {"name": "Cement", "initial_emissions": 120.0, "free_allocation_ratio": 0.3, "penalty_price": 400.0,
+       "abatement_type": "linear", "max_abatement": 30.0, "cost_slope": 3.0, "output_price_elasticity": 0.5}
+    ]
+  }]
+}</code></pre>
+<p>The bundled example runs this across a <em>tightening</em> cap (480 → 330 Mt) next to an inelastic twin:</p>
+<pre><code>python ets_framework.py --config examples/feedback_a_price_elastic_baseline.json</code></pre>
+<p>Where the inelastic market lets the price escalate, the elastic baseline lets firms cut output instead — so the
+price path stays far flatter:</p>
+<div class="scroll"><table>
+  <tr><th>Year</th><th>Fixed baseline — price</th><th>Elastic baseline — price</th></tr>
+  <tr><td>2026</td><td class="n">122.8</td><td class="n">74.2</td></tr>
+  <tr><td>2027</td><td class="n">132.5</td><td class="n">76.9</td></tr>
+  <tr><td>2028</td><td class="n">143.9</td><td class="n">80.1</td></tr>
+  <tr><td>2029</td><td class="n">156.9</td><td class="n">83.8</td></tr>
+  <tr><td>2030</td><td class="n">171.5</td><td class="n">88.0</td></tr>
+</table></div>
+<div class="note"><b style="display:block;margin-bottom:.2em">How to see the contraction.</b>In the participant
+results, the <code>Initial Emissions</code> column now reports the <em>price-scaled</em> baseline. In 2030 Steel's
+180 Mt baseline shows up as ≈126 Mt — activity fell ~30% under the high price. Set
+<code>output_price_elasticity</code> to <code>0</code> (or <code>reference_carbon_price</code> to <code>0</code>) to
+recover the inelastic model exactly.</div>
+<div class="try"><b>Try it</b>The elastic baseline is a restoring force toward <code>reference_carbon_price</code>.
+Raise it to <code>120</code> — closer to where the inelastic price sat — and the two paths converge: there's less
+"distance" for activity to respond to. This is reduced-form, own-price response; for cross-sector and macro
+feedback, continue to Step 5. Details: <a href="../feedback-price-elastic-baseline.md">docs/feedback-price-elastic-baseline.md</a>.</div>
+
+<!-- ─────────────────────────────────────────────────────────── -->
+<h2 id="feedbackB"><span class="step">5</span>Feedback B — couple to an external model <span class="pill">new</span></h2>
+<p>Feedback A keeps everything inside the allowance market. Feedback B goes further: it <b>iterates the ETS to a
+joint equilibrium with a separate model</b> — an energy-system dispatch, a CGE, a DSGE — through a thin adapter.
+The ETS stays the specialist allowance-market engine; the wider economy lives behind the adapter. This is a
+<em>programmatic</em> (Python) workflow rather than a single JSON run:</p>
+<pre><code class="lang-python">from ets.coupling import run_coupled_simulation, ElasticityExternalModel
+import json
+
+config = json.load(open("examples/feedback_a_price_elastic_baseline.json"))
+# use just the inelastic scenario as the baseline the external model responds to
+config = {"scenarios": [s for s in config["scenarios"]
+                        if s["name"] == "Fixed Baseline (inelastic)"]}
+
+result = run_coupled_simulation(
+    config,
+    ElasticityExternalModel(elasticity=0.5, reference_price=55.0),  # the reference stand-in model
+    max_iterations=40,
+    tolerance=0.25,      # converge when max |Δprice| ≤ 0.25
+    relaxation=0.5,      # under-relax to damp oscillation
+)
+
+print("converged:", result.converged, "in", result.iterations, "iterations")
+print(result.summary[["Year", "Equilibrium Carbon Price"]])</code></pre>
+<p>Or just run the bundled demo:</p>
+<pre><code>python examples/feedback_b_coupling_demo.py</code></pre>
+<p>The loop solves <code>p = ETS(model.respond(config, p))</code> as a fixed point. Feeding the price back into
+activity drives the same demand destruction as Feedback A — but as an <em>outer loop</em>, and it converges in a
+handful of iterations:</p>
+<div class="scroll"><table>
+  <tr><th>Iteration</th><th>2030 price (being solved)</th></tr>
+  <tr><td>0 · uncoupled baseline</td><td class="n">171.5</td></tr>
+  <tr><td>1</td><td class="n">50.6</td></tr>
+  <tr><td>2</td><td class="n">88.9</td></tr>
+  <tr><td>3</td><td class="n">99.5</td></tr>
+  <tr><td>4 · converged</td><td class="n">99.8</td></tr>
+</table></div>
+<p>Notice the coupled answer (≈78 → 100 across the years) lands close to Feedback A's in-engine result (≈74 → 88)
+— two routes to the same idea. The <code>relaxation</code> factor is what tames the 171 → 51 → 89 → 100 oscillation
+you can see settling above.</p>
+
+<h3>Write your own external model</h3>
+<p>Any object with a <code>respond</code> method is a valid adapter. Swap the reference elasticity model for a real
+one — here, a sketch wrapping an energy-system dispatch:</p>
+<pre><code class="lang-python">import copy
+
+class EnergySystemModel:
+    def respond(self, baseline_config, prices, iteration):
+        cfg = copy.deepcopy(baseline_config)
+        for scenario in cfg["scenarios"]:
+            for year in scenario["years"]:
+                co2_price = prices[(scenario["name"], year["year"])]
+                dispatch = my_energy_model.solve(co2_price=co2_price)   # your model here
+                for p in year["participants"]:
+                    p["initial_emissions"] = dispatch.emissions[p["name"]]
+        return cfg
+
+run_coupled_simulation(config, EnergySystemModel())</code></pre>
+<div class="tip"><b>Why not just embed a CGE/DSGE?</b>Keeping the boundary explicit preserves the tool's
+transparency and lets you reuse a purpose-built, separately-calibrated economy. The adapter contract, the
+under-relaxation maths, and a runnable reference adapter are documented in
+<a href="../feedback-coupling.md">docs/feedback-coupling.md</a>.</div>
+<div class="try"><b>Try it</b>Set <code>relaxation=1.0</code> (undamped) and re-run the demo — with a strong elasticity
+the iteration oscillates and may not settle. Then bring it back to <code>0.5</code> and lower it further to
+<code>0.3</code>: convergence is slower but rock-steady. This is the classic speed-vs-stability trade-off of
+fixed-point coupling.</div>
+
+<!-- ─────────────────────────────────────────────────────────── -->
+<h2 id="next">Where to go next</h2>
+<ul>
+  <li><b>Mechanism references:</b> <a href="../carbon-cap-rule.md">Carbon Cap Rule</a> ·
+      <a href="../feedback-price-elastic-baseline.md">Feedback A</a> ·
+      <a href="../feedback-coupling.md">Feedback B</a></li>
+  <li><b>Every config field:</b> <a href="../data-model.md">docs/data-model.md</a> · the README
+      <em>Config Schema Quick Reference</em></li>
+  <li><b>The maths:</b> <a href="../algorithm-overview.md">docs/algorithm-overview.md</a> (clearing, Hotelling,
+      Nash) · <a href="../mac-abatement.md">docs/mac-abatement.md</a> (cost curves)</li>
+  <li><b>More worked examples:</b> the <code>examples/</code> folder — CBAM, OBA, sector caps, technology
+      switching, multi-jurisdiction, and the feedback scenarios you just ran.</li>
+</ul>
+
+<footer>
+  ETS Clearing Tool · follow-along tutorial. Every number above is reproduced by the matching
+  <code>examples/</code> file. Build, run, tweak, repeat.
+</footer>
+
+</div>
+
+<script>
+  // Add a copy button to every code block. Self-contained, no dependencies.
+  document.querySelectorAll('pre').forEach(function(pre){
+    var btn = document.createElement('button');
+    btn.className = 'copy'; btn.type = 'button'; btn.textContent = 'Copy';
+    btn.addEventListener('click', function(){
+      var text = pre.querySelector('code') ? pre.querySelector('code').innerText : pre.innerText;
+      var done = function(){ btn.textContent = 'Copied'; btn.classList.add('ok');
+        setTimeout(function(){ btn.textContent = 'Copy'; btn.classList.remove('ok'); }, 1400); };
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(done, function(){ fallback(text); done(); });
+      } else { fallback(text); done(); }
+    });
+    pre.appendChild(btn);
+  });
+  function fallback(text){
+    var ta = document.createElement('textarea'); ta.value = text;
+    ta.style.position = 'fixed'; ta.style.opacity = '0'; document.body.appendChild(ta);
+    ta.select(); try { document.execCommand('copy'); } catch(e){} document.body.removeChild(ta);
+  }
+</script>
+</body>
+</html>

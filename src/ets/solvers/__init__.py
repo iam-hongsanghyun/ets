@@ -2,6 +2,7 @@ from .simulation import run_simulation, solve_scenario_path, run_simulation_from
 from .hotelling import solve_hotelling_path
 from .nash import solve_nash_path
 from .msr import MSRState, MSR_DEFAULTS
+from .ccr import CCRState, CCR_DEFAULTS
 from .expectations import (
     ALLOWED_EXPECTATION_RULES,
     ExpectationSpec,
@@ -26,6 +27,8 @@ __all__ = [
     "solve_nash_path",
     "MSRState",
     "MSR_DEFAULTS",
+    "CCRState",
+    "CCR_DEFAULTS",
     "compute_baseline_prices",
     "ALLOWED_EXPECTATION_RULES",
     "ExpectationSpec",

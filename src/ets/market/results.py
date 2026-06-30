@@ -215,6 +215,10 @@ def scenario_summary(
         "MSR Withheld": 0.0,
         "MSR Released": 0.0,
         "MSR Reserve Pool": 0.0,
+        # ── CCR aggregates (filled by simulation.py) ───────────────────
+        "CCR Cap Adjustment": 0.0,
+        "CCR Emissions Deviation": 0.0,
+        "CCR Cost Deviation": 0.0,
     }
     if market.year is not None:
         summary["Year"] = market.year

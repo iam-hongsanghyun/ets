@@ -149,6 +149,7 @@ def normalize_scenario(raw_scenario: dict[str, Any]) -> dict[str, Any]:
         "model_approach": model_approach,
         "discount_rate": _fval("discount_rate", 0.04),
         "risk_premium": _fval("risk_premium", 0.0),
+        "reference_carbon_price": _fval("reference_carbon_price", 0.0),
         "nash_strategic_participants": list(scenario.get("nash_strategic_participants") or []),
         # MSR
         "msr_enabled": bool(scenario.get("msr_enabled", False)),
@@ -158,6 +159,12 @@ def normalize_scenario(raw_scenario: dict[str, Any]) -> dict[str, Any]:
         "msr_release_rate": _fval("msr_release_rate", 50.0),
         "msr_cancel_excess": bool(scenario.get("msr_cancel_excess", False)),
         "msr_cancel_threshold": _fval("msr_cancel_threshold", 400.0),
+        # CCR (Carbon Cap Rule)
+        "ccr_enabled": bool(scenario.get("ccr_enabled", False)),
+        "ccr_phi_emissions": _fval("ccr_phi_emissions", 0.0),
+        "ccr_phi_abatement_cost": _fval("ccr_phi_abatement_cost", 0.0),
+        "ccr_reference_emissions": _fval("ccr_reference_emissions", 0.0),
+        "ccr_reference_abatement_cost": _fval("ccr_reference_abatement_cost", 0.0),
         "solver_competitive_max_iters": int(_fval("solver_competitive_max_iters", 25)),
         "solver_competitive_tolerance": _fval("solver_competitive_tolerance", 0.001),
         "solver_hotelling_max_bisection_iters": int(_fval("solver_hotelling_max_bisection_iters", 80)),
@@ -223,6 +230,7 @@ def build_markets_from_config(config: dict[str, Any]) -> list[CarbonMarket]:
             "model_approach": scenario.get("model_approach", "competitive"),
             "discount_rate": scenario.get("discount_rate", 0.04),
             "risk_premium": scenario.get("risk_premium", 0.0),
+            "reference_carbon_price": scenario.get("reference_carbon_price", 0.0),
             "nash_strategic_participants": scenario.get("nash_strategic_participants", []),
             "free_allocation_trajectories": scenario.get("free_allocation_trajectories", []),
             "cap_trajectory": scenario.get("cap_trajectory", {}),
@@ -237,6 +245,12 @@ def build_markets_from_config(config: dict[str, Any]) -> list[CarbonMarket]:
             "msr_release_rate": scenario.get("msr_release_rate", 50.0),
             "msr_cancel_excess": scenario.get("msr_cancel_excess", False),
             "msr_cancel_threshold": scenario.get("msr_cancel_threshold", 400.0),
+            # CCR
+            "ccr_enabled": scenario.get("ccr_enabled", False),
+            "ccr_phi_emissions": scenario.get("ccr_phi_emissions", 0.0),
+            "ccr_phi_abatement_cost": scenario.get("ccr_phi_abatement_cost", 0.0),
+            "ccr_reference_emissions": scenario.get("ccr_reference_emissions", 0.0),
+            "ccr_reference_abatement_cost": scenario.get("ccr_reference_abatement_cost", 0.0),
             "solver_competitive_max_iters": scenario.get("solver_competitive_max_iters", 25),
             "solver_competitive_tolerance": scenario.get("solver_competitive_tolerance", 0.001),
             "solver_hotelling_max_bisection_iters": scenario.get("solver_hotelling_max_bisection_iters", 80),
@@ -367,6 +381,13 @@ def build_market_from_year(
             updated.append(p)
         participants = updated
 
+    # Option A: stamp the scenario reference carbon price onto each participant
+    # so its price-elastic baseline has an anchor (0 keeps the channel disabled).
+    reference_carbon_price = float(meta.get("reference_carbon_price") or 0.0)
+    if reference_carbon_price > 0.0:
+        for participant in participants:
+            participant.reference_carbon_price = reference_carbon_price
+
     free_allocations = sum(participant.free_allocation for participant in participants)
     reserved_allowances = float(year_config.get("reserved_allowances", 0.0))
     cancelled_allowances = float(year_config.get("cancelled_allowances", 0.0))
@@ -462,6 +483,12 @@ def build_market_from_year(
     market.msr_release_rate = float(meta.get("msr_release_rate") or 50.0)
     market.msr_cancel_excess = bool(meta.get("msr_cancel_excess", False))
     market.msr_cancel_threshold = float(meta.get("msr_cancel_threshold") or 400.0)
+    # Attach CCR settings (Carbon Cap Rule)
+    market.ccr_enabled = bool(meta.get("ccr_enabled", False))
+    market.ccr_phi_emissions = float(meta.get("ccr_phi_emissions") or 0.0)
+    market.ccr_phi_abatement_cost = float(meta.get("ccr_phi_abatement_cost") or 0.0)
+    market.ccr_reference_emissions = float(meta.get("ccr_reference_emissions") or 0.0)
+    market.ccr_reference_abatement_cost = float(meta.get("ccr_reference_abatement_cost") or 0.0)
     # Attach solver settings
     market.solver_competitive_max_iters = int(meta.get("solver_competitive_max_iters") or 25)
     market.solver_competitive_tolerance = float(meta.get("solver_competitive_tolerance") or 0.001)
@@ -532,6 +559,7 @@ def build_participant(participant: dict[str, Any]) -> MarketParticipant:
         scope2_cbam_coverage=float(participant.get("scope2_cbam_coverage") or 0.0),
         production_output=float(participant.get("production_output") or 0.0),
         benchmark_emission_intensity=float(participant.get("benchmark_emission_intensity") or 0.0),
+        output_price_elasticity=float(participant.get("output_price_elasticity") or 0.0),
     )
 
 

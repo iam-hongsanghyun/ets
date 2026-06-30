@@ -58,6 +58,8 @@ function makeBlankParticipant(index = 1) {
     // Output-based allocation (OBA) / benchmark
     production_output: 0,
     benchmark_emission_intensity: 0,
+    // Feedback Option A: price-elastic baseline (ε ≥ 0; 0 = inelastic)
+    output_price_elasticity: 0,
   };
 }
 
@@ -100,6 +102,9 @@ function makeBlankScenario(index = 1) {
     model_approach: "competitive",
     discount_rate: 0.04,
     risk_premium: 0.0,
+    // Feedback Option A: reference carbon price anchoring the price-elastic
+    // baseline (0 disables the channel scenario-wide)
+    reference_carbon_price: 0.0,
     nash_strategic_participants: [],
     free_allocation_trajectories: [],
     sectors: [],
@@ -124,6 +129,12 @@ function makeBlankScenario(index = 1) {
     msr_release_rate: 50,
     msr_cancel_excess: false,
     msr_cancel_threshold: 400,
+    // ── CCR settings (Carbon Cap Rule — Benmir, Roman & Taschini 2025) ─────
+    ccr_enabled: false,
+    ccr_phi_emissions: 0,
+    ccr_phi_abatement_cost: 0,
+    ccr_reference_emissions: 0,
+    ccr_reference_abatement_cost: 0,
     years: [makeBlankYear("2030")],
   };
 }

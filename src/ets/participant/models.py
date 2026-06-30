@@ -109,6 +109,14 @@ class MarketParticipant:
     # free_allocation = benchmark_emission_intensity × production_output (overrides ratio when set)
     production_output: float = 0.0             # units/yr (e.g. Mt steel)
     benchmark_emission_intensity: float = 0.0  # tCO2/unit
+    # ── Option A: price-elastic baseline (within-clearing feedback) ──────────
+    # Carbon-intensive activity (and hence the BAU baseline) contracts as the
+    # carbon price rises above a reference anchor.  output_price_elasticity ε ≥ 0
+    # is the (linearised) price elasticity of activity; reference_carbon_price
+    # P_ref > 0 is the anchor at which activity is undistorted.  ε = 0 OR
+    # P_ref = 0 disables the channel (baseline stays fixed — identical to before).
+    output_price_elasticity: float = 0.0       # ε, dimensionless (≥ 0)
+    reference_carbon_price: float = 0.0        # P_ref, price units (0 disables)
 
     def __post_init__(self) -> None:
         self._validate_state(
@@ -124,6 +132,14 @@ class MarketParticipant:
                     raise ValueError(
                         f"{self.name}: technology_options must contain TechnologyOption instances."
                     )
+        if self.output_price_elasticity < 0:
+            raise ValueError(
+                f"{self.name}: output_price_elasticity must be non-negative."
+            )
+        if self.reference_carbon_price < 0:
+            raise ValueError(
+                f"{self.name}: reference_carbon_price must be non-negative."
+            )
 
     @staticmethod
     def _validate_state(
@@ -153,6 +169,32 @@ class MarketParticipant:
     @property
     def max_abatement(self) -> float:
         return self.initial_emissions * self.max_abatement_share
+
+    def activity_multiplier(self, carbon_price: float) -> float:
+        r"""Price-elastic activity scaling for the BAU baseline (Option A).
+
+        Linearised price response of carbon-intensive activity around the
+        reference price; the baseline emissions, abatement potential, and
+        benchmarked free allocation all scale by this factor.
+
+        Algorithm:
+            LaTeX:  $m(P) = \max\!\left(0,\; 1 - \varepsilon\,
+                    \frac{P - P_\mathrm{ref}}{P_\mathrm{ref}}\right)$
+            ASCII:  m(P) = max(0, 1 - eps * (P - P_ref) / P_ref)
+
+        Symbols:
+            P      : carbon price (price units)
+            P_ref  : reference (undistorted) carbon price; reference_carbon_price
+            eps    : output_price_elasticity ε (dimensionless, ≥ 0)
+
+        Returns 1.0 (no feedback) when ε ≤ 0 or P_ref ≤ 0.  At P = P_ref the
+        multiplier is 1; it falls linearly as P rises and is floored at 0.
+        """
+        eps = self.output_price_elasticity
+        p_ref = self.reference_carbon_price
+        if eps <= 0.0 or p_ref <= 0.0:
+            return 1.0
+        return max(0.0, 1.0 - eps * (carbon_price - p_ref) / p_ref)
 
     # ── Delegate methods — implementation lives in compliance.py / technology.py ──
 

@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from ..msr import MSR_DEFAULTS
+from ..ccr import CCR_DEFAULTS
 
 
 def blank_config() -> dict[str, Any]:
@@ -24,6 +25,9 @@ def blank_scenario() -> dict[str, Any]:
         "model_approach": "competitive",
         "discount_rate": 0.04,
         "risk_premium": 0.0,
+        # Option A: reference (undistorted) carbon price anchoring the
+        # price-elastic baseline. 0 disables the channel for the whole scenario.
+        "reference_carbon_price": 0.0,
         "nash_strategic_participants": [],
         # ── Free-allocation phase-out trajectories ───────────────────────────
         # List of {participant_name, start_year, end_year, start_ratio, end_ratio}
@@ -37,6 +41,8 @@ def blank_scenario() -> dict[str, Any]:
         "sectors": [],
         # ── MSR settings ────────────────────────────────────────────────────
         **MSR_DEFAULTS,
+        # ── CCR settings (Carbon Cap Rule — Benmir, Roman & Taschini 2025) ───
+        **CCR_DEFAULTS,
         # ── Solver / model settings (all user-overridable) ──────────────────
         # Competitive perfect-foresight iteration
         "solver_competitive_max_iters": 25,
@@ -124,6 +130,9 @@ def blank_participant() -> dict[str, Any]:
         # Output-based allocation (OBA) / benchmark
         "production_output": 0.0,              # units/yr (e.g. Mt steel)
         "benchmark_emission_intensity": 0.0,   # tCO2/unit
+        # Option A: price-elastic baseline — activity contracts as the carbon
+        # price rises above the scenario's reference_carbon_price. 0 disables.
+        "output_price_elasticity": 0.0,        # ε ≥ 0 (dimensionless)
     }
 
 

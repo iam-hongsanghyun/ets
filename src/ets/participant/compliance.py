@@ -1,9 +1,31 @@
 from __future__ import annotations
 
+import dataclasses
+
 import numpy as np
 from scipy.optimize import minimize, minimize_scalar
 
 from .models import ComplianceOutcome, MarketParticipant, TechnologyOption
+
+
+def _scale_for_activity(
+    technologies: list[TechnologyOption], multiplier: float
+) -> list[TechnologyOption]:
+    """Scale each technology's baseline emissions by the activity multiplier.
+
+    Because ``max_abatement`` and ``free_allocation`` derive from
+    ``initial_emissions``, scaling it proportionally shrinks (or grows) the whole
+    activity envelope — the Option A price-elastic baseline.  A multiplier of 1.0
+    returns the technologies unchanged.
+    """
+    if multiplier == 1.0:
+        return technologies
+    return [
+        dataclasses.replace(
+            option, initial_emissions=option.initial_emissions * multiplier
+        )
+        for option in technologies
+    ]
 
 
 def _abatement_cost(
@@ -419,6 +441,11 @@ def optimize_compliance(
     slsqp_ftol: float = 1e-9,
 ) -> ComplianceOutcome:
     technologies = participant.technology_options or [_default_technology(participant)]
+    # Option A: contract / expand the baseline with the carbon price before
+    # solving compliance.  No-op when the elasticity channel is disabled.
+    technologies = _scale_for_activity(
+        technologies, participant.activity_multiplier(max(0.0, carbon_price))
+    )
     mixed_enabled = any(
         option.max_activity_share < 1.0 - 1e-9 for option in technologies
     )

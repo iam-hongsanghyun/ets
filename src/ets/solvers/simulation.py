@@ -13,6 +13,7 @@ from .expectations import (
 )
 from ..market import CarbonMarket
 from .msr import MSRState
+from .ccr import CCRState
 from ..config_io import build_markets_from_config, load_config
 
 
@@ -66,15 +67,20 @@ def solve_scenario_path(
                 break
 
     msr_state = MSRState() if getattr(ordered_markets[0], "msr_enabled", False) else None
-    return _simulate_path_details(ordered_markets, expected_prices, msr_state=msr_state)
+    ccr_state = CCRState() if getattr(ordered_markets[0], "ccr_enabled", False) else None
+    return _simulate_path_details(
+        ordered_markets, expected_prices, msr_state=msr_state, ccr_state=ccr_state
+    )
 
 
 def _simulate_realized_prices(
     ordered_markets: list[CarbonMarket],
     expected_prices: dict[str, float],
 ) -> dict[str, float]:
-    # MSR is NOT applied in the inner convergence loop (prices only)
-    details = _simulate_path_details(ordered_markets, expected_prices, msr_state=None)
+    # MSR / CCR are NOT applied in the inner convergence loop (prices only)
+    details = _simulate_path_details(
+        ordered_markets, expected_prices, msr_state=None, ccr_state=None
+    )
     return {
         str(item["market"].year): float(item["equilibrium"]["price"])
         for item in details
@@ -85,6 +91,7 @@ def _simulate_path_details(
     ordered_markets: list[CarbonMarket],
     expected_prices: dict[str, float],
     msr_state: MSRState | None = None,
+    ccr_state: CCRState | None = None,
 ) -> list[dict]:
     bank_balances = {
         participant.name: 0.0 for participant in ordered_markets[0].participants
@@ -100,7 +107,32 @@ def _simulate_path_details(
         msr_withheld = 0.0
         msr_released = 0.0
         msr_pool = 0.0
+        ccr_adjustment = 0.0
+        ccr_emissions_deviation = 0.0
+        ccr_cost_deviation = 0.0
         effective_carry = carry_forward_allowances
+
+        # ── CCR: adjust the per-period cap from lagged emissions / abatement
+        # cost deviations (Benmir, Roman & Taschini 2025).  The adjustment is
+        # injected as additional permit supply so the competitive clearing sees
+        # the rule-adjusted cap Q_t = Qbar + ΔQ_t.
+        if ccr_state is not None and getattr(market, "ccr_enabled", False):
+            ccr_adjustment, ccr_emissions_deviation, ccr_cost_deviation = (
+                ccr_state.cap_adjustment(
+                    phi_emissions=float(getattr(market, "ccr_phi_emissions", 0.0)),
+                    phi_abatement_cost=float(
+                        getattr(market, "ccr_phi_abatement_cost", 0.0)
+                    ),
+                    reference_emissions=float(
+                        getattr(market, "ccr_reference_emissions", 0.0)
+                    ),
+                    reference_abatement_cost=float(
+                        getattr(market, "ccr_reference_abatement_cost", 0.0)
+                    ),
+                    year_label=str(market.year),
+                )
+            )
+            effective_carry += ccr_adjustment
 
         if msr_state is not None and getattr(market, "msr_enabled", False):
             total_bank = sum(bank_balances.values())
@@ -142,8 +174,19 @@ def _simulate_path_details(
                 "msr_withheld": msr_withheld,
                 "msr_released": msr_released,
                 "msr_pool": msr_pool,
+                "ccr_adjustment": ccr_adjustment,
+                "ccr_emissions_deviation": ccr_emissions_deviation,
+                "ccr_cost_deviation": ccr_cost_deviation,
             }
         )
+
+        # ── CCR: record this year's realised aggregates as next year's signal
+        if ccr_state is not None and getattr(market, "ccr_enabled", False):
+            ccr_state.record(
+                emissions=float(participant_df["Residual Emissions"].sum()),
+                abatement_cost=float(participant_df["Abatement Cost"].sum()),
+            )
+
         carry_forward_allowances = (
             float(equilibrium["unsold_allowances"])
             if market.unsold_treatment == "carry_forward"
@@ -180,6 +223,12 @@ def _collect_path_results(
         summary["MSR Withheld"] = float(item.get("msr_withheld", 0.0))
         summary["MSR Released"] = float(item.get("msr_released", 0.0))
         summary["MSR Reserve Pool"] = float(item.get("msr_pool", 0.0))
+        # Patch in CCR stats from the simulation step
+        summary["CCR Cap Adjustment"] = float(item.get("ccr_adjustment", 0.0))
+        summary["CCR Emissions Deviation"] = float(
+            item.get("ccr_emissions_deviation", 0.0)
+        )
+        summary["CCR Cost Deviation"] = float(item.get("ccr_cost_deviation", 0.0))
         scenario_summaries.append(summary)
         participant_frames.append(participant_df)
 

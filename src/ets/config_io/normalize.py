@@ -189,6 +189,17 @@ def normalize_participant(raw_participant: dict[str, Any]) -> dict[str, Any]:
         for j in raw_jurs
         if isinstance(j, dict)
     ]
+    # Option A: price-elastic baseline coefficient (per participant)
+    try:
+        participant["output_price_elasticity"] = float(
+            participant.get("output_price_elasticity") or 0.0
+        )
+    except (TypeError, ValueError):
+        participant["output_price_elasticity"] = 0.0
+    if participant["output_price_elasticity"] < 0.0:
+        raise ValueError(
+            f"Participant '{participant['name']}' output_price_elasticity must be non-negative."
+        )
     participant["sector_group"] = str(participant.get("sector_group") or "")
     try:
         participant["sector_allocation_share"] = float(participant.get("sector_allocation_share") or 0.0)

@@ -74,6 +74,9 @@ cp public/styles.css dist/styles.css
 │                    nash.py        Nash-Cournot best-response iteration   │
 │                    expectations.py expectation rules                    │
 │                    msr.py         Market Stability Reserve state         │
+│                    ccr.py         Carbon Cap Rule adaptive cap state     │
+│  coupling/         loop.py        Option B soft-link fixed-point loop    │
+│                    adapters.py    external-model adapters (Null/Elastic) │
 │  market/           equilibrium.py Brent's method root-finder            │
 │                    results.py     CBAM, Scope 2, sector aggregates      │
 │                    core.py        CarbonMarket dataclass                │
@@ -87,6 +90,7 @@ cp public/styles.css dist/styles.css
 │  costs.py          linear and piecewise MAC factories                   │
 │  expectations.py   shim → solvers/expectations                         │
 │  msr.py            shim → solvers/msr                                  │
+│  ccr.py            shim → solvers/ccr                                  │
 │  config.py         path configuration (EXAMPLES_DIR, etc.)             │
 └──────────────────────────────────────────────────────────────────────────┘
                              │
@@ -112,6 +116,9 @@ cp public/styles.css dist/styles.css
 | `src/ets/solvers/nash.py` | 3 | `solve_nash_path()` — Nash-Cournot best-response iteration |
 | `src/ets/solvers/expectations.py` | 3 | `derive_expected_prices()` — four expectation rules |
 | `src/ets/solvers/msr.py` | 3 | `MSRState` — Market Stability Reserve accumulator |
+| `src/ets/solvers/ccr.py` | 3 | `CCRState` — Carbon Cap Rule adaptive-cap accumulator (Benmir et al. 2025) |
+| `src/ets/coupling/loop.py` | 3 | `run_coupled_simulation()` — Option B ETS↔external-model fixed-point loop |
+| `src/ets/coupling/adapters.py` | 3 | `ExternalModel` protocol + `Null`/`Elasticity` reference adapters |
 | `src/ets/config_io/normalize.py` | config | JSON field normalisation and config-time validation |
 | `src/ets/config_io/builder.py` | config | `build_markets_from_config()` — trajectory application, OBA, sector derivation |
 | `src/ets/config_io/templates.py` | config | Blank config scaffolding |
@@ -203,6 +210,9 @@ Runs competitive, Hotelling, and Nash-Cournot in parallel on the same config and
 | Price floor/ceiling | `price_floor_trajectory`, `price_ceiling_trajectory` | Rising price bounds without per-year repetition |
 | Free allocation phase-out | `free_allocation_trajectories[]` | Per-participant ratio phase-out trajectory |
 | Market Stability Reserve | `msr_enabled: true` | Withhold/release allowances based on aggregate bank |
+| Carbon Cap Rule (CCR) | `ccr_enabled: true` | Taylor-rule adaptive cap responding to emissions & abatement-cost gaps |
+| Price-elastic baseline (feedback A) | `reference_carbon_price`, `output_price_elasticity` | Carbon-intensive activity contracts as the price rises — demand destruction inside clearing |
+| Soft-link coupling (feedback B) | `ets.coupling.run_coupled_simulation` | Iterate the ETS to a joint equilibrium with an external energy/CGE/DSGE model |
 | Piecewise MAC | `abatement_type: "piecewise"`, `mac_blocks[]` | Step-function marginal abatement cost curve |
 | Technology switching | `technology_options[]` | Endogenous technology choice via SLSQP portfolio optimisation |
 | Auction design | `auction_reserve_price`, `minimum_bid_coverage` | Reserve price and minimum coverage rules |
@@ -211,6 +221,28 @@ Runs competitive, Hotelling, and Nash-Cournot in parallel on the same config and
 | CSV import | `POST /api/import-csv` | CSV table to ETS config JSON |
 | Narrative summary | `POST /api/narrative` | Rule-based plain-language interpretation |
 | Auction revenue tracker | auto-computed | Domestic retained, CBAM foregone, potential if KAU=EUA |
+
+---
+
+## Partial equilibrium & economic closure
+
+The engine is a **dynamic partial-equilibrium model of the allowance market**: it
+clears one market (permits) where net demand = supply, taking activity, energy
+prices, and macro conditions as exogenous inputs. Two feedback options progressively
+relax that closure boundary:
+
+- **Option A — price-elastic baseline** (in-engine): carbon-intensive activity
+  responds to the carbon price *within* clearing, so price and activity are solved
+  jointly. Reduced-form, own-price; stays partial equilibrium.
+  See [`docs/feedback-price-elastic-baseline.md`](docs/feedback-price-elastic-baseline.md).
+- **Option B — soft-link coupling** (outer loop): iterate the ETS to a joint
+  equilibrium with a purpose-built external model (energy-system / CGE / DSGE) via
+  a pluggable adapter — general-equilibrium feedback without embedding a GE model.
+  See [`docs/feedback-coupling.md`](docs/feedback-coupling.md).
+
+New to the tool? The follow-along HTML guide
+[`docs/tutorials/build-your-first-scenario.html`](docs/tutorials/build-your-first-scenario.html)
+walks you through building a scenario for every approach.
 
 ---
 
@@ -224,6 +256,7 @@ Runs competitive, Hotelling, and Nash-Cournot in parallel on the same config and
 | `model_approach` | `"competitive"` \| `"hotelling"` \| `"nash_cournot"` \| `"all"` | `"competitive"` | Price-formation mechanism |
 | `discount_rate` | float | `0.04` | Annual discount rate `r` for Hotelling formula |
 | `risk_premium` | float | `0.0` | Policy risk premium `ρ` added to `r` in Hotelling formula |
+| `reference_carbon_price` | float ≥ 0 | `0.0` | Feedback A: price anchor P_ref for the price-elastic baseline; `0` disables the channel |
 | `nash_strategic_participants` | string[] | `[]` | Participant names treated as strategic in Nash-Cournot |
 | `msr_enabled` | bool | `false` | Enable Market Stability Reserve |
 | `msr_upper_threshold` | float | `200.0` | Bank (Mt) above which withholding fires |
@@ -232,6 +265,11 @@ Runs competitive, Hotelling, and Nash-Cournot in parallel on the same config and
 | `msr_release_rate` | float | `50.0` | Mt released per year from reserve |
 | `msr_cancel_excess` | bool | `false` | Permanently cancel pool above `msr_cancel_threshold` |
 | `msr_cancel_threshold` | float | `400.0` | Pool level (Mt) above which excess is cancelled |
+| `ccr_enabled` | bool | `false` | Enable Carbon Cap Rule (adaptive cap) |
+| `ccr_phi_emissions` | float | `0.0` | φ_e — Mt cap change per unit emissions gap (negative tightens on overshoot) |
+| `ccr_phi_abatement_cost` | float | `0.0` | φ_z — Mt cap change per unit abatement-cost gap (positive loosens when costs run hot) |
+| `ccr_reference_emissions` | float | `0.0` | ē — reference emissions (Mt); `0` disables the emissions term |
+| `ccr_reference_abatement_cost` | float | `0.0` | z̄ — reference abatement cost; `0` disables the cost term |
 | `cap_trajectory` | object | `{}` | Scenario-wide linearly declining total cap |
 | `price_floor_trajectory` | object | `{}` | Linearly rising price floor |
 | `price_ceiling_trajectory` | object | `{}` | Linearly rising price ceiling |
@@ -283,6 +321,7 @@ Runs competitive, Hotelling, and Nash-Cournot in parallel on the same config and
 | `mac_blocks` | array | `[]` | Piecewise MAC blocks (sorted by marginal_cost) |
 | `production_output` | float ≥ 0 | `0.0` | Annual physical output (Mt product/yr) |
 | `benchmark_emission_intensity` | float ≥ 0 | `0.0` | OBA benchmark (tCO₂/unit product) |
+| `output_price_elasticity` | float ≥ 0 | `0.0` | Feedback A: price elasticity of activity ε; baseline contracts as price exceeds `reference_carbon_price` |
 | `cbam_export_share` | float [0,1] | `0.0` | Fraction exported to single CBAM market |
 | `cbam_coverage_ratio` | float [0,1] | `1.0` | Fraction of exports within CBAM scope |
 | `cbam_jurisdictions` | array | `[]` | Multi-jurisdiction CBAM list |
@@ -465,6 +504,7 @@ Click **Run Simulation**. The output panels show:
 | `Total Auction Revenue` | `P* × auction_sold` (₩M) |
 | `Total Banked / Borrowed Allowances` | System-wide bank dynamics (Mt) |
 | `MSR Withheld / Released / Reserve Pool` | MSR state when enabled (Mt) |
+| `CCR Cap Adjustment / Emissions Deviation / Cost Deviation` | Carbon Cap Rule state when enabled (Mt / fraction) |
 | `Total CBAM Liability` | System-wide border adjustment (₩M) |
 | `Domestic Retained Revenue` | Auction revenue remaining in Korea (₩M) |
 | `CBAM Foregone Revenue` | CBAM that flows to EU rather than Korea (₩M) |
@@ -482,6 +522,10 @@ Click **Run Simulation**. The output panels show:
 | `docs/data-model.md` | Every config field — type, default, validation, example |
 | `docs/multi-year-simulation.md` | Banking, borrowing, expectation rules, BAU trajectory, grid factor trajectory, sector dynamics, auction revenue decomposition |
 | `docs/oba-allocation.md` | Output-Based Allocation concept, formula, override hierarchy, worked steel example |
+| `docs/carbon-cap-rule.md` | Carbon Cap Rule (Benmir, Roman & Taschini 2025) — adaptive Taylor-rule cap, formula, config, worked example |
+| `docs/feedback-price-elastic-baseline.md` | Feedback Option A — price-elastic baseline (within-clearing demand destruction), formula, config, worked example |
+| `docs/feedback-coupling.md` | Feedback Option B — soft-link coupling loop, adapter contract, writing your own external model |
+| `docs/tutorials/build-your-first-scenario.html` | Follow-along HTML tutorial — build example scenarios for every approach (base PE, MSR, CCR, feedback A & B) |
 | `docs/sector-config.md` | Sector-level caps, auction share derivation, per-participant allocation from sector pool, worked two-participant example |
 | `docs/analysis-tools.md` | Calibration, batch runner, CSV import, narrative — APIs, request/response schemas, algorithms |
 | `docs/mac-abatement.md` | Linear, piecewise, and threshold MAC models with cost derivations |
