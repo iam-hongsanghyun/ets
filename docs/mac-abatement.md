@@ -170,6 +170,40 @@ At carbon price P:
 - Block 2 ($55): Fuel switching, process optimisation
 - Block 3 ($110): CCS, deep structural change
 
+**Negative-cost ("no-regret") blocks:** A block's `marginal_cost` **may be negative** —
+real MACC curves begin below the axis with measures that save money net of the
+carbon price (efficiency upgrades that pay for themselves). Only `amount` must be
+non-negative; the non-decreasing-cost ordering still applies, so negative-cost
+blocks naturally sort **first**.
+
+```
+mac_blocks = [
+    {"amount": 5,  "marginal_cost": -40},   # no-regret: net-saving measure
+    {"amount": 8,  "marginal_cost":  35},
+    {"amount": 6,  "marginal_cost": 120},
+]
+```
+
+Because the firm takes any block whose `marginal_cost ≤ carbon_price`, a
+negative-cost block is undertaken **even at a zero carbon price** — it is
+profitable on its own. Its contribution to total abatement cost is *negative* (a
+saving): `used × marginal_cost < 0`. This is the correct economics for no-regret
+options and is exactly how the bundled K-ETS Outlook example
+(`examples/climate_solutions_k_ets_outlook.json`) encodes its cheapest measures.
+
+```
+$/t
+  120 ├───────────────────┤  Block 3: 6 Mt @ +120
+      │                   │
+   35 ├──────────┤        │  Block 2: 8 Mt @  +35
+   0 ─┼──────────┼────────┼──→ cumulative abatement (Mt)
+  −40 ├────┤     5       13      19   Block 1: 5 Mt @ −40 (taken at any price ≥ −40)
+```
+
+> Validation: `amount < 0` is still rejected; `marginal_cost < previous_cost`
+> (out-of-order) is still rejected. Only the old "marginal_cost must be
+> non-negative" rule was relaxed (in both `config_io/normalize.py` and `costs.py`).
+
 ---
 
 ### Model 3: Threshold

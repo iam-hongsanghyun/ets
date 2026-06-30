@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ETS Tool — Practitioner Training</title>
+<style>
+  :root{--bg:#0f1714;--panel:#15201c;--card:#18231f;--ink:#e8efe9;--muted:#9fb3a8;--line:#26352f;
+    --accent:#3fae84;--accent2:#5ec6f2;--warn:#e0a13c;--code:#0c1411;--maxw:980px}
+  *{box-sizing:border-box} html{scroll-behavior:smooth}
+  body{margin:0;background:linear-gradient(180deg,#0d1512,#0f1714 280px);color:var(--ink);
+    font:16px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:var(--maxw);margin:0 auto;padding:0 20px 100px}
+  header.hero{padding:60px 20px 40px;text-align:center;border-bottom:1px solid var(--line);
+    background:radial-gradient(120% 150% at 50% 0%,rgba(63,174,132,.16),transparent 62%)}
+  .eyebrow{letter-spacing:.18em;text-transform:uppercase;font-size:12px;color:var(--accent);font-weight:700}
+  h1{font-size:36px;line-height:1.12;margin:.35em 0 .25em}
+  .lede{color:var(--muted);font-size:18px;max-width:680px;margin:0 auto}
+  a{color:var(--accent2);text-decoration:none} a:hover{text-decoration:underline}
+  code{font-family:"SF Mono","JetBrains Mono",Menlo,Consolas,monospace;font-size:.9em;background:#11201a;border:1px solid var(--line);border-radius:5px;padding:.06em .36em;color:#bfe7d3}
+  pre{position:relative;background:var(--code);border:1px solid var(--line);border-radius:11px;padding:16px;overflow:auto;margin:.7em 0}
+  pre code{background:none;border:none;padding:0;color:#d7e7df;font-size:13px;line-height:1.5}
+  .copy{position:absolute;top:9px;right:9px;font:600 10.5px/1 inherit;letter-spacing:.04em;background:#1d2e27;border:1px solid var(--line);color:var(--muted);border-radius:6px;padding:5px 8px;cursor:pointer;text-transform:uppercase}
+  .copy:hover{color:var(--ink);border-color:var(--accent)} .copy.ok{color:var(--accent);border-color:var(--accent)}
+  h2{font-size:26px;margin:0 0 .3em} h3{font-size:18px;margin:1.4em 0 .35em;color:#d6e6dc}
+  table{border-collapse:collapse;width:100%;margin:.7em 0;font-size:14px} .scroll{overflow-x:auto}
+  th,td{border:1px solid var(--line);padding:8px 11px;text-align:left;vertical-align:top}
+  th{background:#16241e;color:#cfe3d8;font-weight:600}
+  .obj,.brief,.note,.exercise{border-radius:12px;padding:15px 18px;margin:1em 0;border:1px solid var(--line)}
+  .obj{background:#11211d;border-left:4px solid var(--accent)}
+  .brief{background:#13201b}
+  .note{background:#1b1d24;border-left:4px solid var(--accent2)}
+  .exercise{background:#1d1a10;border-left:4px solid var(--warn)}
+  .obj b,.note b,.exercise b,.brief b{display:block;margin-bottom:.3em;letter-spacing:.02em}
+  .obj b{color:var(--accent)} .note b{color:var(--accent2)} .exercise b{color:var(--warn)} .brief b{color:#cfe3d8}
+  .obj ul,.exercise ul{margin:.2em 0;padding-left:1.2em} li{margin:.22em 0}
+  nav.toc{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:20px 24px;margin:30px 0}
+  nav.toc ol{margin:.3em 0 0;padding-left:1.4em} nav.toc li{margin:.3em 0}
+  .module{background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:8px 26px 24px;margin:36px 0;scroll-margin-top:14px}
+  .module>.mhead{display:flex;align-items:center;gap:14px;margin:20px 0 4px;flex-wrap:wrap}
+  .mnum{flex:0 0 auto;width:42px;height:42px;border-radius:12px;background:var(--accent);color:#04130c;font-weight:800;font-size:20px;display:flex;align-items:center;justify-content:center}
+  .persona{font-size:12px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--accent);background:#12211b;border:1px solid var(--line);border-radius:999px;padding:3px 11px}
+  .feat{display:inline-block;font-size:12px;color:var(--accent2);border:1px solid var(--line);background:#101c22;border-radius:6px;padding:2px 8px;margin:2px 4px 2px 0}
+  .feats{margin:.4em 0 .2em}
+  .step{font-weight:700;color:var(--accent);margin-top:1.1em}
+  .matrix td.y{color:var(--accent);text-align:center;font-weight:700} .matrix td.dim{color:#3a4a43;text-align:center}
+  footer{margin-top:60px;padding-top:22px;border-top:1px solid var(--line);color:var(--muted);font-size:14px}
+  .crumbs{font-size:14px;color:var(--muted);margin-top:18px}
+  @media (max-width:600px){h1{font-size:28px}.module{padding:8px 16px 18px}}
+</style>
+</head>
+<body>
+<header class="hero">
+  <div class="eyebrow">ETS Clearing Tool · Practitioner Training</div>
+  <h1>Using the ETS Tool for Real Decisions</h1>
+  <p class="lede">A trainer-led course for the people who will actually use this model — compliance,
+  policy, trading, strategy, and analysis teams. Organised by the job you're doing, not by the menu.</p>
+</header>
+<div class="wrap">
+
+<!-- ─────────── WHAT THIS TRAINING ACHIEVES ─────────── -->
+<h2 style="margin-top:40px">What this training achieves</h2>
+<p>Most documentation explains <em>features</em>. This course explains <em>decisions</em>. By the end you
+will be able to take a real question from your desk — "what will compliance cost us?", "will this cap
+design calm the price?", "when does fuel-switching pay off?" — and turn it into a scenario the tool can
+answer, then read the answer correctly and defend it.</p>
+
+<div class="obj">
+  <b>Who this is for</b>
+  We teach to five practitioner roles. Pick the modules that match your job; the matrix at the end maps
+  every feature to the roles that use it.
+  <ul>
+    <li><b>Compliance &amp; carbon managers</b> at regulated firms — cost forecasting, banking, border exposure.</li>
+    <li><b>Policy analysts &amp; regulators</b> — cap design, market stabilisers, auction revenue.</li>
+    <li><b>Market analysts &amp; traders</b> — price-path outlook, banking dynamics, market power.</li>
+    <li><b>Corporate strategy &amp; transition planners</b> — abatement economics, technology choice, benchmarking.</li>
+    <li><b>Quantitative &amp; research analysts</b> — economic feedback, model coupling, calibration, sensitivity.</li>
+  </ul>
+</div>
+
+<div class="obj">
+  <b>Learning outcomes</b>
+  <ul>
+    <li>Frame a business question as a scenario: cap, supply, participants, behaviour.</li>
+    <li>Choose the right features for the question — and know which assumptions you are buying.</li>
+    <li>Run a scenario and read the output columns that matter for your decision.</li>
+    <li>Compare designs (policy vs policy, approach vs approach) and quantify the trade-off.</li>
+    <li>Know the model's boundary — what it does <em>not</em> tell you — so you don't over-claim.</li>
+  </ul>
+</div>
+
+<div class="note">
+  <b>How to use this course</b>
+  Each module is a self-contained ~15-minute unit: a <em>brief</em> (the situation), the <em>questions</em>
+  you must answer, the <em>features</em> in play, a <em>build</em> you run yourself, how to <em>read</em> the
+  result, and a <em>your-turn</em> exercise. Every config maps to a file in <code>examples/</code>, so you can
+  open the full scenario and tinker. Prerequisite: skim the
+  <a href="build-your-first-scenario.html">walkthrough</a> so you know how to run a scenario
+  (<code>python ets_framework.py --config &lt;file&gt;.json</code>). Keep the
+  <a href="scenario-cookbook.html">cookbook</a> open as a feature reference.
+</div>
+
+<div class="brief">
+  <b>One thing to internalise first</b>
+  This is a <em>partial-equilibrium model of the allowance market</em>: it solves the carbon price where
+  demand meets supply, holding the wider economy fixed. That makes it fast, transparent, and honest about
+  the carbon market — but output prices, GDP, and energy demand are inputs, not results, unless you switch
+  on the feedback channels in Module 5. Whenever you present a number, know which side of that line it sits on.
+</div>
+
+<nav class="toc">
+  <strong>Modules</strong>
+  <ol>
+    <li><a href="#m1">Compliance &amp; cost planning</a> — <span class="muted">regulated firm</span></li>
+    <li><a href="#m2">Policy design &amp; price stability</a> — <span class="muted">regulator</span></li>
+    <li><a href="#m3">Price outlook &amp; trading</a> — <span class="muted">market analyst</span></li>
+    <li><a href="#m4">Transition &amp; technology investment</a> — <span class="muted">corporate strategy</span></li>
+    <li><a href="#m5">Economic feedback &amp; scenario analysis</a> — <span class="muted">senior analyst</span></li>
+    <li><a href="#m6">Calibration &amp; sensitivity</a> — <span class="muted">quant / research</span></li>
+    <li><a href="#matrix">Feature × use-case matrix</a> &amp; <a href="#path">learning paths</a></li>
+  </ol>
+</nav>
+
+<!-- ═══════════ MODULE 1 ═══════════ -->
+<section class="module" id="m1">
+  <div class="mhead"><div class="mnum">1</div><h2>Compliance &amp; cost planning</h2><span class="persona">Regulated firm</span></div>
+  <div class="brief"><b>The brief</b>You run carbon compliance for a steel plant inside a tightening cap. Finance
+  wants a five-year cost forecast and a recommendation: do we bank allowances now while they're cheap, and
+  how exposed are we if a border tariff (CBAM) lands on our exports?</div>
+
+  <p><b>Questions you must answer:</b> What's our annual compliance cost as the cap declines? Is it cheaper
+  to abate, buy, or bank? What does CBAM add?</p>
+  <div class="feats"><b>Features:</b>
+    <span class="feat">MAC curves</span><span class="feat">free allocation</span>
+    <span class="feat">banking / borrowing</span><span class="feat">expectation_rule</span><span class="feat">CBAM</span></div>
+
+  <p class="step">Step 1 — Build the firm and the cap path.</p>
+  <p>Give the plant a MAC curve and a declining cap, with banking allowed so it can pre-buy. A rising
+  <code>expectation_rule</code> signal is what makes banking rational.</p>
+  <pre><code class="lang-json">"banking_allowed": true,
+"expectation_rule": "perfect_foresight",
+"participants": [
+  {"name": "Steel", "initial_emissions": 180, "free_allocation_ratio": 0.5,
+   "penalty_price": 300, "abatement_type": "linear", "max_abatement": 54, "cost_slope": 2.6}
+]</code></pre>
+
+  <p class="step">Step 2 — Add border exposure.</p>
+  <pre><code class="lang-json">"eua_price": 95.0,            // reference (export-market) carbon price, per year
+"cbam_export_share": 0.35,    // 35% of output exported into the CBAM zone
+"cbam_coverage_ratio": 1.0</code></pre>
+
+  <p class="step">Step 3 — Run a representative scenario and read the cost.</p>
+  <pre><code>python ets_framework.py --config examples/climate_solutions_banking_borrowing.json</code></pre>
+
+  <h3>How to read it</h3>
+  <div class="scroll"><table>
+    <tr><th>Column</th><th>What it tells finance</th></tr>
+    <tr><td><code>Total Compliance Cost</code></td><td>The headline number — abatement + allowance purchases + penalties − sales.</td></tr>
+    <tr><td><code>Abatement</code> vs <code>Allowance Buys</code></td><td>How much of compliance is "do it ourselves" vs "buy from the market".</td></tr>
+    <tr><td><code>Banked Allowances</code> / <code>Ending Bank Balance</code></td><td>Whether pre-buying is optimal at the expected price path.</td></tr>
+    <tr><td><code>Total CBAM Liability</code></td><td>The extra owed on exports — money that leaves with the goods.</td></tr>
+  </table></div>
+
+  <div class="note"><b>Instructor note</b>The firm banks only when the model expects a higher future price
+  (<code>expected_future_price &gt; current</code>). If banking shows zero, your price path isn't rising
+  fast enough to justify it — that's a finding, not a bug.</div>
+  <div class="exercise"><b>Your turn</b>Halve <code>free_allocation_ratio</code> to 0.25 (a phase-out) and
+  re-run. How much does <code>Total Compliance Cost</code> rise, and does the firm now abate more or buy more?
+  Then set <code>cbam_export_share</code> to 0 — how much of the cost was border exposure?</div>
+</section>
+
+<!-- ═══════════ MODULE 2 ═══════════ -->
+<section class="module" id="m2">
+  <div class="mhead"><div class="mnum">2</div><h2>Policy design &amp; price stability</h2><span class="persona">Regulator</span></div>
+  <div class="brief"><b>The brief</b>You're designing the next ETS phase. The cap must decline to hit a target,
+  but the last phase saw violent price swings that scared off investment. You need a cap pathway and a
+  stabiliser — and you must show the Treasury what happens to auction revenue.</div>
+
+  <p><b>Questions:</b> What declining cap hits the target? Does a Market Stability Reserve or a Carbon Cap
+  Rule calm the price more? What's the revenue, and how much leaks abroad via CBAM?</p>
+  <div class="feats"><b>Features:</b>
+    <span class="feat">cap_trajectory</span><span class="feat">MSR</span><span class="feat">CCR</span>
+    <span class="feat">auction revenue</span><span class="feat">price floor/ceiling</span></div>
+
+  <p class="step">Step 1 — Set the cap pathway once (not per year).</p>
+  <pre><code class="lang-json">"cap_trajectory": {"start_year": "2026", "end_year": "2035", "start_value": 500, "end_value": 300}</code></pre>
+
+  <p class="step">Step 2 — Compare two stabilisers on the same market.</p>
+  <p>Quantity valve (MSR) vs adaptive cap (CCR). Run each against a fixed-cap baseline:</p>
+  <pre><code>python ets_framework.py --config examples/climate_solutions_msr_stability.json   # MSR on vs off
+python ets_framework.py --config examples/benmir_ccr_carbon_cap_rule.json        # CCR vs fixed</code></pre>
+
+  <h3>How to read it</h3>
+  <div class="scroll"><table>
+    <tr><th>Signal</th><th>Decision use</th></tr>
+    <tr><td>Std-dev of <code>Equilibrium Carbon Price</code> across years</td><td>Your stability metric. The CCR example cuts it ~27% vs a fixed cap; compare to the MSR run.</td></tr>
+    <tr><td><code>MSR Withheld / Released / Reserve Pool</code></td><td>How aggressively the reserve is intervening.</td></tr>
+    <tr><td><code>CCR Cap Adjustment</code> / <code>Cost Deviation</code></td><td>Where the adaptive cap loosened (costs hot) or tightened (emissions high).</td></tr>
+    <tr><td><code>Total Auction Revenue</code>, <code>CBAM Foregone Revenue</code></td><td>The Treasury view — domestic take vs revenue lost across the border.</td></tr>
+  </table></div>
+
+  <div class="note"><b>Instructor note</b>MSR acts on the <em>banked surplus</em> (a stock); CCR acts on
+  <em>emissions and abatement-cost gaps</em> (flows), one year lagged. They answer different worries —
+  surplus overhang vs cost-shock volatility. Reach for the
+  <a href="../carbon-cap-rule.md">CCR doc</a> and <a href="../multi-year-simulation.md">MSR doc</a> before recommending one.</div>
+  <div class="exercise"><b>Your turn</b>In the CCR example, set <code>ccr_phi_abatement_cost</code> to 0 (respond
+  to emissions only) and re-run. How much of the volatility reduction did the cost term provide? That number is
+  your argument for or against a cost-responsive cap.</div>
+</section>
+
+<!-- ═══════════ MODULE 3 ═══════════ -->
+<section class="module" id="m3">
+  <div class="mhead"><div class="mnum">3</div><h2>Price outlook &amp; trading</h2><span class="persona">Market analyst</span></div>
+  <div class="brief"><b>The brief</b>Your desk needs a defensible price-path view for the next decade. You also
+  worry that one or two dominant emitters could move the market. You want to see how much the <em>assumption</em>
+  about how prices form changes your outlook.</div>
+
+  <p><b>Questions:</b> What shape is the price path under intertemporal optimisation? What if banking is
+  Hotelling-style? What if a big player exercises market power? How different are the answers?</p>
+  <div class="feats"><b>Features:</b>
+    <span class="feat">expectation_rule</span><span class="feat">Hotelling</span>
+    <span class="feat">Nash–Cournot</span><span class="feat">model_approach: all</span></div>
+
+  <p class="step">Step 1 — Pick the price-formation lens.</p>
+  <pre><code class="lang-json">// intertemporal arbitrage: price rises at the discount (+ risk) rate
+"model_approach": "hotelling", "discount_rate": 0.055, "risk_premium": 0.0,
+// strategic withholding by a dominant player:
+"model_approach": "nash_cournot", "nash_strategic_participants": ["Power"]</code></pre>
+
+  <p class="step">Step 2 — Run all three lenses at once and compare.</p>
+  <pre><code class="lang-json">"model_approach": "all"   // emits [Competitive], [Hotelling], [Nash-Cournot] result sets</code></pre>
+
+  <h3>How to read it</h3>
+  <ul>
+    <li><b>Competitive</b> — the price-taker benchmark; your central case.</li>
+    <li><b>Hotelling</b> — a smoothly rising path tied to the discount rate; needs a <code>carbon_budget</code>. Use when banking dominates.</li>
+    <li><b>Nash–Cournot</b> — the strategic firm abates less and lifts the price; the gap to competitive is the market-power premium.</li>
+  </ul>
+  <div class="note"><b>Instructor note</b>The spread across the three approaches <em>is</em> your model-risk band.
+  If the trade thesis only works under one approach, say so explicitly. A Nash run may log a non-convergence
+  warning — treat that result as indicative, not precise.</div>
+  <div class="exercise"><b>Your turn</b>Take any banking example, set <code>model_approach: "all"</code>, and tabulate
+  the three price paths. Which assumption matters most for <em>your</em> market — and why?</div>
+</section>
+
+<!-- ═══════════ MODULE 4 ═══════════ -->
+<section class="module" id="m4">
+  <div class="mhead"><div class="mnum">4</div><h2>Transition &amp; technology investment</h2><span class="persona">Corporate strategy</span></div>
+  <div class="brief"><b>The brief</b>You advise a cement group on its decarbonisation roadmap. At what carbon
+  price does each lever — efficiency, fuel switch, CCS — become economic? Some efficiency upgrades pay for
+  themselves today. And under output-based allocation, how much free allocation does the benchmark grant?</div>
+
+  <p><b>Questions:</b> Which abatement levers, in what order, at what price? Which are "no-regret" today?
+  How does benchmarked allocation change the picture?</p>
+  <div class="feats"><b>Features:</b>
+    <span class="feat">piecewise MAC</span><span class="feat">negative-cost blocks</span>
+    <span class="feat">technology switching</span><span class="feat">OBA benchmark</span></div>
+
+  <p class="step">Step 1 — Encode the abatement levers as a MAC stack (no-regret first).</p>
+  <pre><code class="lang-json">"abatement_type": "piecewise",
+"mac_blocks": [
+  {"amount": 5,  "marginal_cost": -40},   // efficiency: net-saving, do it now
+  {"amount": 8,  "marginal_cost":  35},   // fuel switch
+  {"amount": 6,  "marginal_cost": 120}    // CCS: only at a high price
+]</code></pre>
+
+  <p class="step">Step 2 — Or let the model choose between whole technologies.</p>
+  <pre><code>python ets_framework.py --config examples/climate_solutions_technology_switching.json</code></pre>
+
+  <p class="step">Step 3 — Add benchmarked free allocation (OBA).</p>
+  <pre><code>python ets_framework.py --config examples/k_ets_oba_benchmark.json</code></pre>
+
+  <h3>How to read it</h3>
+  <div class="scroll"><table>
+    <tr><th>Column</th><th>Strategy read</th></tr>
+    <tr><td><code>Abatement</code> at each price</td><td>The investment trigger price for each lever (block crossed).</td></tr>
+    <tr><td><code>Chosen Technology</code> / <code>Technology Mix</code></td><td>The least-cost technology portfolio at the prevailing price.</td></tr>
+    <tr><td><code>Free Allocation</code></td><td>Under OBA = intensity × output; below benchmark ⇒ you're a net seller.</td></tr>
+  </table></div>
+
+  <div class="note"><b>Instructor note</b>Negative-cost blocks are taken even at a zero carbon price — they're
+  profitable on their own. The roadmap is: do those immediately, then watch for the price to cross each higher
+  block. See <a href="../mac-abatement.md">the MAC doc</a> for how the curve maps to real measures.</div>
+  <div class="exercise"><b>Your turn</b>Move the CCS block from <code>120</code> to <code>80</code> (a cost
+  breakthrough). At what scenario price does the firm now adopt CCS, and how much does total abatement jump?</div>
+</section>
+
+<!-- ═══════════ MODULE 5 ═══════════ -->
+<section class="module" id="m5">
+  <div class="mhead"><div class="mnum">5</div><h2>Economic feedback &amp; scenario analysis</h2><span class="persona">Senior analyst</span></div>
+  <div class="brief"><b>The brief</b>Leadership wants a Base / Middle / Ideal outlook to 2040 and is sceptical
+  of "runaway price" headlines. You need to show what happens when firms can <em>cut output</em> in response to
+  price (not just abate), and — for the research note — couple the carbon price to an energy-system view.</div>
+
+  <p><b>Questions:</b> Does letting activity respond cap the price? What's the multi-scenario spread? How do I
+  close the loop with an external model without rebuilding one here?</p>
+  <div class="feats"><b>Features:</b>
+    <span class="feat">feedback A: price-elastic baseline</span><span class="feat">feedback B: coupling</span>
+    <span class="feat">multi-scenario</span><span class="feat">K-ETS Outlook</span></div>
+
+  <p class="step">Step 1 — Switch on demand destruction (feedback A).</p>
+  <pre><code class="lang-json">"reference_carbon_price": 55.0,         // scenario anchor
+// per participant:
+"output_price_elasticity": 0.5          // activity contracts as price rises above the anchor</code></pre>
+  <pre><code>python ets_framework.py --config examples/feedback_a_price_elastic_baseline.json</code></pre>
+
+  <p class="step">Step 2 — A real multi-scenario outlook.</p>
+  <pre><code>python ets_framework.py --config examples/climate_solutions_k_ets_outlook.json   # Base / Middle / Ideal</code></pre>
+
+  <p class="step">Step 3 — Close the loop with an external model (feedback B, Python).</p>
+  <pre><code class="lang-python">from ets.coupling import run_coupled_simulation, ElasticityExternalModel
+result = run_coupled_simulation(config,
+    ElasticityExternalModel(elasticity=0.5, reference_price=55.0),
+    max_iterations=40, tolerance=0.25, relaxation=0.5)
+print(result.converged, result.iterations)   # swap in your own model via .respond()</code></pre>
+
+  <h3>How to read it</h3>
+  <ul>
+    <li>Compare the elastic vs inelastic price path — the gap is the "demand destruction" cushion against price spikes.</li>
+    <li>In the elastic run, the per-firm <code>Initial Emissions</code> column shows the <em>price-scaled</em> activity.</li>
+    <li>For coupling, watch <code>result.price_history</code> converge; the loop solves the joint ETS↔economy equilibrium.</li>
+  </ul>
+  <div class="note"><b>Instructor note · know the boundary</b>Feedback A is reduced-form, own-price — still
+  partial equilibrium. Real cross-sector and macro effects need a real model behind feedback B's adapter. Don't
+  present a feedback-A run as general-equilibrium. See <a href="../feedback-price-elastic-baseline.md">feedback A</a>
+  and <a href="../feedback-coupling.md">feedback B</a>.</div>
+  <div class="exercise"><b>Your turn</b>In the feedback-A example, raise <code>output_price_elasticity</code>
+  from 0.5 to 1.0. How much further does the 2030 price fall, and how much does activity (the scaled
+  <code>Initial Emissions</code>) contract? Where does the response saturate?</div>
+</section>
+
+<!-- ═══════════ MODULE 6 ═══════════ -->
+<section class="module" id="m6">
+  <div class="mhead"><div class="mnum">6</div><h2>Calibration &amp; sensitivity</h2><span class="persona">Quant / research</span></div>
+  <div class="brief"><b>The brief</b>Before anyone trusts the model, it must reproduce history. You have an
+  observed price series and need to fit the firms' abatement costs to it — then stress the result across a grid
+  of assumptions for the committee.</div>
+
+  <p><b>Questions:</b> What MAC slopes reproduce the observed prices? How sensitive are outcomes to the
+  reference price, the cap, or an elasticity? Where are the cliffs?</p>
+  <div class="feats"><b>Features:</b>
+    <span class="feat">/api/calibrate</span><span class="feat">/api/batch-run</span></div>
+
+  <p class="step">Step 1 — Calibrate MAC slopes to observed prices (Nelder–Mead).</p>
+  <pre><code>POST /api/calibrate
+{ "config": {…}, "observed_prices": {"2021": 33, "2022": 81, …},
+  "participant_names": ["Power", "Steel"] }
+# template payload: examples/k_ets_calibration_request.json</code></pre>
+
+  <p class="step">Step 2 — Sweep the assumptions you can't pin down.</p>
+  <pre><code>POST /api/batch-run
+{ "config": {…},
+  "sweeps": [ {"path": "…eua_price", "values": [70, 90, 110]},
+              {"path": "…total_cap", "values": [450, 400, 350]} ] }
+# template payload: examples/k_ets_batch_eua_sweep.json</code></pre>
+
+  <h3>How to read it</h3>
+  <ul>
+    <li><b>Calibration</b> returns the fitted <code>cost_slope</code> per named firm and a residual error — your goodness-of-fit.</li>
+    <li><b>Batch run</b> returns one result row per parameter combination — plot price/abatement across the grid to find thresholds and non-linearities.</li>
+  </ul>
+  <div class="note"><b>Instructor note</b>Calibration fits the <em>linear</em> MAC slope only; piecewise blocks
+  aren't auto-fitted. Method &amp; payload schemas: <a href="../analysis-tools.md">analysis-tools doc</a>.
+  These two run via the API (or the editor), not <code>--config</code>.</div>
+  <div class="exercise"><b>Your turn</b>Design a 3×3 sweep (cap × reference price) for your own market and identify
+  the combination where the price first breaches a level your stakeholders care about.</div>
+</section>
+
+<!-- ═══════════ MATRIX ═══════════ -->
+<h2 id="matrix" style="margin-top:48px">Feature × use-case matrix</h2>
+<p>Which features each role reaches for. Use it to plan a session or to find the module that covers a feature you need.</p>
+<div class="scroll"><table class="matrix">
+  <tr><th>Feature</th><th>Compliance</th><th>Policy</th><th>Trading</th><th>Strategy</th><th>Research</th></tr>
+  <tr><td>MAC curves (linear / piecewise / negative-cost)</td><td class="y">●</td><td class="dim">·</td><td class="dim">·</td><td class="y">●</td><td class="y">●</td></tr>
+  <tr><td>Banking / borrowing &amp; expectations</td><td class="y">●</td><td class="dim">·</td><td class="y">●</td><td class="dim">·</td><td class="dim">·</td></tr>
+  <tr><td>Free allocation / OBA benchmark</td><td class="y">●</td><td class="y">●</td><td class="dim">·</td><td class="y">●</td><td class="dim">·</td></tr>
+  <tr><td>CBAM (single / multi-jurisdiction)</td><td class="y">●</td><td class="y">●</td><td class="dim">·</td><td class="y">●</td><td class="dim">·</td></tr>
+  <tr><td>Cap trajectory / price floor &amp; ceiling</td><td class="dim">·</td><td class="y">●</td><td class="y">●</td><td class="dim">·</td><td class="dim">·</td></tr>
+  <tr><td>MSR / Carbon Cap Rule</td><td class="dim">·</td><td class="y">●</td><td class="y">●</td><td class="dim">·</td><td class="y">●</td></tr>
+  <tr><td>Auction controls &amp; revenue</td><td class="dim">·</td><td class="y">●</td><td class="dim">·</td><td class="dim">·</td><td class="dim">·</td></tr>
+  <tr><td>Hotelling / Nash / compare-all</td><td class="dim">·</td><td class="dim">·</td><td class="y">●</td><td class="dim">·</td><td class="y">●</td></tr>
+  <tr><td>Technology switching</td><td class="dim">·</td><td class="dim">·</td><td class="dim">·</td><td class="y">●</td><td class="dim">·</td></tr>
+  <tr><td>Feedback A (price-elastic baseline)</td><td class="dim">·</td><td class="y">●</td><td class="y">●</td><td class="dim">·</td><td class="y">●</td></tr>
+  <tr><td>Feedback B (model coupling)</td><td class="dim">·</td><td class="dim">·</td><td class="dim">·</td><td class="dim">·</td><td class="y">●</td></tr>
+  <tr><td>Calibration / batch sweep</td><td class="dim">·</td><td class="dim">·</td><td class="y">●</td><td class="dim">·</td><td class="y">●</td></tr>
+</table></div>
+
+<!-- ═══════════ LEARNING PATHS ═══════════ -->
+<h2 id="path">Suggested learning paths</h2>
+<div class="scroll"><table>
+  <tr><th>Role</th><th>Path</th></tr>
+  <tr><td>Compliance / carbon manager</td><td>Walkthrough → Module 1 → Module 4 → cookbook (banking, CBAM, OBA)</td></tr>
+  <tr><td>Policy analyst / regulator</td><td>Walkthrough → Module 2 → Module 5 → CCR &amp; MSR docs</td></tr>
+  <tr><td>Market analyst / trader</td><td>Walkthrough → Module 3 → Module 5 → Module 6</td></tr>
+  <tr><td>Corporate strategy / transition</td><td>Walkthrough → Module 4 → Module 1 → Module 5</td></tr>
+  <tr><td>Quant / research</td><td>Walkthrough → Module 6 → Module 5 → algorithm-overview doc</td></tr>
+</table></div>
+
+<footer>
+  This course teaches decisions; the <a href="scenario-cookbook.html">cookbook</a> is the feature reference and
+  the <a href="build-your-first-scenario.html">walkthrough</a> is the on-ramp. Field-by-field detail:
+  <a href="../data-model.md">data-model</a>. The maths: <a href="../algorithm-overview.md">algorithm-overview</a>.
+  Every scenario here maps to a file in <code>examples/</code> — open it, change one thing, and re-run.
+</footer>
+
+</div>
+<script>
+  document.querySelectorAll('pre').forEach(function(pre){
+    var btn=document.createElement('button');btn.className='copy';btn.type='button';btn.textContent='Copy';
+    btn.addEventListener('click',function(){
+      var t=pre.querySelector('code')?pre.querySelector('code').innerText:pre.innerText;
+      var ok=function(){btn.textContent='Copied';btn.classList.add('ok');setTimeout(function(){btn.textContent='Copy';btn.classList.remove('ok')},1400)};
+      if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(t).then(ok,function(){fb(t);ok()})}else{fb(t);ok()}
+    });
+    pre.appendChild(btn);
+  });
+  function fb(t){var a=document.createElement('textarea');a.value=t;a.style.position='fixed';a.style.opacity='0';document.body.appendChild(a);a.select();try{document.execCommand('copy')}catch(e){}document.body.removeChild(a)}
+</script>
+</body>
+</html>

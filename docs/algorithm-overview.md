@@ -530,6 +530,233 @@ The MSR acts on the auction supply **before** market clearing. The equilibrium s
 
 ---
 
+## Carbon Cap Rule (CCR)
+
+**File:** `src/ets/solvers/ccr.py`, `src/ets/solvers/simulation.py`
+
+**Reference:** Benmir, G., Roman, J. and Taschini, L. (2025). *Weitzman meets Taylor: EU allowance price drivers and carbon cap rules.* Grantham Research Institute WP No. 421, LSE.
+
+The CCR is a **Taylor-rule adaptive cap**: instead of a fixed per-period cap, the regulator adjusts the quantity of permits issued each period in response to how far two observable signals have drifted from their steady-state reference levels — aggregate emissions and aggregate abatement cost.
+
+### Rule formula
+
+$$Q_t \;=\; \overline{Q} \;+\; \phi_e \,\frac{e_t - \bar{e}}{\bar{e}} \;+\; \phi_z \,\frac{z_t - \bar{z}}{\bar{z}}$$
+
+ASCII fallback: `Q_t = Qbar + phi_e * (e_t - ebar) / ebar + phi_z * (z_t - zbar) / zbar`
+
+| Symbol | Name | Units | Config field |
+|---|---|---|---|
+| $Q_t$ | Permits issued in period $t$ | Mt CO₂e | (output) |
+| $\overline{Q}$ | Baseline (steady-state) cap | Mt CO₂e | `total_cap` / `cap_trajectory` |
+| $e_t$ | Observed aggregate emissions | Mt CO₂e | (realised) |
+| $\bar{e}$ | Reference emissions | Mt CO₂e | `ccr_reference_emissions` |
+| $z_t$ | Observed aggregate abatement cost | currency | (realised) |
+| $\bar{z}$ | Reference abatement cost | currency | `ccr_reference_abatement_cost` |
+| $\phi_e$ | Cap sensitivity to the emissions gap | Mt CO₂e | `ccr_phi_emissions` |
+| $\phi_z$ | Cap sensitivity to the abatement-cost gap | Mt CO₂e | `ccr_phi_abatement_cost` |
+
+Because the two gap terms are dimensionless fractions, $\phi_e$ and $\phi_z$ carry the units of the cap (Mt CO₂e per unit fractional deviation) and must be calibrated to the scenario's cap scale.
+
+**Sign convention:** $\phi_z > 0$ — abatement costs above reference → issue more permits (ease cost pressure). $\phi_e < 0$ — emissions above reference → issue fewer permits (stay on track).
+
+### Discrete-time implementation (lagged signals)
+
+$e_t$ and $z_t$ are outcomes of market clearing, so they are not known when the period-$t$ cap must be set. Mirroring how the MSR reads the beginning-of-period bank, the CCR conditions period $t$'s cap on the **previously realised** (period $t-1$) emissions and abatement cost:
+
+- `prev_emissions` ← `sum(participant_df["Residual Emissions"])` from year $t-1$
+- `prev_abatement_cost` ← `sum(participant_df["Abatement Cost"])` from year $t-1$
+
+The computed adjustment $\Delta Q_t = Q_t - \overline{Q}$ is injected as additional permit supply (`effective_carry += ccr_adjustment`) before market clearing — exactly the mechanism used for the MSR. Two consequences follow directly:
+
+- **The first period carries no adjustment** (`Q_0 = Qbar`) — no history exists yet.
+- A reference value of `0` **disables that term** (the fractional gap is undefined), so a scenario can respond to emissions alone, abatement cost alone, or both.
+
+The CCR is applied only in the **competitive** model path, and only on the **final realised path** — not inside the perfect-foresight convergence loop (same treatment as the MSR).
+
+### CCR parameters
+
+| Parameter | Default | Description |
+|---|---|---|
+| `ccr_enabled` | `false` | Must be `true` to activate |
+| `ccr_phi_emissions` | `0.0` | $\phi_e$ — use a negative value to tighten on overshoot |
+| `ccr_phi_abatement_cost` | `0.0` | $\phi_z$ — use a positive value to loosen when costs run hot |
+| `ccr_reference_emissions` | `0.0` | $\bar{e}$ [Mt]; `0` disables the emissions term |
+| `ccr_reference_abatement_cost` | `0.0` | $\bar{z}$; `0` disables the abatement-cost term |
+
+Output columns added when enabled: `CCR Cap Adjustment` (ΔQ_t, Mt), `CCR Emissions Deviation` ($(e_{t-1} - \bar{e})/\bar{e}$), `CCR Cost Deviation` ($(z_{t-1} - \bar{z})/\bar{z}$).
+
+See [Carbon Cap Rule](carbon-cap-rule.md) for full parameter guidance, calibration advice, and a worked example.
+
+### Relationship to the MSR
+
+| | MSR | CCR |
+|---|---|---|
+| Signal | Aggregate bank size | Emissions + abatement-cost gaps |
+| Action | Withhold / release into reserve pool | Shift the per-period cap quantity |
+| Trigger | Discrete thresholds | Continuous Taylor-rule response |
+
+Both mechanisms are supply-management tools; they are configured independently (`msr_enabled` vs `ccr_enabled`) and can operate simultaneously.
+
+---
+
+## Feedback Option A — Price-Elastic Baseline
+
+**Files:** `src/ets/participant/models.py` (`activity_multiplier`), `src/ets/participant/compliance.py` (`_scale_for_activity`)
+
+**Enabled by:** scenario `reference_carbon_price > 0` **and** participant `output_price_elasticity > 0`
+
+### Equilibrium framing
+
+The base engine is a **partial-equilibrium** model of the allowance market: the only price→quantity response is abatement (firms abate until MAC = P). The BAU baseline (`initial_emissions`) is exogenous. Option A adds the missing **own-price activity response** — carbon-intensive output, and therefore the emissions baseline, falls as the carbon price rises. This "demand destruction" channel closes a feedback loop inside market clearing without changing the solver:
+
+```
+higher price → less activity → lower baseline → fewer permits demanded → price moderates
+```
+
+Because the equilibrium solver already root-finds the price where net demand = supply, making the baseline price-dependent simply makes the demand curve more elastic. The price and the activity level are found **jointly, in the same Brent solve**. No new solver, no outer loop. The result is still partial equilibrium — own-price activity response only; cross-sector reallocation, income effects, and energy-market clearing remain exogenous.
+
+### Activity multiplier formula
+
+$$m(P) = \max\!\left(0,\; 1 - \varepsilon\,\frac{P - P_\mathrm{ref}}{P_\mathrm{ref}}\right), \qquad E_\mathrm{base}(P) = E_0 \cdot m(P)$$
+
+ASCII: `m(P) = max(0, 1 - eps * (P - P_ref) / P_ref)`, `E_base(P) = E0 * m(P)`
+
+| Symbol | Name | Units | Config field |
+|---|---|---|---|
+| $P$ | Carbon price (solved) | price units | (output) |
+| $P_\mathrm{ref}$ | Reference / undistorted price anchor | price units | `reference_carbon_price` (scenario) |
+| $\varepsilon$ | Linearised price elasticity of activity (≥ 0) | dimensionless | `output_price_elasticity` (participant) |
+| $E_0$ | Nominal BAU baseline | Mt CO₂e | `initial_emissions` |
+
+Scaling `initial_emissions` by $m(P)$ scales the whole activity envelope proportionally — baseline emissions, abatement potential (`max_abatement`), and benchmarked free allocation all move together (unit-of-output interpretation). $\varepsilon = 0$ or $P_\mathrm{ref} = 0$ returns $m \equiv 1$, restoring the inelastic baseline.
+
+The multiplier acts as a **restoring force toward $P_\mathrm{ref}$**: when $P > P_\mathrm{ref}$, activity contracts and demand falls, pulling the price back down; when $P < P_\mathrm{ref}$, activity expands and demand rises, pulling the price back up.
+
+### Configuration
+
+| Field | Level | Default | Meaning |
+|---|---|---|---|
+| `reference_carbon_price` | scenario | `0.0` | $P_\mathrm{ref}$ anchor; `0` disables the channel for the whole scenario |
+| `output_price_elasticity` | participant | `0.0` | $\varepsilon$; `0` leaves that participant's baseline fixed |
+
+Both default to neutral — every existing scenario is unchanged. The per-participant `Initial Emissions` column in results reports $E_0 \cdot m(P^*)$, i.e. the price-scaled realised baseline.
+
+See [Feedback Option A — Price-Elastic Baseline](feedback-price-elastic-baseline.md) for a worked example and auction-mode guidance.
+
+---
+
+## Feedback Option B — Soft-Link Coupling
+
+**Files:** `src/ets/coupling/loop.py`, `src/ets/coupling/adapters.py`
+
+**API:** `from ets.coupling import run_coupled_simulation, ExternalModel`
+
+### Equilibrium framing
+
+Option A adds an own-price activity response *inside* the allowance market (still partial equilibrium). Option B reaches **general-equilibrium closure** by coupling the ETS engine to a separate, purpose-built external model (energy-system, CGE, DSGE, …) and iterating the two to a joint equilibrium. Cross-sector reallocation, energy prices, income effects, and welfare all live in the external model; the ETS engine stays the specialist allowance-market component.
+
+### Fixed-point loop
+
+$$p_{k+1} \;=\; \mathrm{ETS}\!\left(\,\text{model.respond}(\text{config}_0,\; p_k)\,\right)$$
+
+solving the fixed point $p^* = \mathrm{ETS}(\text{respond}(\text{config}_0, p^*))$:
+
+```python
+# Iteration 0: uncoupled baseline → initial price signal
+signal = extract_prices(run_simulation_from_config(baseline_config))
+
+for iteration in range(1, max_iterations + 1):
+    updated_config = external_model.respond(baseline_config, signal, iteration)
+    realised = extract_prices(run_simulation_from_config(updated_config))
+    max_change = max(|realised[k] - signal[k]| for k in cells)
+    if max_change <= tolerance:
+        converged = True; break
+    signal = relax(signal, realised, weight=relaxation)
+```
+
+The key design choice: `respond` is always called with **`baseline_config`** (the original iteration-0 config), not the previously updated config. This ensures the mapping is price → activity, not a compounding tweak.
+
+### Under-relaxation
+
+A plain Gauss–Seidel step (`relaxation = 1.0`) can oscillate: a high price collapses activity → price crashes → activity over-expands → ... The loop **under-relaxes** the signal fed to the model:
+
+$$\text{signal} \leftarrow (1 - w)\cdot\text{signal} + w\cdot\text{realised}$$
+
+where $w$ = `relaxation` $\in (0, 1]$. Under-relaxation damps the oscillation without changing the fixed point. Default $w = 0.5$.
+
+### Adapter contract
+
+```python
+class ExternalModel(Protocol):
+    def respond(
+        self,
+        baseline_config: dict,
+        prices: dict[tuple[str, str], float],
+        iteration: int,
+    ) -> dict:
+        """Map the latest carbon-price path to a revised scenario config."""
+```
+
+`prices` is keyed by `(scenario_name, year_label)`. Return a config of identical shape with revised `initial_emissions` per participant.
+
+Bundled adapters: `NullExternalModel` (identity, converges in one iteration) and `ElasticityExternalModel(elasticity, reference_price)` (constant-elasticity stand-in, runs with no extra dependencies).
+
+### Convergence criterion
+
+$$\max_{(\text{scenario},\,\text{year})} \left| p^{(k)}_{\text{scenario,year}} - p^{(k-1)}_{\text{scenario,year}} \right| \leq \text{tolerance}$$
+
+If not achieved within `max_iterations`, `CouplingResult.converged` is `False` and a warning is logged.
+
+### Return value
+
+`run_coupled_simulation` returns a `CouplingResult` with fields: `summary`, `participants`, `price_history` (list of price maps per iteration), `converged`, `iterations`, `max_price_change`.
+
+See [Feedback Option B — Soft-Link Coupling](feedback-coupling.md) for the full adapter API and a demo against `ElasticityExternalModel`.
+
+---
+
+## Negative-Cost MAC Blocks (No-Regret Abatement)
+
+**Files:** `src/ets/config_io/normalize.py`, `src/ets/costs.py`
+
+`mac_blocks` entries may now have a **negative `marginal_cost`**, representing "no-regret" abatement measures — efficiency investments that pay for themselves irrespective of the carbon price (e.g. insulation, heat-recovery, fuel-switching with net operating savings).
+
+### Ordering and validity rules
+
+```
+amount       ≥ 0          (required; block size in Mt CO₂e)
+marginal_cost  may be any real  (negative = net-saving measure)
+blocks must be ordered by non-decreasing marginal_cost
+```
+
+A negative-cost block sorts first in the MAC curve. The piecewise abatement rule undertakes every block whose marginal cost is at or below the carbon price — so negative-cost blocks are **abated even at a zero carbon price**:
+
+```python
+for block in normalized_blocks:
+    if carbon_price >= block["marginal_cost"]:   # True for all negative costs when P ≥ 0
+        abatement += block["amount"]
+    else:
+        break
+```
+
+### Effect on the compliance optimisation
+
+Negative-cost blocks reduce the total cost at any abatement level. In the piecewise abatement cost formula:
+
+$$C_{MAC}(a) = \sum_{k} c_k \cdot \min\!\left(\text{amount}_k,\; \max\!\left(0,\; a - \sum_{j<k} \text{amount}_j\right)\right)$$
+
+blocks with $c_k < 0$ contribute a **negative** term — they lower the objective and are therefore always selected in the optimal solution. This does not break convexity of the total cost function: the negative-cost portion is a fixed negative contribution once the block is fully used, and the remaining blocks are non-decreasing as before.
+
+### Validation
+
+`normalize_participant` (and `normalize_technology_option`) enforce:
+- `amount < 0` → `ValueError`
+- `marginal_cost < previous_cost` (strict decrease in ordering) → `ValueError`
+
+A `marginal_cost` of zero is valid (free abatement). Any number of negative-cost blocks may precede the zero-cost blocks.
+
+---
+
 ## CBAM (Carbon Border Adjustment Mechanism)
 
 CBAM liability is computed **after** market clearing — it does not feed back into the equilibrium price.
@@ -939,11 +1166,15 @@ run_simulation(config)
     │   │   └─ Stop when max|ΔP| ≤ solver_competitive_tolerance
     │   └─ Final path simulation:
     │       For each year t:
+    │       ├─ [IF ccr_enabled] CCRState.cap_adjustment() → effective_carry += ΔQ_t
     │       ├─ [IF msr_enabled] MSRState.apply() → effective_auction
     │       ├─ market.solve_equilibrium()         → P*, auction_outcome
     │       │   └─ scipy.root_scalar("brentq")
     │       │       └─ total_net_demand(P)
     │       │           └─ participant.optimize_compliance(P) × N
+    │       │               └─ [IF output_price_elasticity > 0]
+    │       │                   activity_multiplier(P) scales baseline (Option A)
+    │       ├─ [IF ccr_enabled] CCRState.record(emissions, abatement_cost)
     │       ├─ market.participant_results()        → CBAM, Scope 2, OBA display
     │       ├─ market.scenario_summary()           → aggregates + revenue tracker
     │       └─ Update bank_balances, carry_forward
@@ -962,6 +1193,17 @@ run_simulation(config)
             ├─ Jacobi best-response iteration (≤ solver_nash_max_iters)
             │   └─ Each strategic participant minimises cost given residual demand
             └─ Final Brent solve at converged abatement profile
+
+run_coupled_simulation(config, external_model)   [Feedback Option B]
+│
+├─ Iteration 0: run_simulation_from_config(baseline_config) → initial price signal
+│
+└─ For iteration k = 1 … max_iterations:
+    ├─ external_model.respond(baseline_config, signal, k) → updated activity config
+    ├─ run_simulation_from_config(updated_config) → realised prices
+    ├─ max_change = max|realised - signal|
+    ├─ [IF max_change ≤ tolerance] → converged = True; STOP
+    └─ signal ← (1 − w)·signal + w·realised    [under-relaxation]
 ```
 
 ---
@@ -991,3 +1233,6 @@ In practice, all three solvers complete in under 1–2 seconds for typical K-ETS
 - [MAC & Abatement Models](mac-abatement.md)
 - [Market Equilibrium Solver](market-equilibrium.md)
 - [Technology Transition](technology-transition.md)
+- [Carbon Cap Rule](carbon-cap-rule.md)
+- [Feedback Option A — Price-Elastic Baseline](feedback-price-elastic-baseline.md)
+- [Feedback Option B — Soft-Link Coupling](feedback-coupling.md)

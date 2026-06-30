@@ -240,9 +240,9 @@ relax that closure boundary:
   a pluggable adapter — general-equilibrium feedback without embedding a GE model.
   See [`docs/feedback-coupling.md`](docs/feedback-coupling.md).
 
-New to the tool? The follow-along HTML guide
-[`docs/tutorials/build-your-first-scenario.html`](docs/tutorials/build-your-first-scenario.html)
-walks you through building a scenario for every approach.
+New to the tool? Open [`docs/tutorials/`](docs/tutorials/index.html) — a follow-along
+[walkthrough](docs/tutorials/build-your-first-scenario.html) that climbs the closure ladder, plus a
+[scenario cookbook](docs/tutorials/scenario-cookbook.html) of ~20 ready-to-run recipes (one per feature).
 
 ---
 
@@ -318,7 +318,7 @@ walks you through building a scenario for every approach.
 | `max_abatement` | float ≥ 0 | `0.0` | Maximum reducible emissions (Mt) |
 | `cost_slope` | float > 0 | `1.0` | Slope `σ` of linear MAC (₩/t per Mt) |
 | `threshold_cost` | float ≥ 0 | `0.0` | Switching price for threshold MAC |
-| `mac_blocks` | array | `[]` | Piecewise MAC blocks (sorted by marginal_cost) |
+| `mac_blocks` | array | `[]` | Piecewise MAC blocks `{amount, marginal_cost}`, sorted by non-decreasing `marginal_cost`. `amount` ≥ 0; `marginal_cost` may be **negative** (no-regret measures) |
 | `production_output` | float ≥ 0 | `0.0` | Annual physical output (Mt product/yr) |
 | `benchmark_emission_intensity` | float ≥ 0 | `0.0` | OBA benchmark (tCO₂/unit product) |
 | `output_price_elasticity` | float ≥ 0 | `0.0` | Feedback A: price elasticity of activity ε; baseline contracts as price exceeds `reference_carbon_price` |
@@ -525,7 +525,10 @@ Click **Run Simulation**. The output panels show:
 | `docs/carbon-cap-rule.md` | Carbon Cap Rule (Benmir, Roman & Taschini 2025) — adaptive Taylor-rule cap, formula, config, worked example |
 | `docs/feedback-price-elastic-baseline.md` | Feedback Option A — price-elastic baseline (within-clearing demand destruction), formula, config, worked example |
 | `docs/feedback-coupling.md` | Feedback Option B — soft-link coupling loop, adapter contract, writing your own external model |
-| `docs/tutorials/build-your-first-scenario.html` | Follow-along HTML tutorial — build example scenarios for every approach (base PE, MSR, CCR, feedback A & B) |
+| `docs/tutorials/index.html` | Tutorials landing page — links the walkthrough and the cookbook |
+| `docs/tutorials/build-your-first-scenario.html` | Follow-along HTML walkthrough — base PE → MSR → CCR → feedback A → feedback B |
+| `docs/tutorials/scenario-cookbook.html` | ~20 ready-to-run recipes grouped by theme, each mapped to an `examples/` file |
+| `docs/tutorials/practitioner-training.html` | Role-based training course — six use-case modules (compliance, policy, trading, strategy, feedback, calibration) + feature × use-case matrix |
 | `docs/sector-config.md` | Sector-level caps, auction share derivation, per-participant allocation from sector pool, worked two-participant example |
 | `docs/analysis-tools.md` | Calibration, batch runner, CSV import, narrative — APIs, request/response schemas, algorithms |
 | `docs/mac-abatement.md` | Linear, piecewise, and threshold MAC models with cost derivations |
@@ -600,10 +603,10 @@ docs/                 Extended documentation
 
 ## Limitations
 
-- **Single commodity:** Only CO₂-equivalent emissions are modelled. Multi-pollutant or multi-sector general-equilibrium feedback is not captured.
-- **Static abatement curves:** MAC parameters do not evolve endogenously. Technological learning curves must be specified explicitly via trajectories.
+- **Single commodity:** Only CO₂-equivalent emissions are modelled. Multi-pollutant general-equilibrium feedback is captured only via the optional [soft-link coupling](docs/feedback-coupling.md) (feedback B) to an external model.
+- **Static abatement curves:** MAC parameters do not evolve endogenously. Technological learning curves must be specified explicitly via trajectories. (MAC blocks may include negative-cost "no-regret" measures — see [docs/mac-abatement.md](docs/mac-abatement.md).)
 - **No financial intermediaries:** Banks, brokers, and speculative traders are not modelled. Banking is purely a compliance firm decision.
-- **No macroeconomic feedback:** Carbon costs do not affect output prices, GDP, or sectoral output. The model is partial-equilibrium by design.
+- **Partial equilibrium by design:** The core engine clears the allowance market with activity, energy, and macro conditions exogenous. Two opt-in channels relax this: [price-elastic baseline](docs/feedback-price-elastic-baseline.md) (feedback A — own-price activity response, still partial equilibrium) and [soft-link coupling](docs/feedback-coupling.md) (feedback B — joint equilibrium with an external energy/CGE/DSGE model). Both default off.
 - **Calibration is single-scenario:** The `/api/calibrate` endpoint calibrates `abatement_cost_slope` for linear MAC only; piecewise blocks are not calibrated automatically.
 - **Nash-Cournot convergence:** The Jacobi iteration may not converge for all market configurations; the solver logs a warning and uses its best approximation if the iteration limit is reached.
 - **Integer compliance:** The model operates in continuous tonnes; compliance is not restricted to integer lots.

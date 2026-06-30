@@ -79,6 +79,39 @@ A config must contain at least one scenario. Multiple scenarios run independentl
 | `msr_cancel_excess` | bool | `false` | — | `true` | No cancellation; pool grows without limit |
 | `msr_cancel_threshold` | float | `400.0` | ≥ 0; Mt | `400.0` | Only relevant when `msr_cancel_excess = true` |
 
+### CCR fields (Carbon Cap Rule)
+
+The CCR is an adaptive Taylor-rule cap mechanism that adjusts the quantity of permits issued each period in response to deviations in aggregate emissions and abatement cost from their reference levels. See [carbon-cap-rule.md](carbon-cap-rule.md) for the full algorithm and calibration guide. For how CCR interacts with the price-elastic baseline channel, see [feedback-coupling.md](feedback-coupling.md).
+
+| Field | Type | Default | Validation | Example | When omitted |
+|---|---|---|---|---|---|
+| `ccr_enabled` | bool | `false` | — | `true` | CCR inactive; cap issued equals `total_cap` unchanged |
+| `ccr_phi_emissions` | float | `0.0` | Any float | `-0.003` | 0 — emissions gap has no effect on the cap |
+| `ccr_phi_abatement_cost` | float | `0.0` | Any float | `0.185` | 0 — abatement-cost gap has no effect on the cap |
+| `ccr_reference_emissions` | float | `0.0` | ≥ 0; Mt CO₂e | `480.0` | 0 — disables the CCR emissions term entirely |
+| `ccr_reference_abatement_cost` | float | `0.0` | ≥ 0 | `1200.0` | 0 — disables the CCR abatement-cost term entirely |
+
+**Sign convention** (from the paper's optimal coefficients):
+
+- `ccr_phi_emissions` should be **negative**: emissions above the reference → fewer permits issued → tighten the cap.
+- `ccr_phi_abatement_cost` should be **positive**: abatement costs above the reference → more permits issued → ease cost pressure.
+
+**Discrete-time behaviour:** The CCR conditions period *t*'s adjustment on the **previously realised** (period *t*−1) emissions and abatement cost. The first year of a multi-year run therefore carries no adjustment (Q₀ = Q̄).
+
+**Cap formula:**
+
+$$Q_t = \overline{Q} + \phi_e \frac{e_{t-1} - \bar{e}}{\bar{e}} + \phi_z \frac{z_{t-1} - \bar{z}}{\bar{z}}$$
+
+where Q̄ is the year's `total_cap`, ē is `ccr_reference_emissions`, and z̄ is `ccr_reference_abatement_cost`.
+
+### Price-elastic feedback field
+
+| Field | Type | Default | Validation | Example | When omitted |
+|---|---|---|---|---|---|
+| `reference_carbon_price` | float | `0.0` | ≥ 0 | `30.0` | 0 — price-elastic baseline channel disabled scenario-wide |
+
+`reference_carbon_price` is the undistorted (P_ref) carbon price that anchors the price-elastic activity baseline (Feedback A). When set to a positive value, each participant whose `output_price_elasticity` is also positive will see their BAU activity — and hence their initial emissions — contract as the market price rises above P_ref. Setting this to `0` disables the channel for the whole scenario regardless of participant-level elasticities. See [feedback-price-elastic-baseline.md](feedback-price-elastic-baseline.md) for the full formula and calibration guidance.
+
 ### Solver parameter fields
 
 | Field | Type | Default | What it controls |
@@ -367,13 +400,16 @@ Total abatement cost formula: $C = \frac{1}{2} \cdot \sigma \cdot a^2$ where $\s
 
 ```json
 "mac_blocks": [
+  {"amount": 5.0,  "marginal_cost": -10.0},
   {"amount": 6.0,  "marginal_cost": 20.0},
   {"amount": 8.0,  "marginal_cost": 55.0},
   {"amount": 8.0,  "marginal_cost": 110.0}
 ]
 ```
 
-Each block: `{"amount": float ≥ 0, "marginal_cost": float ≥ 0}`. Total max abatement = sum of all `amount` values. Blocks must be ordered by non-decreasing `marginal_cost`.
+Each block: `{"amount": float ≥ 0, "marginal_cost": float}`. Total max abatement = sum of all `amount` values. Blocks must be ordered by non-decreasing `marginal_cost`.
+
+**`amount`** must be ≥ 0. **`marginal_cost` may be negative.** Negative-cost blocks represent "no-regret" abatement measures — efficiency improvements or co-benefit options that are worth taking regardless of the carbon price (e.g. fuel-switching that also reduces fuel costs). These blocks appear first under the non-decreasing ordering rule and are applied before zero- or positive-cost measures. There is no lower bound on `marginal_cost`.
 
 **Threshold MAC** (`abatement_type = "threshold"`):
 
@@ -382,18 +418,25 @@ Each block: `{"amount": float ≥ 0, "marginal_cost": float ≥ 0}`. Total max a
 | `max_abatement` | float | `0.0` | ≥ 0; Mt CO₂e | `15.0` | 0 — no abatement even if threshold is crossed |
 | `threshold_cost` | float | `0.0` | ≥ 0; ₩/t | `45.0` | 0 — abatement fires at any positive price |
 
-### OBA (Output-Based Allocation) fields
+### OBA (Output-Based Allocation) and activity fields
 
 | Field | Type | Default | Validation | Example | When omitted |
 |---|---|---|---|---|---|
 | `production_output` | float | `0.0` | ≥ 0; physical units/year (e.g. Mt steel) | `20.0` | 0 — OBA override inactive |
 | `benchmark_emission_intensity` | float | `0.0` | ≥ 0; tCO₂/unit | `1.80` | 0 — OBA override inactive |
+| `output_price_elasticity` | float | `0.0` | ≥ 0 | `0.3` | 0 — participant activity is inelastic to carbon price |
 
-Both fields must be `> 0` for OBA to override `free_allocation_ratio`. The resulting free allocation is:
+Both `production_output` and `benchmark_emission_intensity` must be `> 0` for OBA to override `free_allocation_ratio`. The resulting free allocation is:
 
 $$\text{free\_allocation} = \text{benchmark\_emission\_intensity} \times \text{production\_output}$$
 
 See [oba-allocation.md](oba-allocation.md) for worked examples.
+
+**`output_price_elasticity`** (ε) is the Feedback A price-elastic activity parameter. When the scenario's `reference_carbon_price` is positive and ε > 0, the participant's baseline activity — and hence BAU emissions — contracts as the market price rises above the reference price. The contraction follows:
+
+$$\text{activity}(P) = \text{activity}_0 \times \left(1 - \varepsilon \cdot \frac{P - P_\text{ref}}{P_\text{ref}}\right)$$
+
+Setting ε = 0 (the default) leaves the participant's activity inelastic regardless of the scenario's `reference_carbon_price`. See [feedback-price-elastic-baseline.md](feedback-price-elastic-baseline.md).
 
 ### CBAM exposure fields
 
@@ -505,6 +548,22 @@ These are not in the JSON config but are computed from config fields during mark
 | `effective_auction_offered` | `market/core.py` | `auction_offered + carry_forward_in` |
 | `indirect_emissions` | `market/results.py` | `electricity_consumption × grid_emission_factor` |
 
+## Output / summary columns
+
+These columns appear in the multi-year scenario summary table produced by `scenario_summary()` in `market/results.py` and `solvers/simulation.py`. They are **not** config inputs.
+
+### CCR summary columns
+
+The following three columns are always present in the summary output. They are zero in every year unless `ccr_enabled = true` **and** the scenario has at least two years of history (the first year carries no adjustment).
+
+| Column | Type | Description |
+|---|---|---|
+| `CCR Cap Adjustment` | float (Mt) | ΔQ_t — Mt added to (positive) or subtracted from (negative) the baseline cap in this period |
+| `CCR Emissions Deviation` | float | (e_{t-1} − ē) / ē — fractional deviation of the prior year's aggregate emissions from the reference; 0 when `ccr_reference_emissions = 0` |
+| `CCR Cost Deviation` | float | (z_{t-1} − z̄) / z̄ — fractional deviation of the prior year's aggregate abatement cost from the reference; 0 when `ccr_reference_abatement_cost = 0` |
+
+See [carbon-cap-rule.md](carbon-cap-rule.md) for interpretation guidance and sign conventions.
+
 ---
 
 ## JSON ↔ Python object mapping
@@ -523,6 +582,12 @@ These are not in the JSON config but are computed from config fields during mark
 | `scenarios[].years[].eua_prices` | `CarbonMarket` | `eua_prices` (dynamic attribute) |
 | `scenarios[].years[].eua_price_ensemble` | `CarbonMarket` | `eua_price_ensemble` (dynamic attribute) |
 | `scenarios[].model_approach` | `CarbonMarket` | `model_approach` (dynamic attribute) |
+| `scenarios[].reference_carbon_price` | `CarbonMarket` | `reference_carbon_price` (stamped onto each `MarketParticipant`) |
+| `scenarios[].ccr_enabled` | `CarbonMarket` | `ccr_enabled` (dynamic attribute) |
+| `scenarios[].ccr_phi_emissions` | `CarbonMarket` | `ccr_phi_emissions` (dynamic attribute) |
+| `scenarios[].ccr_phi_abatement_cost` | `CarbonMarket` | `ccr_phi_abatement_cost` (dynamic attribute) |
+| `scenarios[].ccr_reference_emissions` | `CarbonMarket` | `ccr_reference_emissions` (dynamic attribute) |
+| `scenarios[].ccr_reference_abatement_cost` | `CarbonMarket` | `ccr_reference_abatement_cost` (dynamic attribute) |
 | `scenarios[].years[].participants[].name` | `MarketParticipant` | `name` |
 | `scenarios[].years[].participants[].initial_emissions` | `MarketParticipant` | `initial_emissions` |
 | `scenarios[].years[].participants[].free_allocation_ratio` | `MarketParticipant` | `free_allocation_ratio` |
@@ -532,6 +597,7 @@ These are not in the JSON config but are computed from config fields during mark
 | `scenarios[].years[].participants[].sector_allocation_share` | `MarketParticipant` | `sector_allocation_share` |
 | `scenarios[].years[].participants[].production_output` | `MarketParticipant` | `production_output` |
 | `scenarios[].years[].participants[].benchmark_emission_intensity` | `MarketParticipant` | `benchmark_emission_intensity` |
+| `scenarios[].years[].participants[].output_price_elasticity` | `MarketParticipant` | `output_price_elasticity` |
 | `scenarios[].years[].participants[].electricity_consumption` | `MarketParticipant` | `electricity_consumption` |
 | `scenarios[].years[].participants[].grid_emission_factor` | `MarketParticipant` | `grid_emission_factor` |
 | `scenarios[].years[].participants[].scope2_cbam_coverage` | `MarketParticipant` | `scope2_cbam_coverage` |
@@ -561,10 +627,12 @@ These are not in the JSON config but are computed from config fields during mark
 | Empty participant name | Participant | `"Each participant must have a non-empty name."` |
 | Invalid `abatement_type` | Participant | `"Participant '...' has invalid abatement_type '...'"` |
 | Piecewise with no blocks | Participant | `"Participant '...' piecewise abatement requires mac_blocks."` |
-| MAC blocks out of order | Participant | `"Participant '...' mac_blocks must be ordered by non-decreasing marginal_cost."` |
+| MAC block `amount` < 0 | Participant | `"Participant '...' MAC block N amount must be non-negative."` |
+| MAC blocks out of order | Participant | `"Participant '...' mac_blocks must be ordered by non-decreasing marginal_cost."` (note: `marginal_cost` may be negative; ordering is still non-decreasing) |
 | `scope2_cbam_coverage` outside [0, 1] | Participant | `"Participant '...' scope2_cbam_coverage must be between 0 and 1."` |
 | `cbam_export_share` outside [0, 1] | Participant | `"Participant '...' cbam_export_share must be between 0 and 1."` |
 | `sector_allocation_share` outside [0, 1] | Participant | `"Participant '...' sector_allocation_share must be between 0 and 1."` |
+| `output_price_elasticity` < 0 | Participant | `"Participant '...' output_price_elasticity must be non-negative."` |
 | Sector group mismatch | Scenario | `"Participant '...' has sector_group '...' which does not match any defined sector."` |
 
 ### Build-time rules (raised by `build_market_from_year`)
@@ -622,3 +690,6 @@ The smallest config that will run without error:
 - [Sector Configuration](sector-config.md) — sectors array in depth
 - [MAC & Abatement Models](mac-abatement.md) — abatement field details
 - [Technology Transition](technology-transition.md) — technology_options field details
+- [Carbon Cap Rule](carbon-cap-rule.md) — CCR algorithm, calibration, and output interpretation
+- [Price-Elastic Baseline](feedback-price-elastic-baseline.md) — Feedback A (`output_price_elasticity`, `reference_carbon_price`)
+- [Feedback Coupling](feedback-coupling.md) — how CCR and price-elastic baseline interact

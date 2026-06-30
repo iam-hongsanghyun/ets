@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ETS Tool — Scenario Cookbook</title>
+<style>
+  :root{--bg:#0f1714;--panel:#15201c;--card:#18231f;--ink:#e8efe9;--muted:#9fb3a8;--line:#26352f;
+    --accent:#3fae84;--accent2:#5ec6f2;--warn:#e0a13c;--code:#0c1411;--maxw:960px}
+  *{box-sizing:border-box} html{scroll-behavior:smooth}
+  body{margin:0;background:linear-gradient(180deg,#0d1512,#0f1714 240px);color:var(--ink);
+    font:16px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:var(--maxw);margin:0 auto;padding:0 20px 96px}
+  header.hero{padding:52px 20px 30px;text-align:center;border-bottom:1px solid var(--line);
+    background:radial-gradient(120% 140% at 50% 0%,rgba(63,174,132,.14),transparent 60%)}
+  .eyebrow{letter-spacing:.18em;text-transform:uppercase;font-size:12px;color:var(--accent);font-weight:700}
+  h1{font-size:32px;margin:.35em 0 .2em}
+  .lede{color:var(--muted);font-size:17px;max-width:640px;margin:0 auto}
+  a{color:var(--accent2);text-decoration:none} a:hover{text-decoration:underline}
+  code{font-family:"SF Mono","JetBrains Mono",Menlo,Consolas,monospace;font-size:.9em;background:#11201a;border:1px solid var(--line);border-radius:5px;padding:.06em .36em;color:#bfe7d3}
+  pre{position:relative;background:var(--code);border:1px solid var(--line);border-radius:11px;padding:16px;overflow:auto;margin:.7em 0}
+  pre code{background:none;border:none;padding:0;color:#d7e7df;font-size:13px;line-height:1.5}
+  .copy{position:absolute;top:9px;right:9px;font:600 10.5px/1 inherit;letter-spacing:.04em;background:#1d2e27;border:1px solid var(--line);color:var(--muted);border-radius:6px;padding:5px 8px;cursor:pointer;text-transform:uppercase}
+  .copy:hover{color:var(--ink);border-color:var(--accent)} .copy.ok{color:var(--accent);border-color:var(--accent)}
+  nav.toc{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:18px 22px;margin:28px 0;
+    columns:2;column-gap:32px}
+  nav.toc a{display:block;margin:.28em 0;font-size:14.5px}
+  nav.toc .grp{font-weight:700;color:#cfe3d8;margin:.7em 0 .2em;font-size:13px;text-transform:uppercase;letter-spacing:.05em;break-after:avoid}
+  nav.toc .grp:first-child{margin-top:0}
+  h2.section{font-size:14px;letter-spacing:.08em;text-transform:uppercase;color:var(--accent);margin:2.6em 0 .2em;padding-top:1.2em;border-top:1px solid var(--line)}
+  .recipe{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:20px 22px;margin:18px 0}
+  .recipe h3{margin:0 0 .15em;font-size:20px;display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+  .recipe .file{font-size:12px;font-weight:600;color:var(--muted);background:#11201a;border:1px solid var(--line);border-radius:6px;padding:2px 8px;font-family:"SF Mono",Menlo,monospace}
+  .goal{color:var(--muted);margin:.1em 0 .6em}
+  .look{background:#11211d;border-left:3px solid var(--accent);border-radius:8px;padding:10px 14px;margin:.7em 0 0}
+  .look b{color:var(--accent);display:block;margin-bottom:.15em;font-size:13px;letter-spacing:.03em;text-transform:uppercase}
+  .look ul{margin:.2em 0 0;padding-left:1.2em} .look li{margin:.2em 0;font-size:14.5px}
+  .knob{font-size:14px;color:var(--muted);margin:.2em 0 .5em}
+  .knob b{color:var(--ink)}
+  .api{display:inline-block;font-size:10.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--warn);border:1px solid var(--line);background:#1d1a10;border-radius:999px;padding:2px 8px}
+  .run{font-size:13px;color:var(--muted);margin-top:.2em}
+  footer{margin-top:54px;padding-top:20px;border-top:1px solid var(--line);color:var(--muted);font-size:14px}
+  @media (max-width:620px){nav.toc{columns:1}h1{font-size:26px}}
+</style>
+</head>
+<body>
+<header class="hero">
+  <div class="eyebrow">ETS Clearing Tool · Cookbook</div>
+  <h1>Scenario Cookbook</h1>
+  <p class="lede">~20 ready-to-run recipes. Each shows the goal, the key config, the command, and what to
+  look for in the output. New here? Do the <a href="build-your-first-scenario.html">walkthrough</a> first.</p>
+</header>
+<div class="wrap">
+
+<p style="color:var(--muted);margin-top:26px">Every recipe maps to a file in <code>examples/</code>. Run a JSON scenario with:</p>
+<pre><code>python ets_framework.py --config examples/&lt;file&gt;.json</code></pre>
+
+<nav class="toc">
+  <div class="grp">A · Market foundations</div>
+  <a href="#base">Base market</a>
+  <a href="#banking">Banking &amp; borrowing</a>
+  <a href="#auction">Auction controls</a>
+  <div class="grp">B · Abatement modelling</div>
+  <a href="#piecewise">Piecewise MAC + no-regret</a>
+  <a href="#threshold">Threshold abatement</a>
+  <a href="#tech">Technology switching</a>
+  <div class="grp">C · Allocation &amp; trade</div>
+  <a href="#oba">Output-based allocation</a>
+  <a href="#phaseout">Free-allocation phase-out</a>
+  <a href="#cbam">CBAM exposure</a>
+  <a href="#cbammulti">Multi-jurisdiction CBAM</a>
+  <a href="#sectors">Sector caps</a>
+  <div class="grp">D · Price formation</div>
+  <a href="#hotelling">Hotelling banking</a>
+  <a href="#nash">Nash–Cournot</a>
+  <a href="#compare">Compare all approaches</a>
+  <div class="grp">E · Supply-side policy</div>
+  <a href="#msr">Market Stability Reserve</a>
+  <a href="#ccr">Carbon Cap Rule</a>
+  <div class="grp">F · Economic feedback</div>
+  <a href="#fbA">A · price-elastic baseline</a>
+  <a href="#fbB">B · external-model coupling</a>
+  <div class="grp">G · Real-world &amp; analysis</div>
+  <a href="#kets">K-ETS Outlook (full model)</a>
+  <a href="#convergence">KAU–EUA convergence</a>
+  <a href="#calibrate">Calibration</a>
+  <a href="#sweep">Batch sweep</a>
+</nav>
+
+<!-- ════════ A · MARKET FOUNDATIONS ════════ -->
+<h2 class="section">A · Market foundations</h2>
+
+<div class="recipe" id="base">
+  <h3>Base market <span class="file">climate_solutions_basic_linear.json</span></h3>
+  <p class="goal">The minimal scenario: a fixed cap, an explicit auction, and a few firms on linear MAC curves. The price clears where total demand meets auction supply.</p>
+  <div class="knob">Key knobs: <b>total_cap</b>, <b>auction_offered</b>, per-firm <b>initial_emissions</b> / <b>max_abatement</b> / <b>cost_slope</b>.</div>
+  <pre><code>python ets_framework.py --config examples/climate_solutions_basic_linear.json</code></pre>
+  <div class="look"><b>Look for</b><ul>
+    <li><code>Equilibrium Carbon Price</code> — the single clearing price.</li>
+    <li>Per-firm <code>Abatement</code> vs <code>Allowance Buys</code>: flatter MAC (lower <code>cost_slope</code>) abates more.</li>
+  </ul></div>
+</div>
+
+<div class="recipe" id="banking">
+  <h3>Banking &amp; borrowing <span class="file">climate_solutions_banking_borrowing.json</span></h3>
+  <p class="goal">Let firms carry allowances across years. With a rising expected price, firms bank now to use later; borrowing pulls future allowances forward.</p>
+  <div class="knob">Per year: <b>banking_allowed</b>, <b>borrowing_allowed</b>, <b>borrowing_limit</b>, <b>expectation_rule</b>.</div>
+  <pre><code>python ets_framework.py --config examples/climate_solutions_banking_borrowing.json</code></pre>
+  <div class="look"><b>Look for</b><ul>
+    <li><code>Total Banked / Borrowed Allowances</code> and the <code>Ending Bank Balance</code> per firm.</li>
+    <li>Banking smooths the price path across years versus a no-banking run.</li>
+  </ul></div>
+</div>
+
+<div class="recipe" id="auction">
+  <h3>Auction controls <span class="file">climate_solutions_auction_controls.json</span></h3>
+  <p class="goal">Add a reserve price and a minimum bid-coverage rule. Below the reserve, allowances go unsold; below the coverage floor, the auction is cancelled.</p>
+  <div class="knob">Per year: <b>auction_reserve_price</b>, <b>minimum_bid_coverage</b>, <b>unsold_treatment</b> (<code>reserve</code> / <code>cancel</code> / <code>carry_forward</code>).</div>
+  <pre><code>python ets_framework.py --config examples/climate_solutions_auction_controls.json</code></pre>
+  <div class="look"><b>Look for</b><ul>
+    <li><code>Unsold Allowances</code>, <code>Auction Coverage Ratio</code>, and where the price sticks at the reserve.</li>
+  </ul></div>
+</div>
+
+<!-- ════════ B · ABATEMENT MODELLING ════════ -->
+<h2 class="section">B · Abatement modelling</h2>
+
+<div class="recipe" id="piecewise">
+  <h3>Piecewise MAC + no-regret blocks <span class="file">climate_solutions_mac_pathway.json</span></h3>
+  <p class="goal">Model abatement as discrete cost blocks (efficiency → fuel switch → CCS). A block is taken whole when the price clears its marginal cost. Costs may be <em>negative</em> — "no-regret" measures undertaken at any price.</p>
+  <pre><code class="lang-json">"abatement_type": "piecewise",
+"mac_blocks": [
+  {"amount": 5.0, "marginal_cost": -40.0},   // no-regret: net-saving
+  {"amount": 8.0, "marginal_cost":  35.0},
+  {"amount": 6.0, "marginal_cost": 120.0}
+]</code></pre>
+  <div class="run">Rules: <code>amount ≥ 0</code>; <code>marginal_cost</code> may be negative; blocks sorted by non-decreasing cost.</div>
+  <div class="look"><b>Look for</b><ul>
+    <li>Discrete jumps in <code>Abatement</code> as the price crosses each block's <code>marginal_cost</code>.</li>
+    <li>Negative-cost blocks are abated even when the price is ~0 (see the K-ETS Outlook recipe for a full negative-cost MACC).</li>
+  </ul></div>
+</div>
+
+<div class="recipe" id="threshold">
+  <h3>Threshold abatement <span class="file">climate_solutions_threshold_pathway.json</span></h3>
+  <p class="goal">The simplest non-linear model: a firm abates a fixed maximum once the price clears a single switching cost, nothing below it.</p>
+  <div class="knob">Per firm: <b>abatement_type: "threshold"</b>, <b>threshold_cost</b>, <b>max_abatement</b>.</div>
+  <pre><code>python ets_framework.py --config examples/climate_solutions_threshold_pathway.json</code></pre>
+  <div class="look"><b>Look for</b><ul>
+    <li>A step in abatement exactly at <code>threshold_cost</code>; flat on either side.</li>
+  </ul></div>
+</div>
+
+<div class="recipe" id="tech">
+  <h3>Technology switching <span class="file">climate_solutions_technology_switching.json</span></h3>
+  <p class="goal">Give a firm several technologies (each its own MAC, fixed cost, and activity cap). The model picks the least-cost mix at the prevailing price via SLSQP.</p>
+  <div class="knob">Per firm: <b>technology_options[]</b> with <b>fixed_cost</b>, <b>max_activity_share</b>, and a MAC per option.</div>
+  <pre><code>python ets_framework.py --config examples/climate_solutions_technology_switching.json</code></pre>
+  <div class="look"><b>Look for</b><ul>
+    <li><code>Chosen Technology</code> / <code>Technology Mix</code> per firm, and how the mix shifts as the price rises.</li>
+  </ul></div>
+</div>
+
+<!-- ════════ C · ALLOCATION & TRADE ════════ -->
+<h2 class="section">C · Allocation &amp; trade</h2>
+
+<div class="recipe" id="oba">
+  <h3>Output-based allocation (OBA) <span class="file">k_ets_oba_benchmark.json</span></h3>
+  <p class="goal">Allocate free permits by output × benchmark intensity rather than a flat ratio — the EU/K-ETS benchmarking approach. Cleaner firms come out long.</p>
+  <pre><code class="lang-json">"production_output": 10.0,            // Mt product/yr
+"benchmark_emission_intensity": 1.4   // tCO2/unit  →  free alloc = 14 Mt</code></pre>
+  <div class="run">When both are &gt; 0, OBA free allocation overrides <code>free_allocation_ratio</code>.</div>
+  <div class="look"><b>Look for</b><ul>
+    <li><code>Free Allocation</code> per firm = intensity × output; firms below benchmark are net sellers.</li>
+  </ul></div>
+</div>
+
+<div class="recipe" id="phaseout">
+  <h3>Free-allocation phase-out <span class="file">climate_solutions_advanced_cbam_features.json</span></h3>
+  <p class="goal">Taper free allocation to zero over time without editing every year by hand — a scenario-level trajectory per participant.</p>
+  <pre><code class="lang-json">"free_allocation_trajectories": [
+  {"participant_name": "Steel", "start_year": "2026", "end_year": "2034",
+   "start_ratio": 0.6, "end_ratio": 0.0}
+]</code></pre>
+  <div class="look"><b>Look for</b><ul>
+    <li>The firm's <code>Free Allocation</code> declining linearly year on year; rising allowance purchases.</li>
+  </ul></div>
+</div>
+
+<div class="recipe" id="cbam">
+  <h3>CBAM exposure <span class="file">climate_solutions_cbam_exposure.json</span></h3>
+  <p class="goal">Layer a Carbon Border Adjustment on exports: when a reference (e.g. EU) price exceeds the domestic price, exporters owe the gap on their embedded emissions.</p>
+  <pre><code class="lang-json">"eua_price": 90.0,                 // year-level reference price
+"cbam_export_share": 0.4,          // participant: 40% of activity exported
+"cbam_coverage_ratio": 1.0</code></pre>
+  <div class="look"><b>Look for</b><ul>
+    <li><code>CBAM Gap</code> (reference − domestic), <code>Total CBAM Liability</code>, and the revenue tracker
+      (<code>Domestic Retained</code> vs <code>CBAM Foregone</code>).</li>
+  </ul></div>
+</div>
+
+<div class="recipe" id="cbammulti">
+  <h3>Multi-jurisdiction CBAM <span class="file">k_ets_multi_jurisdiction_cbam.json</span></h3>
+  <p class="goal">Different export destinations with different reference prices and coverage — liability is computed per jurisdiction and summed.</p>
+  <pre><code class="lang-json">"cbam_jurisdictions": [
+  {"name": "EU", "export_share": 0.3, "coverage_ratio": 1.0, "reference_price": 90.0},
+  {"name": "UK", "export_share": 0.1, "coverage_ratio": 0.8, "reference_price": 75.0}
+]</code></pre>
+  <div class="look"><b>Look for</b><ul>
+    <li>Per-jurisdiction <code>CBAM Liability (EU)</code> / <code>(UK)</code> columns and their total.</li>
+  </ul></div>
+</div>
+
+<div class="recipe" id="sectors">
+  <h3>Sector caps <span class="file">k_ets_subsector_decomposition.json</span></h3>
+  <p class="goal">Define caps and auction shares per sector; the total cap and free pool are derived from the sectors, and each firm draws free allocation from its sector's pool.</p>
+  <pre><code class="lang-json">"sectors": [
+  {"name": "Power",  "cap_trajectory": {"start_year":"2026","end_year":"2030","start_value":200,"end_value":150},
+   "auction_share_trajectory": {"start_year":"2026","end_year":"2030","start_value":0.9,"end_value":1.0}}
+],
+// on each participant:  "sector_group": "Power", "sector_allocation_share": 0.5</code></pre>
+  <div class="look"><b>Look for</b><ul>
+    <li>Per-sector aggregates in the summary (<code>{Sector} Total Abatement</code>, cost percentiles).</li>
+  </ul></div>
+</div>
+
+<!-- ════════ D · PRICE FORMATION ════════ -->
+<h2 class="section">D · Price formation</h2>
+
+<div class="recipe" id="hotelling">
+  <h3>Hotelling banking <span class="file">— set model_approach</span></h3>
+  <p class="goal">Treat allowances as an exhaustible resource: the price path rises at the discount rate so a fixed cumulative budget is exhausted optimally. Add a risk premium to steepen it. Set the approach on any scenario.</p>
+  <pre><code class="lang-json">"model_approach": "hotelling",
+"discount_rate": 0.055,
+"risk_premium": 0.0,
+// each year needs a "carbon_budget" to bisect on</code></pre>
+  <div class="run">Price path: <code>P*(t) = λ·(1 + r + ρ)^(t−t₀)</code>, with λ set so cumulative residual emissions = the budget. The bundled <code>climate_solutions_k_ets_outlook.json</code> runs in Hotelling mode.</div>
+  <div class="look"><b>Look for</b><ul>
+    <li>A smoothly rising price; total residual emissions matching the cumulative <code>carbon_budget</code>.</li>
+  </ul></div>
+</div>
+
+<div class="recipe" id="nash">
+  <h3>Nash–Cournot (market power) <span class="file">— set model_approach</span></h3>
+  <p class="goal">Let named large players act strategically — withholding abatement to move the price — instead of as price-takers. Best-response iteration to a Nash equilibrium.</p>
+  <pre><code class="lang-json">"model_approach": "nash_cournot",
+"nash_strategic_participants": ["Power"]</code></pre>
+  <div class="look"><b>Look for</b><ul>
+    <li>The strategic firm abates less and the price differs from the competitive run; a convergence warning if the iteration can't settle.</li>
+  </ul></div>
+</div>
+
+<div class="recipe" id="compare">
+  <h3>Compare all approaches <span class="file">— set model_approach</span></h3>
+  <p class="goal">Run competitive, Hotelling, and Nash side by side on one market to see how the price-formation assumption alone changes the outcome. Set <code>"all"</code> on a scenario; the runner emits one result set per approach.</p>
+  <pre><code class="lang-json">"model_approach": "all"</code></pre>
+  <div class="run">For comparing different <em>policy designs</em> (rather than price-formation methods), put several scenarios in one file — see <code>climate_solutions_compare_suite.json</code>.</div>
+  <div class="look"><b>Look for</b><ul>
+    <li>Three result sets (scenario name suffixed <code>[Competitive]</code> / <code>[Hotelling]</code> / <code>[Nash-Cournot]</code>) to compare prices.</li>
+  </ul></div>
+</div>
+
+<!-- ════════ E · SUPPLY-SIDE POLICY ════════ -->
+<h2 class="section">E · Supply-side policy</h2>
+
+<div class="recipe" id="msr">
+  <h3>Market Stability Reserve <span class="file">climate_solutions_msr_stability.json</span></h3>
+  <p class="goal">A supply valve: withhold auction volume into a reserve when the banked surplus is too high; release it when the bank runs short.</p>
+  <pre><code class="lang-json">"msr_enabled": true,
+"msr_upper_threshold": 60.0, "msr_lower_threshold": 10.0,
+"msr_withhold_rate": 0.15, "msr_release_rate": 20.0</code></pre>
+  <div class="run">Full reference: <a href="../multi-year-simulation.md">docs/multi-year-simulation.md</a>.</div>
+  <div class="look"><b>Look for</b><ul>
+    <li><code>MSR Withheld</code> / <code>Released</code> / <code>Reserve Pool</code> columns; a steadier price than the MSR-off twin.</li>
+  </ul></div>
+</div>
+
+<div class="recipe" id="ccr">
+  <h3>Carbon Cap Rule (adaptive cap) <span class="file">benmir_ccr_carbon_cap_rule.json</span></h3>
+  <p class="goal">A Taylor-rule cap (Benmir, Roman &amp; Taschini 2025): nudge each year's permit quantity by the prior year's emissions and abatement-cost gaps. Cuts price volatility ~27% in the example.</p>
+  <pre><code class="lang-json">"ccr_enabled": true,
+"ccr_phi_emissions": -30.0,        // tighten when emissions overshoot
+"ccr_phi_abatement_cost": 15.0,    // loosen when abatement costs run hot
+"ccr_reference_emissions": 424.0,
+"ccr_reference_abatement_cost": 2600.0</code></pre>
+  <div class="run">Formula &amp; theory: <a href="../carbon-cap-rule.md">docs/carbon-cap-rule.md</a>.</div>
+  <div class="look"><b>Look for</b><ul>
+    <li><code>CCR Cap Adjustment</code> / <code>Cost Deviation</code> / <code>Emissions Deviation</code>; the held-down post-shock price peak vs the fixed-cap twin.</li>
+  </ul></div>
+</div>
+
+<!-- ════════ F · ECONOMIC FEEDBACK ════════ -->
+<h2 class="section">F · Economic feedback</h2>
+
+<div class="recipe" id="fbA">
+  <h3>Feedback A · price-elastic baseline <span class="file">feedback_a_price_elastic_baseline.json</span></h3>
+  <p class="goal">Let carbon-intensive activity contract as the price rises — "demand destruction" solved inside clearing. The same tightening cap then produces a far flatter price path.</p>
+  <pre><code class="lang-json">"reference_carbon_price": 55.0,        // scenario anchor P_ref
+// per participant:
+"output_price_elasticity": 0.5         // ε ≥ 0; baseline = E0·max(0, 1 − ε·(P−P_ref)/P_ref)</code></pre>
+  <div class="run">Reference: <a href="../feedback-price-elastic-baseline.md">docs/feedback-price-elastic-baseline.md</a>.</div>
+  <div class="look"><b>Look for</b><ul>
+    <li>A flatter, lower price path than the inelastic twin; the per-firm <code>Initial Emissions</code> column now shows the <em>price-scaled</em> baseline (activity contracting).</li>
+    <li>Set <code>output_price_elasticity</code> or <code>reference_carbon_price</code> to 0 to recover the inelastic model exactly.</li>
+  </ul></div>
+</div>
+
+<div class="recipe" id="fbB">
+  <h3>Feedback B · external-model coupling <span class="file">feedback_b_coupling_demo.py</span> <span class="api">python</span></h3>
+  <p class="goal">Iterate the ETS to a joint equilibrium with an external energy / CGE / DSGE model through a pluggable adapter — general-equilibrium feedback without embedding a GE model.</p>
+  <pre><code class="lang-python">from ets.coupling import run_coupled_simulation, ElasticityExternalModel
+
+result = run_coupled_simulation(
+    config,
+    ElasticityExternalModel(elasticity=0.5, reference_price=55.0),
+    max_iterations=40, tolerance=0.25, relaxation=0.5)   # relaxation damps oscillation
+print(result.converged, result.iterations)</code></pre>
+  <div class="run">Run the demo: <code>python examples/feedback_b_coupling_demo.py</code> · adapter contract: <a href="../feedback-coupling.md">docs/feedback-coupling.md</a>.</div>
+  <div class="look"><b>Look for</b><ul>
+    <li><code>result.price_history</code> converging (e.g. 171 → 51 → 89 → 100); <code>converged</code> in ~4 iterations.</li>
+    <li>Swap <code>ElasticityExternalModel</code> for your own class with a <code>respond()</code> method to plug in a real model.</li>
+  </ul></div>
+</div>
+
+<!-- ════════ G · REAL-WORLD & ANALYSIS ════════ -->
+<h2 class="section">G · Real-world &amp; analysis</h2>
+
+<div class="recipe" id="kets">
+  <h3>K-ETS Outlook (full real-world model) <span class="file">climate_solutions_k_ets_outlook.json</span></h3>
+  <p class="goal">A standalone 3-scenario (Base / Middle / Ideal) Korea-ETS configuration — 25 MACC technologies across 6 sectors, Hotelling banking, learning-curve cost decay, and negative-cost no-regret measures. Prices are in ₩/tCO₂.</p>
+  <pre><code>python ets_framework.py --config examples/climate_solutions_k_ets_outlook.json</code></pre>
+  <div class="run">Generated from a K-ETS model via <code>examples/build_k_ets_outlook.py</code> (needs the source model output); the JSON itself is fully runnable.</div>
+  <div class="look"><b>Look for</b><ul>
+    <li>Three scenarios with diverging price paths; sectors abating their negative-cost blocks first.</li>
+    <li>Prices in the tens of thousands — that's ₩/tCO₂, not a bug.</li>
+  </ul></div>
+</div>
+
+<div class="recipe" id="convergence">
+  <h3>KAU–EUA convergence <span class="file">k_ets_kau_eua_convergence.json</span></h3>
+  <p class="goal">Ramp a domestic price floor toward an EU price over time to study convergence and the auction-revenue / CBAM-liability trade-off.</p>
+  <pre><code class="lang-json">"price_floor_trajectory": {"start_year":"2026","end_year":"2035","start_value":18,"end_value":85}</code></pre>
+  <div class="look"><b>Look for</b><ul>
+    <li>The price floor rising year on year; <code>Potential Revenue if KAU=EUA</code> vs <code>CBAM Foregone Revenue</code>.</li>
+  </ul></div>
+</div>
+
+<div class="recipe" id="calibrate">
+  <h3>Calibration <span class="file">k_ets_calibration_request.json</span> <span class="api">api</span></h3>
+  <p class="goal">Fit each firm's linear MAC slope so the model reproduces an observed price series (Nelder–Mead).</p>
+  <pre><code>POST /api/calibrate     # body: config + observed_prices + participant_names</code></pre>
+  <div class="run">This is an API payload, not a <code>--config</code> run. Methodology: <a href="../analysis-tools.md">docs/analysis-tools.md</a>.</div>
+  <div class="look"><b>Look for</b><ul>
+    <li>The fitted <code>cost_slope</code> per participant and the residual fit error in the response.</li>
+  </ul></div>
+</div>
+
+<div class="recipe" id="sweep">
+  <h3>Batch sweep <span class="file">k_ets_batch_eua_sweep.json</span> <span class="api">api</span></h3>
+  <p class="goal">Run a Cartesian product of parameter values (e.g. several EUA reference prices × caps) for sensitivity analysis.</p>
+  <pre><code>POST /api/batch-run     # body: { config, sweeps: [ {path, values}, … ] }</code></pre>
+  <div class="run">API payload. Methodology: <a href="../analysis-tools.md">docs/analysis-tools.md</a>.</div>
+  <div class="look"><b>Look for</b><ul>
+    <li>One result row per parameter combination — scan the price/abatement response across the grid.</li>
+  </ul></div>
+</div>
+
+<footer>
+  Every recipe maps to a file in <code>examples/</code>. Mix freely — MSR + CCR, OBA + CBAM, feedback A under a
+  declining cap. Field-by-field reference: <a href="../data-model.md">docs/data-model.md</a>. The maths:
+  <a href="../algorithm-overview.md">docs/algorithm-overview.md</a>.
+</footer>
+
+</div>
+<script>
+  document.querySelectorAll('pre').forEach(function(pre){
+    var btn=document.createElement('button');btn.className='copy';btn.type='button';btn.textContent='Copy';
+    btn.addEventListener('click',function(){
+      var t=pre.querySelector('code')?pre.querySelector('code').innerText:pre.innerText;
+      var ok=function(){btn.textContent='Copied';btn.classList.add('ok');setTimeout(function(){btn.textContent='Copy';btn.classList.remove('ok')},1400)};
+      if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(t).then(ok,function(){fb(t);ok()})}else{fb(t);ok()}
+    });
+    pre.appendChild(btn);
+  });
+  function fb(t){var a=document.createElement('textarea');a.value=t;a.style.position='fixed';a.style.opacity='0';document.body.appendChild(a);a.select();try{document.execCommand('copy')}catch(e){}document.body.removeChild(a)}
+</script>
+</body>
+</html>

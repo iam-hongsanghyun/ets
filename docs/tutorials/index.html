@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ETS Tool — Tutorials</title>
+<style>
+  :root{--bg:#0f1714;--panel:#15201c;--card:#1b2826;--ink:#e8efe9;--muted:#9fb3a8;--line:#26352f;--accent:#3fae84;--accent2:#5ec6f2}
+  *{box-sizing:border-box}
+  body{margin:0;background:linear-gradient(180deg,#0d1512,#0f1714 240px);color:var(--ink);
+    font:16px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:860px;margin:0 auto;padding:0 20px 80px}
+  header{padding:56px 20px 36px;text-align:center;border-bottom:1px solid var(--line);
+    background:radial-gradient(120% 140% at 50% 0%,rgba(63,174,132,.14),transparent 60%)}
+  .eyebrow{letter-spacing:.18em;text-transform:uppercase;font-size:12px;color:var(--accent);font-weight:700}
+  h1{font-size:33px;margin:.35em 0 .25em}
+  .lede{color:var(--muted);font-size:18px;max-width:600px;margin:0 auto}
+  a{color:var(--accent2);text-decoration:none}
+  .cards{display:grid;gap:18px;margin-top:34px}
+  .card{display:block;background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:24px 26px;color:inherit;transition:border-color .15s,transform .15s}
+  .card:hover{border-color:var(--accent);transform:translateY(-2px)}
+  .card h2{margin:0 0 .25em;font-size:21px}
+  .card p{margin:.3em 0 0;color:var(--muted)}
+  .tag{display:inline-block;font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--accent);
+    border:1px solid var(--line);background:#12211b;border-radius:999px;padding:3px 10px;margin-bottom:10px}
+  .meta{margin-top:10px;font-size:13px;color:var(--muted)}
+  footer{margin-top:48px;padding-top:20px;border-top:1px solid var(--line);color:var(--muted);font-size:14px}
+</style>
+</head>
+<body>
+<header>
+  <div class="eyebrow">ETS Clearing Tool</div>
+  <h1>Tutorials</h1>
+  <p class="lede">Three ways in: a linear walkthrough to learn the model, a cookbook of ready-to-run recipes for every feature, and a role-based training course built around real decisions.</p>
+</header>
+<div class="wrap">
+  <div class="cards">
+    <a class="card" href="build-your-first-scenario.html">
+      <span class="tag">Start here · walkthrough</span>
+      <h2>Build Your First Scenario →</h2>
+      <p>A hands-on, copy-along guide. Start from a two-firm carbon market and climb the
+      "closure ladder": base → MSR → Carbon Cap Rule → price-elastic baseline → external-model coupling.</p>
+      <div class="meta">~20 min · best for first-time users</div>
+    </a>
+    <a class="card" href="scenario-cookbook.html">
+      <span class="tag">Reference · recipes</span>
+      <h2>Scenario Cookbook →</h2>
+      <p>~20 self-contained recipes grouped by theme — market foundations, abatement modelling,
+      allocation &amp; trade, price formation, supply-side policy, economic feedback, and real-world cases.
+      Each recipe: the goal, the key config, the run command, and what to look for.</p>
+      <div class="meta">browse by need · every recipe maps to a file in <code>examples/</code></div>
+    </a>
+    <a class="card" href="practitioner-training.html">
+      <span class="tag">Course · by use case</span>
+      <h2>Practitioner Training →</h2>
+      <p>A trainer-led course for the people who'll use this on the job — compliance, policy, trading,
+      strategy, and research teams. Six role-based modules built around real decisions, each with a brief,
+      a scenario you run, how to read the result, and an exercise. Plus a feature × use-case matrix.</p>
+      <div class="meta">organised by use case, not by menu · industry-facing</div>
+    </a>
+  </div>
+  <footer>
+    Prefer prose? The reference docs live one level up in <a href="../">docs/</a> —
+    <a href="../algorithm-overview.md">algorithm-overview</a>, <a href="../data-model.md">data-model</a>,
+    and one page per mechanism.
+  </footer>
+</div>
+</body>
+</html>
