@@ -45,8 +45,10 @@ def piecewise_abatement_factory(
     for block in mac_blocks:
         amount = float(block["amount"])
         marginal_cost = float(block["marginal_cost"])
-        if amount < 0 or marginal_cost < 0:
-            raise ValueError("MAC block amount and marginal_cost must be non-negative.")
+        # amount must be non-negative; marginal_cost MAY be negative — negative-cost
+        # ("no-regret") abatement measures are a standard MACC feature.
+        if amount < 0:
+            raise ValueError("MAC block amount must be non-negative.")
         if marginal_cost < previous_cost:
             raise ValueError("MAC blocks must be ordered by non-decreasing marginal_cost.")
         normalized_blocks.append(
@@ -56,8 +58,8 @@ def piecewise_abatement_factory(
         previous_cost = marginal_cost
 
     def abatement_rule(carbon_price: float) -> float:
-        if carbon_price <= 0:
-            return 0.0
+        # Abate every block whose marginal cost the price covers. Negative-cost
+        # blocks are undertaken even at a zero carbon price (they are net-saving).
         abatement = 0.0
         for block in normalized_blocks:
             if carbon_price >= block["marginal_cost"]:

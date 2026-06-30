@@ -260,9 +260,12 @@ def normalize_participant(raw_participant: dict[str, Any]) -> dict[str, Any]:
             )
         amount = float(block.get("amount", 0.0))
         marginal_cost = float(block.get("marginal_cost", 0.0))
-        if amount < 0 or marginal_cost < 0:
+        # amount must be non-negative; marginal_cost MAY be negative — negative-cost
+        # abatement measures (e.g. net-saving efficiency options) are a standard
+        # feature of real MACC curves and sort first under the ordering rule below.
+        if amount < 0:
             raise ValueError(
-                f"Participant '{participant['name']}' MAC block {index + 1} must be non-negative."
+                f"Participant '{participant['name']}' MAC block {index + 1} amount must be non-negative."
             )
         if marginal_cost < previous_cost:
             raise ValueError(
@@ -328,9 +331,11 @@ def normalize_technology_option(
             )
         amount = float(block.get("amount", 0.0))
         marginal_cost = float(block.get("marginal_cost", 0.0))
-        if amount < 0 or marginal_cost < 0:
+        # amount must be non-negative; marginal_cost MAY be negative (negative-cost
+        # abatement measures are valid and sort first under the ordering rule).
+        if amount < 0:
             raise ValueError(
-                f"Participant '{participant_name}' technology '{option['name']}' MAC block {index + 1} must be non-negative."
+                f"Participant '{participant_name}' technology '{option['name']}' MAC block {index + 1} amount must be non-negative."
             )
         if marginal_cost < previous_cost:
             raise ValueError(
