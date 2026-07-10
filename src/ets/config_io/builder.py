@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Callable, Mapping
 from copy import deepcopy
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, TypeAlias
 
 from ..core.costs import linear_abatement_factory, piecewise_abatement_factory
 from ..core.participant import MarketParticipant, TechnologyOption
@@ -16,7 +17,12 @@ from ..features.cbam.plugin import (
 from ..features.ccr.plugin import CCRSummaryPlaceholderReporter
 from ..features.elastic_baseline.plugin import stamp_and_attach as _elastic_stamp_and_attach
 from ..features.msr.plugin import MSRSummaryPlaceholderReporter
-from ..features.sectors.plugin import SectorSummaryReporter
+from ..features.oba.plugin import OBABenchmarkAllocation
+from ..features.sectors.plugin import (
+    SectorPoolAllocation,
+    SectorSummaryReporter,
+    derive_sector_pools,
+)
 from .normalize import (
     ALLOWED_MODEL_APPROACHES,
     normalize_participant,
@@ -105,6 +111,73 @@ def _interp_ratio(year_num: float, traj: dict) -> float | None:
         return r_end
     frac = (year_num - t_start) / (t_end - t_start)
     return round(r_start + frac * (r_end - r_start), 6)
+
+
+# ── Per-participant preparation pipeline (PLAN v2 O9; Arbitration outcomes) ──
+# `ParticipantTransform` steps run in this EXACT order against every raw
+# participant dict, before `MarketParticipant` objects are built, so
+# dataclass validation sees final values: sector-pool allocation -> trajectory
+# patch (host-generic) -> OBA. The order is load-bearing and pinned by
+# `tests/test_builder_pipeline.py`, not just this literal: OBA reads the
+# trajectory-PATCHED `initial_emissions` (it must run after the trajectory
+# patch), and OBA's write to `free_allocation_ratio` OVERWRITES whatever the
+# sectors step wrote for the same participant — a documented cross-feature
+# coupling through the raw-dict medium (precedence OBA > sector > per-year).
+
+
+def _patch_trajectories(
+    raw: dict[str, Any], year_num: float, meta: Mapping[str, Any]
+) -> dict[str, Any]:
+    """Apply ``initial_emissions_trajectory`` / ``grid_emission_factor_trajectory``.
+
+    Algorithm:
+        ASCII:
+            initial_emissions    = interp(year_num, initial_emissions_trajectory)
+                                    or unchanged
+            grid_emission_factor = interp(year_num, grid_emission_factor_trajectory)
+                                    or unchanged
+
+    HOST-GENERIC (Arbitration outcomes, O9): every participant may carry
+    either trajectory regardless of sector/OBA configuration — this is not
+    feature economics, so it stays a builder-local function between the
+    sectors and OBA transforms in ``_PARTICIPANT_TRANSFORMS``, rather than
+    moving into a feature plugin. Declared fields: reads
+    ``initial_emissions_trajectory``, ``grid_emission_factor_trajectory``;
+    writes ``initial_emissions``, ``grid_emission_factor``.
+
+    Args:
+        raw: The participant's raw config dict for this year. Not mutated.
+        year_num: Numeric scenario year, used by ``_interp_value``.
+        meta: Unused; accepted for the pipeline's uniform call signature
+            (matches ``core.protocols.ParticipantTransform.apply``).
+
+    Returns:
+        A new dict — always a shallow copy, even when neither trajectory is
+        configured (the original loop's unconditional ``dict(p)``).
+    """
+    p = dict(raw)  # shallow copy to avoid mutating caller's data
+    ie_traj = p.get("initial_emissions_trajectory") or {}
+    if ie_traj:
+        overridden = _interp_value(year_num, ie_traj)
+        if overridden is not None:
+            p["initial_emissions"] = max(0.0, overridden)
+    gef_traj = p.get("grid_emission_factor_trajectory") or {}
+    if gef_traj:
+        overridden = _interp_value(year_num, gef_traj)
+        if overridden is not None:
+            p["grid_emission_factor"] = max(0.0, overridden)
+    return p
+
+
+_ParticipantTransformStep: TypeAlias = Callable[
+    [dict[str, Any], float, Mapping[str, Any]], dict[str, Any]
+]
+
+_PARTICIPANT_TRANSFORMS: tuple[_ParticipantTransformStep, ...] = (
+    SectorPoolAllocation().apply,
+    _patch_trajectories,
+    OBABenchmarkAllocation().apply,
+)
 
 
 def _normalize_sectors(raw_sectors: list) -> list:
@@ -375,83 +448,28 @@ def build_market_from_year(
     trajectories = list(meta.get("free_allocation_trajectories") or [])
     sectors = list(meta.get("sectors") or [])
 
-    # ── Sector-level derivation ──────────────────────────────────────────────
-    # When sectors are defined, compute per-sector pools and derive total_cap /
-    # auction_offered from the sum of sector caps.  Per-participant
-    # free_allocation_ratio is derived here (on raw dicts) before building
-    # MarketParticipant objects so the dataclass validation sees the final value.
-    sector_pools: dict[str, float] = {}
-    derived_total_cap: float | None = None
-    derived_auction: float | None = None
+    # ── Sector-level pool derivation (host-called, features.sectors.plugin) ──
+    # Computes per-sector free-allocation pools and, when sectors are
+    # defined, the scenario-derived total_cap / auction_offered from the sum
+    # of sector caps — ONCE per year, before the per-participant pipeline
+    # (the initial_emissions fallback needs every participant in the year at
+    # once; see `derive_sector_pools`'s docstring for why this stays
+    # host-called rather than a per-participant transform).
+    year_participants = list(year_config.get("participants", []))
+    sector_pools, derived_total_cap, derived_auction = derive_sector_pools(
+        year_num, sectors, year_participants, interp_value=_interp_value
+    )
 
-    if sectors:
-        _derived_total_cap = 0.0
-        _derived_auction = 0.0
-        for s in sectors:
-            sname = s["name"]
-            scap = _interp_value(year_num, s.get("cap_trajectory") or {})
-            if scap is None:
-                # Fall back to summing participant initial_emissions for this sector
-                scap = sum(
-                    float(p.get("initial_emissions", 0))
-                    for p in year_config.get("participants", [])
-                    if str(p.get("sector_group", "")) == sname
-                )
-            sauc_share = _interp_value(year_num, s.get("auction_share_trajectory") or {}) or 0.0
-            sauc = scap * sauc_share
-            sector_pools[sname] = scap - sauc
-            _derived_total_cap += scap
-            _derived_auction += sauc
-        derived_total_cap = _derived_total_cap
-        derived_auction = _derived_auction
-
-        # Patch raw participant dicts with sector-derived free_allocation_ratio
-        # (we work on a shallow copy to avoid mutating the caller's config)
-        raw_participants = []
-        for p in year_config.get("participants", []):
-            sg = str(p.get("sector_group", ""))
-            sas = float(p.get("sector_allocation_share", 0.0) or 0.0)
-            ie = float(p.get("initial_emissions", 0) or 0)
-            if sg in sector_pools and sas > 0 and ie > 0:
-                pool = sector_pools[sg]
-                allocated_mt = pool * sas
-                derived_ratio = min(1.0, allocated_mt / ie)
-                raw_participants.append({**p, "free_allocation_ratio": derived_ratio})
-            else:
-                raw_participants.append(p)
-    else:
-        raw_participants = list(year_config.get("participants", []))
-
-    # Apply initial_emissions_trajectory and grid_emission_factor_trajectory per participant
-    patched_participants = []
-    for p in raw_participants:
-        p = dict(p)  # shallow copy to avoid mutating caller's data
-        ie_traj = p.get("initial_emissions_trajectory") or {}
-        if ie_traj:
-            overridden = _interp_value(year_num, ie_traj)
-            if overridden is not None:
-                p["initial_emissions"] = max(0.0, overridden)
-        gef_traj = p.get("grid_emission_factor_trajectory") or {}
-        if gef_traj:
-            overridden = _interp_value(year_num, gef_traj)
-            if overridden is not None:
-                p["grid_emission_factor"] = max(0.0, overridden)
-        patched_participants.append(p)
-    raw_participants = patched_participants
-
-    # Apply Output-Based Allocation (OBA) overrides BEFORE building participants
-    # free_allocation = benchmark_emission_intensity × production_output
-    # This overrides free_allocation_ratio when both OBA fields are set.
-    oba_patched = []
-    for p in raw_participants:
-        po = float(p.get("production_output") or 0.0)
-        bei = float(p.get("benchmark_emission_intensity") or 0.0)
-        ie = float(p.get("initial_emissions") or 0.0)
-        if po > 0 and bei > 0 and ie > 0:
-            free_alloc_mt = bei * po
-            p = {**p, "free_allocation_ratio": min(1.0, free_alloc_mt / ie)}
-        oba_patched.append(p)
-    raw_participants = oba_patched
+    # ── Per-participant transform pipeline (`_PARTICIPANT_TRANSFORMS`) ───────
+    # Sector-pool allocation -> trajectory patch (host-generic) -> OBA, in
+    # that EXACT reviewed order (see the literal's module-level comment).
+    # `meta` is extended with the derived pool table so
+    # `SectorPoolAllocation.apply` can read it; every step in the pipeline
+    # receives the same extended mapping for a uniform call signature.
+    transform_meta: dict[str, Any] = {**meta, "sector_pools": sector_pools}
+    raw_participants = year_participants
+    for transform in _PARTICIPANT_TRANSFORMS:
+        raw_participants = [transform(p, year_num, transform_meta) for p in raw_participants]
 
     participants = [build_participant(item) for item in raw_participants]
 

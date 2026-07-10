@@ -1,1 +1,1 @@
-"""Sectors feature (T2) — summary reporting only; see ``plugin.py`` for the config door."""
+"""Sectors feature (T2) — pool transform + summary reporting; see ``plugin.py`` for the config door."""
