@@ -139,6 +139,17 @@ PENDING_VIOLATIONS: dict[tuple[str, str], str] = {
     # (g) coupling/loop.py drives the solver package directly — killed when
     # O8 rewires coupling onto ets.engine.
     ("ets.coupling.loop", "ets.solvers"): "O8",
+    # (c) O10 transitional wiring: the LEGACY banking host constructs the
+    # price_controls rule/overlay and the hoarding Friction defaults itself
+    # (docs/feature-modules-plan.md, O10; the imports sit next to the
+    # transitional _default_* factory-builders in solvers/banking.py).
+    # Killed when the engine order moves the wiring literals to
+    # engine/wiring.py and injects them into solve_banking_path (v1 O8 /
+    # PLAN v2 renumbering O12) — features must never import features, so
+    # these edges cannot survive banking's own move to features/banking.
+    ("ets.solvers.banking", "ets.features.hoarding.plugin"): "O8",
+    ("ets.solvers.banking", "ets.features.price_controls.plugin"): "O8",
+    ("ets.solvers.banking", "ets.features.price_controls.rules"): "O8",
 }
 
 

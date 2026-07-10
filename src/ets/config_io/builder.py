@@ -18,6 +18,7 @@ from ..features.ccr.plugin import CCRSummaryPlaceholderReporter
 from ..features.elastic_baseline.plugin import stamp_and_attach as _elastic_stamp_and_attach
 from ..features.msr.plugin import MSRSummaryPlaceholderReporter
 from ..features.oba.plugin import OBABenchmarkAllocation
+from ..features.price_controls.plugin import apply_price_bound_trajectories
 from ..features.sectors.plugin import (
     SectorPoolAllocation,
     SectorSummaryReporter,
@@ -506,19 +507,24 @@ def build_market_from_year(
     reserved_allowances = float(year_config.get("reserved_allowances", 0.0))
     cancelled_allowances = float(year_config.get("cancelled_allowances", 0.0))
 
-    # Apply cap / price-bound trajectories — override per-year values
+    # Apply cap / price-bound trajectories — override per-year values. The
+    # cap arm stays HOST (it is the cap's, not a price control's); the
+    # floor/ceiling arms are the price_controls feature's config door (O10),
+    # handed the host's _interp_value so trajectory semantics are defined
+    # exactly once.
     total_cap = float(year_config["total_cap"])
     price_lower_bound = year_config.get("price_lower_bound")
     price_upper_bound = year_config.get("price_upper_bound")
     cap_override = _interp_value(year_num, meta.get("cap_trajectory") or {})
-    floor_override = _interp_value(year_num, meta.get("price_floor_trajectory") or {})
-    ceiling_override = _interp_value(year_num, meta.get("price_ceiling_trajectory") or {})
     if cap_override is not None:
         total_cap = cap_override
-    if floor_override is not None:
-        price_lower_bound = floor_override
-    if ceiling_override is not None:
-        price_upper_bound = ceiling_override
+    price_lower_bound, price_upper_bound = apply_price_bound_trajectories(
+        year_num,
+        meta,
+        price_lower_bound,
+        price_upper_bound,
+        interp_value=_interp_value,
+    )
 
     # Sector-derived values override cap_trajectory and per-year values
     if derived_total_cap is not None:

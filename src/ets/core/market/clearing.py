@@ -109,6 +109,69 @@ def solve_equilibrium(
     expected_future_price: float = 0.0,
     carry_forward_in: float = 0.0,
 ) -> dict[str, float]:
+    r"""Clear one year's auction against aggregate net demand.
+
+    The reserve-price floor branch below is KERNEL, not a policy overlay
+    (feature-modules plan, PLAN v2 §3 price_controls REMAINDER; Arbitration
+    outcomes item 6): with ``auction_reserve_price = 0`` it is the OVERSUPPLY
+    BOUNDARY CONDITION of static clearing — the complementary-slackness
+    boundary of the market-clearing problem — and without it the Brent
+    bracket cannot be formed when supply exceeds demand at the floor (net
+    demand never crosses the offered volume on ``[F, P_max]``).
+
+    Algorithm:
+        LaTeX:
+        $$ 0 \le \big(P_t - F_t\big) \;\perp\; \big(Q_t - e^{+}_t(P_t)\big)
+           \ge 0 $$
+        i.e. either the price clears the full offered volume above the
+        floor, or the price sits AT the floor and only demand-at-floor
+        sells:
+        $$ P_t > F_t \Rightarrow \text{sold} = Q_t, \qquad
+           P_t = F_t \Rightarrow \text{sold} = e^{+}_t(F_t) \le Q_t . $$
+        With $F_t = 0$ this is the oversupply boundary $P_t = 0$,
+        $\text{sold} = e^{+}_t(0)$ (zero price on slack supply).
+
+        ASCII fallback:
+            demand_at(F) >= offered -> Brent-solve demand(P) = offered on
+                                       [F, P_max]; sold = offered
+            demand_at(F) <  offered -> price = F; sold = demand_at(F);
+                                       unsold = offered - sold
+                                       (coverage < minimum_bid_coverage:
+                                       auction fails — sold = 0 and the
+                                       price re-solves at zero net supply)
+
+        Symbols (units):
+            P_t    : clearing price of year t                [currency/tCO2]
+            F_t    : max(price_lower_bound, auction_reserve_price)
+                                                             [currency/tCO2]
+            Q_t    : effective auction volume offered        [Mt CO2e]
+            e+_t(p): max(0, aggregate net auction demand at p)   [Mt CO2e]
+            P_max  : price ceiling, or the penalty-derived bracket top
+                                                             [currency/tCO2]
+
+    Host guarantee (documented, PERMANENT property test in
+    ``tests/test_price_boundary_property.py``, alongside the F4 golden):
+    this branch is never reordered or extracted into a feature — every
+    price-formation path relies on clearing being TOTAL (always returning a
+    price without raising) at every supply level, including oversupply.
+
+    Args:
+        market: The year's market.
+        lower_bound: Bracket bottom [currency/tCO2]; defaults to the
+            market's ``price_lower_bound``.
+        upper_bound: Bracket top [currency/tCO2]; defaults to the market's
+            ``price_upper_bound``, else the penalty-derived ceiling.
+        bank_balances: Beginning-of-year bank balances by participant name
+            [Mt CO2e].
+        expected_future_price: Expected next-period price [currency/tCO2]
+            (the banking incentive inside compliance).
+        carry_forward_in: Additive supply adjustment entering this year's
+            auction [Mt CO2e] (cap rules, unsold carry-forward).
+
+    Returns:
+        Dict with ``price``, ``auction_offered``, ``auction_sold``,
+        ``unsold_allowances``, and ``coverage_ratio``.
+    """
     if lower_bound == 0.0 and market.price_lower_bound is not None:
         lower_bound = market.price_lower_bound
 

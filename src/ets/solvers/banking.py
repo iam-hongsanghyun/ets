@@ -90,22 +90,39 @@ objects (``ets.core.protocols``): a fresh rule instance is constructed at the
 top of every schedule evaluation, keeping evaluations pure across fixed-point
 iterations and solver invocations while the rule stays stateful across years
 within one evaluation. The rules live in ``solvers/msr.py``
-(``DecreeSupplyRule``, ``ThresholdMSRSupplyRule``); the floor-cancellation
-step remains banking-owned (F4 — evaluation timing inside the fixed point is
-part of the equilibrium definition, not an implementation detail).
+(``DecreeSupplyRule``, ``ThresholdMSRSupplyRule``). Since work order O10 the
+floor-cancellation step is ``features.price_controls.rules
+.FloorCancellationRule``, called from a DEDICATED host slot in its fixed
+position — after the MSR rules, inside the fixed point (F4 — evaluation
+timing inside the fixed point is part of the equilibrium definition, not an
+implementation detail); the delivered-price clip is
+``features.price_controls.plugin.DeliveredFloor`` (clip-LAST); and the
+hoarding inflow schedule is read through an injected
+``core.protocols.Friction`` (``features.hoarding.plugin.HoardingInflow``) —
+only the reader moved, the hoarding HOST SET stays here (static-year
+``S_t − h_t``, window-start constraint, prune exemption, bank accumulation;
+Arbitration outcomes O10).
 """
 
 from __future__ import annotations
 
 import logging
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 
 from scipy.optimize import brentq
 
 from ..core.defaults import BANKING_DEFAULTS
 from ..core.market import CarbonMarket
 from ..core.market.clearing import total_net_demand
-from ..core.protocols import Observables, SupplyRule, SupplyRuleFactory
+from ..core.protocols import Friction, Observables, SupplyRule, SupplyRuleFactory
+
+# TRANSITIONAL feature imports (O10): the price-controls rule/overlay and the
+# hoarding Friction are wired here only until the engine order moves the
+# wiring literals to engine/wiring.py (this module is LEGACY tier; the edges
+# are allowlisted in tests/test_module_isolation.py PENDING_VIOLATIONS).
+from ..features.hoarding.plugin import HoardingInflow
+from ..features.price_controls.plugin import DeliveredFloor
+from ..features.price_controls.rules import FloorCancellationRule
 
 # The decree action and both MSR supply rules moved to solvers/msr.py in O6
 # (supply-rule injection); _decree_msr_action and MSRState are re-exported so
@@ -139,18 +156,12 @@ def _residual_emissions(market: CarbonMarket, price: float) -> float:
     return total_net_demand(market, price) + _free_allocation_total(market)
 
 
-def _hoarding_inflow(market: CarbonMarket) -> float:
-    """Exogenous hoarding inflow h_t [Mt CO2e] withdrawn from circulation.
-
-    Reduced-form representation of structural hoarding in a λ ≈ 0 market
-    (K-MSR paper §3–4: compliance entities bank against future tightening
-    without pricing the carry — the registry banked-to-certified ratio rising
-    0.03 → 0.17). Hoarded volume clears out of the year's supply (raising the
-    static price), accumulates in the aggregate bank, and re-enters the
-    window budget when the drawdown window opens. Year field
-    ``hoarding_inflow``; default 0 (no hoarding, textbook equilibrium).
-    """
-    return float(getattr(market, "hoarding_inflow", 0.0) or 0.0)
+# The hoarding inflow reader moved to features/hoarding/plugin.py (O10,
+# Friction provider); thin compat alias so this module's surface is unchanged
+# until solvers/* becomes a shim (O8). Only the READER moved — the hoarding
+# host set (static-year S_t − h_t, window-start constraint, no-arbitrage
+# prune exemption, bank accumulation) stays in solve_banking_window below.
+_hoarding_inflow = HoardingInflow().inflow
 
 
 def _static_price(market: CarbonMarket, supply: float) -> float:
@@ -231,12 +242,20 @@ def solve_banking_window(
     supplies: list[float],
     strict: bool,
     bank_tol: float,
+    friction: Friction | None = None,
 ) -> tuple[list[float], tuple[int, int] | None]:
     """Find the banking window and price path for a fixed supply schedule.
 
     Searches candidate windows (earliest start, then longest extent), solving
     the window budget for each and validating bank non-negativity and the
     boundary no-arbitrage inequalities (see module docstring).
+
+    The hoarding HOST SET lives in this function (Arbitration outcomes, O10,
+    binding): the static-year supply reduction S_t − h_t, the window-start
+    constraint a > max{t : h_t > 0}, the pre-window no-arbitrage prune
+    exemption for hoarding years, and the accumulation of hoarded volume
+    into the window budget are window-equilibrium math and never move to the
+    hoarding feature — only the inflow schedule reader is injected.
 
     Args:
         markets: Markets sorted chronologically.
@@ -247,14 +266,20 @@ def solve_banking_window(
         strict: Reject boundary no-arbitrage violations (see module
             docstring).
         bank_tol: Interior bank non-negativity tolerance [Mt CO2e].
+        friction: Hoarding-inflow provider (``core.protocols.Friction``).
+            ``None`` (default) attaches the feature's reader, which is exact
+            for unconfigured markets (h_t = 0 without ``hoarding_inflow``
+            fields — the textbook equilibrium).
 
     Returns:
         ``(prices, window)`` — the per-year price path and the chosen window
         as ``(a, b)`` indices, or ``(static_prices, None)`` when no valid
         window exists (pure static equilibrium).
     """
+    if friction is None:
+        friction = HoardingInflow()  # attach-always neutral: 0.0 when unconfigured
     n = len(markets)
-    hoarding = [_hoarding_inflow(m) for m in markets]
+    hoarding = [friction.inflow(m) for m in markets]
     static = [
         _static_price(m, supplies[t] - hoarding[t]) for t, m in enumerate(markets)
     ]
@@ -388,6 +413,7 @@ def _supply_schedule(
     bank: list[float],
     initial_bank: float,
     supply_rule_factories: Sequence[SupplyRuleFactory],
+    floor_rule_factory: Callable[[], FloorCancellationRule],
 ) -> tuple[list[float], list[dict[str, float]]]:
     """Recompute per-year supply from bank-/price-triggered rules.
 
@@ -406,9 +432,16 @@ def _supply_schedule(
     HOST computes the lagged ``Observables`` (beginning-of-year bank,
     previous solved price, previous surplus ratio via
     ``_residual_emissions``) and each rule returns the year's REPLACEMENT
-    circulating supply. The floor-cancellation step stays banking-owned this
-    order (it moves to price_controls at O10) and is evaluated AFTER the MSR
-    adjustment, on the MSR-adjusted supply.
+    circulating supply.
+
+    The floor-cancellation step (O10) is
+    ``features.price_controls.rules.FloorCancellationRule``, called from
+    this DEDICATED slot — not the ``SupplyRule`` list — because it reads the
+    CONTEMPORANEOUS year's price from the previous fixed-point iterate, not
+    the lagged ``Observables`` (economist verdict 1c). Its position is
+    load-bearing economics: AFTER the MSR adjustment, on the MSR-adjusted
+    supply, inside the fixed point (MSR-then-floor,
+    ``docs/blocks-composition-rules.md`` §2 item 3).
 
     Args:
         markets: Markets sorted chronologically.
@@ -417,6 +450,8 @@ def _supply_schedule(
         initial_bank: Bank carried into the first year [Mt CO2e].
         supply_rule_factories: Zero-argument constructors of fresh
             ``SupplyRule`` instances, applied per year in list order.
+        floor_rule_factory: Zero-argument constructor of the fresh
+            floor-cancellation rule for this evaluation.
 
     Returns:
         The adjusted supply schedule and per-year diagnostics.
@@ -432,6 +467,7 @@ def _supply_schedule(
     # Fresh rule instances per schedule evaluation — never reused across
     # fixed-point iterations or solver invocations (ets.core.protocols).
     rules: list[SupplyRule] = [factory() for factory in supply_rule_factories]
+    floor_rule = floor_rule_factory()
 
     for t, market in enumerate(markets):
         if rules:
@@ -451,12 +487,10 @@ def _supply_schedule(
                 supplies[t], rule_diags = rule.apply(market, obs)
                 diags[t].update(rule_diags)
 
-        floor = float(getattr(market, "auction_reserve_price", 0.0) or 0.0)
-        if floor > prices[t] and market.unsold_treatment == "cancel":
-            demand_at_floor = _residual_emissions(market, floor)
-            unsold = max(0.0, supplies[t] - demand_at_floor)
-            supplies[t] -= unsold
-            diags[t]["floor_unsold_cancelled"] = unsold
+        # Dedicated floor-cancellation slot: AFTER the MSR rules, on the
+        # MSR-adjusted supply (order is economics — see docstring).
+        supplies[t], cancelled = floor_rule.apply_to_year(market, prices[t], supplies[t])
+        diags[t]["floor_unsold_cancelled"] = cancelled
 
     return supplies, diags
 
@@ -501,6 +535,30 @@ def _default_supply_rule_factories(m0: CarbonMarket) -> list[SupplyRuleFactory]:
     return [lambda: ThresholdMSRSupplyRule(start_year=msr_start)]
 
 
+def _default_friction(ordered_markets: list[CarbonMarket]) -> Friction | None:
+    """Today's exact hoarding wiring: the feature's reader when configured.
+
+    TRANSITIONAL: moves to ``engine/wiring.py`` in the engine work order
+    alongside ``_default_supply_rule_factories``. The gate expresses the
+    wiring intent (the hoarding feature attaches only when a scenario
+    configures it); ``None`` is behaviour-identical to an attached reader on
+    unconfigured markets, since ``HoardingInflow.inflow`` is 0.0 without
+    ``hoarding_inflow`` fields.
+
+    Args:
+        ordered_markets: Markets sorted chronologically.
+
+    Returns:
+        The hoarding ``Friction`` when any year has ``hoarding_inflow > 0``,
+        else ``None`` (neutral).
+    """
+    if any(
+        float(getattr(m, "hoarding_inflow", 0.0) or 0.0) > 0.0 for m in ordered_markets
+    ):
+        return HoardingInflow()
+    return None
+
+
 def solve_banking_path(
     ordered_markets: list[CarbonMarket],
     discount_rate: float = 0.055,
@@ -508,6 +566,8 @@ def solve_banking_path(
     initial_bank: float | None = None,
     strict_no_arbitrage: bool | None = None,
     supply_rule_factories: Sequence[SupplyRuleFactory] | None = None,
+    floor_rule_factory: Callable[[], FloorCancellationRule] | None = None,
+    friction: Friction | None = None,
 ) -> list[dict]:
     r"""Solve the banking equilibrium path, composing supply rules to a fixed point.
 
@@ -533,8 +593,19 @@ def solve_banking_path(
             invocations (``ets.core.protocols``). ``None`` (default) wires
             today's rules from the first market's ``msr_*`` scenario flags
             via ``_default_supply_rule_factories``; pass an empty sequence
-            for an explicitly MSR-free schedule (the reserve-price
-            floor-cancellation is banking-owned and applies regardless).
+            for an explicitly MSR-free schedule (the floor-cancellation
+            slot applies regardless).
+        floor_rule_factory: Zero-argument constructor of the
+            floor-cancellation rule evaluated in the host's dedicated slot
+            AFTER the supply rules (O10). ``None`` (default) attaches
+            ``features.price_controls.rules.FloorCancellationRule``, which
+            is exact for scenarios without a binding floor.
+        friction: Hoarding-inflow provider threaded into the window solve
+            (``core.protocols.Friction``). ``None`` (default) attaches the
+            feature's reader when any year configures ``hoarding_inflow``
+            (``_default_friction``); the hoarding HOST SET (static-year
+            S_t − h_t, window-start constraint, prune exemption, bank
+            accumulation) always stays in ``solve_banking_window``.
 
     Returns:
         Path details in the ``_simulate_path_details`` structure, with
@@ -589,6 +660,10 @@ def solve_banking_path(
     # non-empty iff msr_enabled, so has_rules is unchanged for None callers.
     if supply_rule_factories is None:
         supply_rule_factories = _default_supply_rule_factories(m0)
+    if floor_rule_factory is None:
+        floor_rule_factory = FloorCancellationRule  # attach-always is exact
+    if friction is None:
+        friction = _default_friction(ordered_markets)
 
     has_rules = bool(supply_rule_factories) or any(
         float(getattr(m, "auction_reserve_price", 0.0) or 0.0) > 0.0
@@ -598,13 +673,14 @@ def solve_banking_path(
     for iteration in range(max_iters):
         prices, window = solve_banking_window(
             ordered_markets, g, initial_bank, supplies,
-            strict=strict_no_arbitrage, bank_tol=bank_tol,
+            strict=strict_no_arbitrage, bank_tol=bank_tol, friction=friction,
         )
         bank = _bank_path(ordered_markets, prices, supplies, initial_bank)
         if not has_rules:
             break
         new_supplies, diags = _supply_schedule(
-            ordered_markets, prices, bank, initial_bank, supply_rule_factories
+            ordered_markets, prices, bank, initial_bank,
+            supply_rule_factories, floor_rule_factory,
         )
         max_delta = max(abs(a - b) for a, b in zip(new_supplies, supplies))
         logger.debug(
@@ -615,7 +691,7 @@ def solve_banking_path(
         if max_delta <= schedule_tol:
             prices, window = solve_banking_window(
                 ordered_markets, g, initial_bank, supplies,
-                strict=strict_no_arbitrage, bank_tol=bank_tol,
+                strict=strict_no_arbitrage, bank_tol=bank_tol, friction=friction,
             )
             bank = _bank_path(ordered_markets, prices, supplies, initial_bank)
             break
@@ -625,10 +701,12 @@ def solve_banking_path(
             f"{max_iters} iterations; using the last iterate."
         )
 
-    # Price overlay: reserve-price floor clips the delivered price last.
+    # Price overlay: the reserve-price floor clips the delivered price ONCE,
+    # LAST (features.price_controls.plugin.DeliveredFloor; clip-last is the
+    # F3 operation-order doctrine — attach-always is exact, max(p, 0) = p).
+    price_overlay = DeliveredFloor()
     delivered = [
-        max(p, float(getattr(m, "auction_reserve_price", 0.0) or 0.0))
-        for p, m in zip(prices, ordered_markets)
+        price_overlay.delivered(p, m) for p, m in zip(prices, ordered_markets)
     ]
 
     details: list[dict] = []
