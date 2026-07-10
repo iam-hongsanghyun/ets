@@ -12,7 +12,7 @@ import {
 import { BuildView, ValidationView, AnalysisView, Compare } from "./components/AppViews.jsx";
 import { GuideView } from "./components/GuideView.jsx";
 
-export default function App({ enabledFeatures = null } = {}) {
+export default function App({ enabledFeatures = null, initialTemplateId = null } = {}) {
   const [templates, setTemplates] = useS([]);
   const [config, setConfig] = useS({ scenarios: [] });
   const [results, setResults] = useS({});
@@ -84,7 +84,8 @@ export default function App({ enabledFeatures = null } = {}) {
       const payload = await response.json();
       setTemplates(payload.templates || []);
       const defaultTemplate =
-        payload.templates?.find((item) => item.id === "example")?.config
+        (initialTemplateId && payload.templates?.find((item) => item.id === initialTemplateId)?.config)
+        || payload.templates?.find((item) => item.id === "example")?.config
         || payload.templates?.find((item) => item.config?.scenarios?.some((scenario) =>
           scenario.years?.some((year) => (year.participants || []).length > 0)
         ))?.config

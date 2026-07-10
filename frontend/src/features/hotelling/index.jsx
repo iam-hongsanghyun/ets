@@ -9,7 +9,12 @@ import { numInput } from "../../components/EditorPrimitives.jsx";
 import { ReferenceCarbonPriceField } from "../elastic_baseline/index.jsx";
 
 function HotellingApproachParams({ ctx }) {
-  const { workingScenario, updateScenario, workingYear, updateYear, openMarketSeriesEditor } = ctx;
+  const { workingScenario, updateScenario, workingYear, updateYear, openMarketSeriesEditor, activeFeatures } = ctx;
+  // Editor.jsx always resolves enabledFeatures to a concrete id list before
+  // building ctx (activeFeatureIds(null) => every feature) — in the pe
+  // shell that list is the selected model's manifest, so only embed the
+  // elastic_baseline field when that feature is actually in play.
+  const elasticBaselineActive = (activeFeatures || []).includes("elastic_baseline");
   return (
     <div className="approach-params">
       <label>
@@ -38,7 +43,7 @@ function HotellingApproachParams({ ctx }) {
         />
         <span className="approach-params-hint">Policy/market risk premium ρ added to discount rate. Steepens the Hotelling price path to match observed prices. Default 0 = pure Hotelling.</span>
       </label>
-      <ReferenceCarbonPriceField ctx={ctx} />
+      {elasticBaselineActive && <ReferenceCarbonPriceField ctx={ctx} />}
       <label>
         <span className="ekey">Carbon budget (this year) <span className="field-flag optional">optional</span></span>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>

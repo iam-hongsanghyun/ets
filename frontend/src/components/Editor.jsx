@@ -817,7 +817,11 @@ export function Editor({
 
   // Context objects handed to feature-module editor slots (see
   // frontend/src/features/*). Feature components read/write through these
-  // rather than reaching into Editor's closure directly.
+  // rather than reaching into Editor's closure directly. `activeFeatures`
+  // is included so a feature component that embeds ANOTHER feature's field
+  // inline (e.g. hotelling embedding elastic_baseline's reference-carbon
+  // price at its original DOM position) can self-gate on that feature's
+  // enablement too, not just its own.
   const scenarioCtx = {
     scenario,
     workingScenario,
@@ -825,6 +829,7 @@ export function Editor({
     workingYear,
     updateYear,
     openMarketSeriesEditor,
+    activeFeatures,
   };
   const participantCtx = {
     workingScenario,
@@ -833,6 +838,7 @@ export function Editor({
     selectedParticipantIndex,
     updateParticipant,
     openParticipantSeriesEditor,
+    activeFeatures,
   };
 
   return (
