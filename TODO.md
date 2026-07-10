@@ -89,6 +89,8 @@ Items are grouped by theme. Checked items are complete. Unchecked items are pend
 ## Engine defects found during modularization (math changes — need economist sign-off + new baselines)
 
 - [ ] **Nash–Cournot equilibrium is degenerate**: `solvers/nash.py:_solve_nash_year` runs the best-response iteration but returns `market.solve_equilibrium(...)` (plain competitive clearing) — converged strategic abatements never feed the reported equilibrium, so Nash prices are bit-identical to competitive (verified empirically, dP/dQ = 0.526, two strategic gencos). Fix is a math change: report the strategic equilibrium; then add a Nash golden example (deliberately not added while degenerate). Related: F2 wiring inconsistencies (ungated MSR, no CCR in nash path).
+- [ ] Nash caveat in docs/UI (economist sign-off warning 2): until the degenerate-Nash fix lands, "Nash–Cournot" output is bit-identical to competitive — the label overstates the equilibrium; add a user-facing note.
+- [ ] Fold nash's F2-frozen inline MSR literal fallbacks into the W3 value-drift guard when that follow-up is picked up (economist sign-off warning 3).
 - [ ] `climate_solutions_msr_stability` never fires its MSR (bank never crosses the threshold; withheld = 0 in every golden year) — either retune the example so the mechanism demonstrably fires or rename its intent; `k_ets_msr_ccr_combined` now provides firing coverage.
 
 ## Modularization / block-composer follow-ups (non-blocking, from economist review 2026-07-10)

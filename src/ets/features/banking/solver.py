@@ -120,7 +120,12 @@ def _supply_schedule(
         bank: Previous iterate's end-of-year aggregate bank path [Mt CO2e].
         initial_bank: Bank carried into the first year [Mt CO2e].
         supply_rule_factories: Zero-argument constructors of fresh
-            ``SupplyRule`` instances, applied per year in list order.
+            ``SupplyRule`` instances. At most ONE rule is supported: the
+            protocol's output is a supply REPLACEMENT, so a second rule
+            would silently discard the first's adjustment (F1-shaped
+            hazard). The host enforces this; composition of multiple
+            supply-side mechanisms requires a deliberate protocol change
+            with economist sign-off.
         floor_rule_factory: Zero-argument constructor of the fresh
             floor-cancellation rule for this evaluation.
 
@@ -138,6 +143,12 @@ def _supply_schedule(
     # Fresh rule instances per schedule evaluation — never reused across
     # fixed-point iterations or solver invocations (ets.core.protocols).
     rules: list[SupplyRule] = [factory() for factory in supply_rule_factories]
+    if len(rules) > 1:
+        raise ValueError(
+            "at most one SupplyRule may be injected: outputs are supply "
+            "replacements, so a second rule would discard the first's "
+            "adjustment (see economist sign-off warning 1)"
+        )
     floor_rule = floor_rule_factory()
 
     for t, market in enumerate(markets):
