@@ -8,8 +8,24 @@
 import { numInput } from "../../components/EditorPrimitives.jsx";
 import { ReferenceCarbonPriceField } from "../elastic_baseline/index.jsx";
 
+// Numerical-internals fields behind this module's own "Solver tuning" block
+// (see solverSectionVisible in Editor.jsx / AppShared.jsx's
+// PE_SOLVER_FIELD_DEFAULTS — pe mode hides this block behind "Show advanced
+// settings" unless the loaded config already ships non-default values).
+const HOTELLING_SOLVER_FIELDS = [
+  "solver_hotelling_max_bisection_iters",
+  "solver_hotelling_max_lambda_expansions",
+  "solver_hotelling_convergence_tol",
+  "solver_hotelling_lambda_initial_low",
+  "solver_hotelling_lambda_initial_high",
+  "solver_hotelling_lambda_expand_factor",
+];
+
 function HotellingApproachParams({ ctx }) {
-  const { workingScenario, updateScenario, workingYear, updateYear, openMarketSeriesEditor, activeFeatures } = ctx;
+  const {
+    workingScenario, updateScenario, workingYear, updateYear, openMarketSeriesEditor, activeFeatures,
+    solverSectionVisible = () => true,
+  } = ctx;
   // Editor.jsx always resolves enabledFeatures to a concrete id list before
   // building ctx (activeFeatureIds(null) => every feature) — in the pe
   // shell that list is the selected model's manifest, so only embed the
@@ -62,6 +78,8 @@ function HotellingApproachParams({ ctx }) {
         </div>
         <span className="approach-params-hint">Mt CO₂e allowed this year. Set across all years using the pathway chart.</span>
       </label>
+      {solverSectionVisible(HOTELLING_SOLVER_FIELDS) && (
+      <>
       <div className="approach-params-tuning-label">Solver tuning</div>
       <div className="solver-settings-grid">
         <label>
@@ -107,6 +125,8 @@ function HotellingApproachParams({ ctx }) {
           {numInput(workingScenario.solver_hotelling_lambda_expand_factor ?? 3.0, (v) => updateScenario({ solver_hotelling_lambda_expand_factor: Math.max(1.1, v) }), 0.1, 1.1)}
         </label>
       </div>
+      </>
+      )}
     </div>
   );
 }

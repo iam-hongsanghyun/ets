@@ -1,6 +1,12 @@
 import React from "react";
 import { fmt } from "./MarketChart.jsx";
-import { YearSeriesModal, getSeriesFieldMeta } from "./AppShared.jsx";
+import {
+  YearSeriesModal,
+  getSeriesFieldMeta,
+  isYearAttributeConfigured,
+  isScenarioFieldConfigured,
+  isScenarioSectionConfigured,
+} from "./AppShared.jsx";
 import { activeFeatureIds, collectSlot, FEATURES } from "../features/registry.js";
 import {
   CollapsibleGroup,
@@ -30,6 +36,21 @@ const CANONICAL_APPROACH_OPTIONS = [
   { id: "nash_cournot", label: "Nash–Cournot", sub: "Strategic participants with market power" },
   { id: "all", label: "Run All", sub: "Compare all three approaches simultaneously" },
 ];
+
+// Field lists for the two core "advanced numerical internals" subsections
+// under "Modelling approach" (competitive solver tuning, market clearing) —
+// see solverSectionVisible / PE_SOLVER_FIELD_DEFAULTS in AppShared.jsx. The
+// hotelling / nash_cournot / calibration feature modules define their own
+// equivalent lists next to their own solver-tuning blocks.
+const COMPETITIVE_SOLVER_FIELDS = [
+  "solver_competitive_max_iters",
+  "solver_competitive_tolerance",
+  "solver_price_bracket_expand_factor",
+  "solver_price_bracket_max_expansions",
+  "solver_slsqp_max_iters",
+  "solver_slsqp_ftol",
+];
+const MARKET_CLEARING_FIELDS = ["solver_penalty_price_multiplier"];
 
 const ALL_EXPANSION_IDS = ["competitive", "hotelling", "nash_cournot"];
 
@@ -61,9 +82,40 @@ export function Editor({
   navigationTarget = null,
   enabledFeatures = null,
   manifest = null,
+  // "Show advanced settings" — owned by BuildView (frontend/src/components/
+  // AppViews.jsx), shared with the "Market timeline" metric list above this
+  // editor so both surfaces respond to the same one switch. Only meaningful
+  // in pe mode (see peMode below); the unscoped (default) shell ignores it —
+  // solver tuning and every optional field stay unconditionally visible,
+  // byte-identical to today.
+  showAdvanced = false,
 }) {
   const activeFeatures = activeFeatureIds(enabledFeatures);
   const isFeatureActive = (id) => activeFeatures.includes(id);
+  // pe mode = a manifest-scoped shell (see frontend/src/pe/PeApp.jsx). Config-
+  // driven field visibility (see AppShared.jsx's isYearAttributeConfigured /
+  // isScenarioFieldConfigured) only applies here — the unscoped (default)
+  // shell always shows every optional field, unchanged.
+  const peMode = enabledFeatures != null;
+  // A year-level optional field (Total cap, Price ceiling, Borrowing limit,
+  // ...) is visible if the toggle is on, or if ANY year in this scenario's
+  // working draft already sets it away from its backend default — the same
+  // any-year-deviates rule ets/blocks/decompile.py uses to decide whether a
+  // block (and therefore a feature) is "in play" for a config. Default shell:
+  // always true.
+  const yearFieldVisible = (field) =>
+    !peMode || showAdvanced || isYearAttributeConfigured(workingScenario.years, field);
+  // A scenario-level optional field (a single solver-tuning knob) is visible
+  // under the same rule, compared against its own value instead of an
+  // across-years OR.
+  const scenarioFieldVisible = (field) =>
+    !peMode || showAdvanced || isScenarioFieldConfigured(workingScenario, field);
+  // A whole "Solver tuning"-style subsection is visible if the toggle is on,
+  // or if any field inside it deviates from default (a model that ships
+  // custom solver settings must not hide them silently). Default shell:
+  // always true — these blocks are unconditional numerical internals today.
+  const solverSectionVisible = (fields) =>
+    !peMode || showAdvanced || isScenarioSectionConfigured(workingScenario, fields);
   // Manifest-driven approach lock (pe shell only — see approachOptionsFor
   // above). Prefer the active scenario's own breakdown when the manifest
   // has one (manifest.scenarios[name].approach — more precise for a
@@ -890,6 +942,11 @@ export function Editor({
     updateYear,
     openMarketSeriesEditor,
     activeFeatures,
+    peMode,
+    showAdvanced,
+    yearFieldVisible,
+    scenarioFieldVisible,
+    solverSectionVisible,
   };
   const participantCtx = {
     workingScenario,
@@ -899,6 +956,8 @@ export function Editor({
     updateParticipant,
     openParticipantSeriesEditor,
     activeFeatures,
+    peMode,
+    showAdvanced,
   };
 
   return (
@@ -1062,8 +1121,13 @@ export function Editor({
                 <ApproachSection key={`nash-approach-${index}`} ctx={scenarioCtx} />
               ))}
 
-            {/* Competitive approach-params (always shown when competitive or all) */}
-            {(workingScenario.model_approach === "competitive" || workingScenario.model_approach === "all" || !workingScenario.model_approach) && (
+            {/* Competitive approach-params (shown when competitive or all).
+                Solver tuning is numerical-internals plumbing, not a modelling
+                choice — in pe mode it hides behind "Show advanced settings"
+                unless this model's config already ships non-default values
+                (see solverSectionVisible / COMPETITIVE_SOLVER_FIELDS). */}
+            {(workingScenario.model_approach === "competitive" || workingScenario.model_approach === "all" || !workingScenario.model_approach) &&
+              solverSectionVisible(COMPETITIVE_SOLVER_FIELDS) && (
               <div className="approach-params">
                 <div className="approach-params-tuning-label">Solver tuning</div>
                 <div className="solver-settings-grid">
@@ -1109,7 +1173,10 @@ export function Editor({
               </div>
             )}
 
-            {/* Market clearing — always visible */}
+            {/* Market clearing — numerical internals, same advanced-toggle
+                treatment as Solver tuning above. Default shell: always
+                visible, unchanged. */}
+            {solverSectionVisible(MARKET_CLEARING_FIELDS) && (
             <div className="approach-market-clearing">
               <span className="approach-params-tuning-label" style={{ borderTop: "none", paddingTop: 0 }}>Market clearing</span>
               <div className="solver-settings-grid">
@@ -1127,6 +1194,7 @@ export function Editor({
                 </label>
               </div>
             </div>
+            )}
           </div>
           </CollapsibleGroup>
 
@@ -1231,36 +1299,42 @@ export function Editor({
                 <option value="derive_from_cap">derive_from_cap</option>
               </select>
             </label>
+            {yearFieldVisible("total_cap") && (
             <label>
               <span className="ekey">{fieldWithPathButton("Total cap", () => openMarketSeriesEditor("total_cap"), true)}</span>
               {numInput(workingYear.total_cap, (value) => updateYear({ total_cap: value }), 1, 0)}
             </label>
+            )}
+            {yearFieldVisible("auction_offered") && (
             <label>
               <span className="ekey">{fieldWithPathButton("Auction offered", () => openMarketSeriesEditor("auction_offered"), true)}</span>
               {numInput(workingYear.auction_offered || 0, (value) => updateYear({ auction_offered: value }), 1, 0)}
             </label>
+            )}
+            {yearFieldVisible("reserved_allowances") && (
             <label>
               <span className="ekey">{fieldWithPathButton("Reserved allowances", () => openMarketSeriesEditor("reserved_allowances"), false, true)}</span>
               {numInput(workingYear.reserved_allowances || 0, (value) => updateYear({ reserved_allowances: value }), 1, 0)}
             </label>
-            <label>
-              <span className="ekey">{fieldWithPathButton("Cancelled allowances", () => openMarketSeriesEditor("cancelled_allowances"), false, true)}</span>
-              {numInput(workingYear.cancelled_allowances || 0, (value) => updateYear({ cancelled_allowances: value }), 1, 0)}
-            </label>
+            )}
             {isFeatureActive("price_controls") && (() => {
               // price_controls.editorSections[1] = auction guardrail fields
               // (reserve price, minimum bid coverage, unsold treatment).
               const AuctionGuardrailFields = FEATURES.price_controls.editorSections?.[1];
               return AuctionGuardrailFields ? <AuctionGuardrailFields ctx={scenarioCtx} /> : null;
             })()}
+            {yearFieldVisible("price_lower_bound") && (
             <label>
               <span className="ekey">{fieldWithPathButton("Price floor", () => openMarketSeriesEditor("price_lower_bound"), true)}</span>
               {numInput(workingYear.price_lower_bound, (value) => updateYear({ price_lower_bound: value }), 1, 0)}
             </label>
+            )}
+            {yearFieldVisible("price_upper_bound") && (
             <label>
               <span className="ekey">{fieldWithPathButton("Price ceiling", () => openMarketSeriesEditor("price_upper_bound"), true)}</span>
               {numInput(workingYear.price_upper_bound, (value) => updateYear({ price_upper_bound: value }), 1, 0)}
             </label>
+            )}
           </div>
           </CollapsibleGroup>
 
@@ -1287,10 +1361,12 @@ export function Editor({
                 <option value="true">true</option>
               </select>
             </label>
+            {yearFieldVisible("borrowing_limit") && (
             <label>
               <span className="ekey">{fieldWithPathButton("Borrowing limit", () => openMarketSeriesEditor("borrowing_limit"), false, true)}</span>
               {numInput(workingYear.borrowing_limit || 0, (value) => updateYear({ borrowing_limit: value }), 1, 0)}
             </label>
+            )}
             <label>
               <span className="ekey">Expectation rule <span className="field-flag optional">optional</span></span>
               <select
@@ -1303,15 +1379,27 @@ export function Editor({
                 <option value="manual">manual</option>
               </select>
             </label>
+            {yearFieldVisible("manual_expected_price") && (
             <label>
               <span className="ekey">{fieldWithPathButton("Manual expected price", () => openMarketSeriesEditor("manual_expected_price"), false, true)}</span>
               {numInput(workingYear.manual_expected_price || 0, (value) => updateYear({ manual_expected_price: value }), 1, 0)}
             </label>
+            )}
+            {/* eua_price is a cbam-owned field (single-jurisdiction reference
+                price) — feature-gated like every other cbam surface (the
+                per-jurisdiction/ensemble EUA tables just below in "EUA &
+                external prices" are already isFeatureActive("cbam")-gated;
+                this scalar field had been left ungated, the one metric-list
+                sweep gap price_controls-style extraction didn't already
+                cover). Unscoped shell: isFeatureActive(null) is always true,
+                so this stays unconditionally visible, unchanged. */}
+            {isFeatureActive("cbam") && yearFieldVisible("eua_price") && (
             <label>
               <span className="ekey">{fieldWithPathButton("EUA price (external)", () => openMarketSeriesEditor("eua_price"), false, true)}</span>
               {numInput(workingYear.eua_price || 0, (value) => updateYear({ eua_price: value }), 1, 0)}
               <span className="approach-params-hint">EU ETS reference price used as default for CBAM gap calculation.</span>
             </label>
+            )}
           </div>
           </CollapsibleGroup>
           )}

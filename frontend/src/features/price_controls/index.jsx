@@ -1,6 +1,7 @@
 // Price controls feature — price floor/ceiling trajectories and the
-// auction guardrail fields (reserve price, minimum bid coverage, unsold
-// treatment). Extracted verbatim from frontend/src/components/Editor.jsx.
+// auction guardrail fields (cancelled allowances, reserve price, minimum
+// bid coverage, unsold treatment). Extracted verbatim from
+// frontend/src/components/Editor.jsx.
 //
 // editorSections[0] = floor/ceiling trajectory rows, rendered inside
 // "Allocation & policy trajectories" alongside the core cap trajectory row
@@ -8,7 +9,11 @@
 // editorSections[1] = auction guardrail fields, rendered inside "Supply &
 // price bounds" between the core allowance-bucket fields and the core
 // price floor/ceiling fields — the exact position they held before
-// extraction.
+// extraction. "Cancelled allowances" was moved in here from Editor.jsx's
+// core render (it was ungated there despite being price_controls-owned
+// everywhere else — see CancelledAllowancesBullet below, which was already
+// gated) as its first field, so the default (unscoped) shell's field order
+// is unchanged (price_controls is always active there).
 
 import { TrajectoryRangeRow, numInput, fieldWithPathButton } from "../../components/EditorPrimitives.jsx";
 import { fmt } from "../../components/MarketChart.jsx";
@@ -39,17 +44,28 @@ function PriceBoundTrajectories({ ctx }) {
 }
 
 function AuctionGuardrailFields({ ctx }) {
-  const { workingYear, updateYear, openMarketSeriesEditor } = ctx;
+  const { workingYear, updateYear, openMarketSeriesEditor, yearFieldVisible = () => true } = ctx;
   return (
     <>
+      {yearFieldVisible("cancelled_allowances") && (
+      <label>
+        <span className="ekey">{fieldWithPathButton("Cancelled allowances", () => openMarketSeriesEditor("cancelled_allowances"), false, true)}</span>
+        {numInput(workingYear.cancelled_allowances || 0, (value) => updateYear({ cancelled_allowances: value }), 1, 0)}
+      </label>
+      )}
+      {yearFieldVisible("auction_reserve_price") && (
       <label>
         <span className="ekey">{fieldWithPathButton("Auction reserve price", () => openMarketSeriesEditor("auction_reserve_price"), false, true)}</span>
         {numInput(workingYear.auction_reserve_price || 0, (value) => updateYear({ auction_reserve_price: value }), 1, 0)}
       </label>
+      )}
+      {yearFieldVisible("minimum_bid_coverage") && (
       <label>
         <span className="ekey">{fieldWithPathButton("Minimum bid coverage", () => openMarketSeriesEditor("minimum_bid_coverage"), false, true)}</span>
         {numInput(workingYear.minimum_bid_coverage || 0, (value) => updateYear({ minimum_bid_coverage: value }), 0.05, 0)}
       </label>
+      )}
+      {yearFieldVisible("unsold_treatment") && (
       <label>
         <span className="ekey">Unsold treatment <span className="field-flag optional">optional</span></span>
         <select
@@ -61,6 +77,7 @@ function AuctionGuardrailFields({ ctx }) {
           <option value="carry_forward">carry_forward</option>
         </select>
       </label>
+      )}
     </>
   );
 }

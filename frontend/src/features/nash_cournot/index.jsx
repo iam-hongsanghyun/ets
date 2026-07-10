@@ -4,8 +4,18 @@
 
 import { numInput } from "../../components/EditorPrimitives.jsx";
 
+// Numerical-internals fields behind this module's own "Solver tuning" block
+// (see solverSectionVisible in Editor.jsx / AppShared.jsx's
+// PE_SOLVER_FIELD_DEFAULTS).
+const NASH_SOLVER_FIELDS = [
+  "solver_nash_price_step",
+  "solver_nash_max_iters",
+  "solver_nash_convergence_tol",
+  "solver_nash_inner_xatol",
+];
+
 function NashApproachParams({ ctx }) {
-  const { workingScenario, updateScenario, workingYear } = ctx;
+  const { workingScenario, updateScenario, workingYear, solverSectionVisible = () => true } = ctx;
   const allNames = (workingYear.participants || []).map((x) => x.name);
   const current = workingScenario.nash_strategic_participants || [];
   const effective = current.length === 0 ? allNames : current;
@@ -87,6 +97,8 @@ function NashApproachParams({ ctx }) {
           </div>
         );
       })}
+      {solverSectionVisible(NASH_SOLVER_FIELDS) && (
+      <>
       <div className="approach-params-tuning-label">Solver tuning</div>
       <div className="solver-settings-grid">
         <label>
@@ -122,6 +134,8 @@ function NashApproachParams({ ctx }) {
           {numInput(workingScenario.solver_nash_inner_xatol ?? 1e-4, (v) => updateScenario({ solver_nash_inner_xatol: Math.max(1e-10, v) }), 1e-5, 1e-10)}
         </label>
       </div>
+      </>
+      )}
     </div>
   );
 }
