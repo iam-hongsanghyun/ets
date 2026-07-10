@@ -1,4 +1,7 @@
 # Backward-compatibility shim — re-exports from the config_io sub-package.
+# New location: src/ets/config_io/.
+import warnings
+
 from .config_io import (
     normalize_year,
     build_market_from_year,
@@ -20,6 +23,13 @@ from .config_io import (
     _interp_value,
     _interp_ratio,
     _normalize_trajectory,
+)
+
+warnings.warn(
+    "ets.scenarios is deprecated; import from ets.config_io instead. "
+    "Removal milestone: after the frontend migrates to the graph API (v2.0).",
+    DeprecationWarning,
+    stacklevel=2,
 )
 
 __all__ = [

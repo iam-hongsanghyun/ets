@@ -1,3 +1,7 @@
+# Source of truth for dependencies is pyproject.toml ([project.dependencies]).
+# This file is kept for the Vercel deploy pipeline (vercel.json / api/index.py),
+# which installs from requirements.txt. Keep the pinned lines below in sync
+# with pyproject.toml; do not delete or empty this file.
 numpy
 pandas
 scipy

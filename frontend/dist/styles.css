@@ -2711,6 +2711,158 @@ html[data-chart="terminal"][data-theme="light"] { --panel: #fafaf7; --bg: #eeede
   background: var(--bg);
 }
 
+/* ── Composer view (Vensim-style block/graph editor) ────────────────────── */
+.composer-view { padding: 20px var(--pad-x) 44px; max-width: 1600px; margin: 0 auto; }
+.composer-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+.composer-toolbar-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.composer-toolbar-actions select {
+  font: inherit;
+  font-size: 13px;
+  border: 1px solid var(--line-2);
+  border-radius: 6px;
+  padding: 6px 10px;
+  background: var(--panel);
+  color: var(--ink);
+}
+.composer-source-badge {
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--accent-2);
+  background: rgba(138, 90, 44, 0.1);
+  padding: 4px 10px;
+  border-radius: 999px;
+}
+
+/* category -> reused design-token color, no new palette introduced */
+.cat-market { --cat-color: var(--accent); }
+.cat-price_formation { --cat-color: var(--sell); }
+.cat-policy { --cat-color: var(--accent-2); }
+.cat-expectations { --cat-color: var(--buy); }
+.cat-participants { --cat-color: var(--ink); }
+.cat-analysis { --cat-color: var(--muted); }
+
+.composer-layout {
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr) 340px;
+  gap: 16px;
+  height: calc(100vh - 260px);
+  min-height: 640px;
+}
+.composer-palette {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  padding: 12px;
+  overflow-y: auto;
+}
+.composer-palette-group { margin-bottom: 14px; }
+.composer-palette-group-title {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--cat-color);
+  padding-bottom: 6px;
+  margin-bottom: 8px;
+  border-bottom: 2px solid var(--cat-color);
+}
+.composer-palette-items { display: grid; gap: 6px; }
+.composer-palette-item {
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--cat-color);
+  border-radius: var(--r-sm);
+  padding: 7px 10px;
+  font-size: 12px;
+  background: var(--panel-2);
+  color: var(--ink);
+  cursor: grab;
+}
+.composer-palette-item:active { cursor: grabbing; }
+
+.composer-canvas-wrap {
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  overflow: hidden;
+  background: var(--panel-2);
+}
+
+.composer-side { display: flex; flex-direction: column; gap: 12px; overflow-y: auto; }
+.composer-issues-card .validation-list { max-height: 260px; overflow-y: auto; }
+.composer-param-doc { margin: 0 0 12px; }
+.composer-param-empty { min-height: 160px; display: flex; flex-direction: column; justify-content: center; }
+.composer-field-error { color: var(--danger); }
+.composer-run-results { margin-top: 24px; }
+
+.composer-node {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-top: 3px solid var(--cat-color);
+  border-radius: var(--r-md);
+  min-width: 200px;
+  font-size: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+}
+.composer-node.selected { outline: 2px solid var(--ink); outline-offset: 1px; }
+.composer-node-issue-highlight .composer-node { outline: 2px solid var(--danger); outline-offset: 1px; }
+.composer-node-head {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.composer-node-category {
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--cat-color);
+  font-weight: 600;
+}
+.composer-node-label { font-size: 13px; font-weight: 500; color: var(--ink); }
+.composer-node-ports { padding: 6px 0; }
+.composer-node-port-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  align-items: center;
+  min-height: 22px;
+}
+.composer-node-port-cell {
+  position: relative;
+  display: flex;
+  align-items: center;
+  font-size: 11px;
+  color: var(--muted);
+  padding: 0 10px;
+}
+.composer-node-port-cell-in { justify-content: flex-start; }
+.composer-node-port-cell-out { justify-content: flex-end; text-align: right; }
+.composer-port-label { white-space: nowrap; }
+.composer-handle {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--cat-color);
+  border: 1px solid var(--panel);
+}
+.composer-edge-issue-highlight .react-flow__edge-path {
+  stroke: var(--danger) !important;
+  stroke-width: 2.5 !important;
+}
+
+@media (max-width: 1280px) {
+  .composer-layout { grid-template-columns: 1fr; height: auto; }
+  .composer-canvas-wrap { height: 520px; }
+  .composer-palette, .composer-side { max-height: 320px; }
+}
+
 /* ── Collapsible groups ─────────────────────────────────────── */
 .cg { border: 1px solid #dde8e5; border-radius: 7px; margin-bottom: 10px; background: #fff; }
 .cg-summary { display: flex; align-items: center; gap: 8px; padding: 9px 14px; cursor: pointer; list-style: none; user-select: none; background: #f4f8f7; border-radius: 7px; }

@@ -6,17 +6,9 @@ from pathlib import Path
 from urllib.parse import parse_qs
 
 from ..config import DOCS_DIR, FRONTEND_DIST_DIR
-from .handlers import (
-    ASSET_CONTENT_TYPES,
-    _build_dashboard_payload,
-    _json_safe,
-    _predefined_templates,
-    _save_user_scenario,
-    _handle_calibrate,
-    _handle_batch_run,
-    _handle_narrative,
-    _handle_csv_import,
-)
+from .api import _json_safe
+from .handlers import ASSET_CONTENT_TYPES
+from .routes import ROUTES
 
 
 def _json_response(start_response, payload: dict, status: HTTPStatus = HTTPStatus.OK):
@@ -52,92 +44,35 @@ def _safe_path(root: Path, relative_path: str) -> Path | None:
     return resolved
 
 
+class _FakeHeaders:
+    def __init__(self, environ):
+        self._ct = environ.get("CONTENT_TYPE", "")
+
+    def get(self, key, default=""):
+        if key.lower() in ("content-type", "Content-Type"):
+            return self._ct
+        return default
+
+
 def app(environ, start_response):
     method = environ.get("REQUEST_METHOD", "GET").upper()
     path = environ.get("PATH_INFO", "/") or "/"
-    _ = parse_qs(environ.get("QUERY_STRING", ""))
+    query = {key: values[0] for key, values in parse_qs(environ.get("QUERY_STRING", "")).items()}
 
-    if method == "GET" and path == "/api/templates":
-        return _json_response(start_response, {"templates": _predefined_templates()})
-
-    if method == "POST" and path == "/api/run":
-        try:
-            length = int(environ.get("CONTENT_LENGTH") or "0")
-        except ValueError:
-            length = 0
-        raw = environ["wsgi.input"].read(length) if length > 0 else b"{}"
-        try:
-            payload = _build_dashboard_payload(json.loads(raw.decode("utf-8")))
-            return _json_response(start_response, payload)
-        except Exception as exc:  # pragma: no cover - deployment path
-            return _json_response(start_response, {"error": str(exc)}, HTTPStatus.BAD_REQUEST)
-
-    if method == "POST" and path == "/api/save-scenario":
-        try:
-            length = int(environ.get("CONTENT_LENGTH") or "0")
-        except ValueError:
-            length = 0
-        raw = environ["wsgi.input"].read(length) if length > 0 else b"{}"
-        try:
-            payload = _save_user_scenario(json.loads(raw.decode("utf-8")))
-            return _json_response(start_response, payload)
-        except Exception as exc:  # pragma: no cover - deployment path
-            return _json_response(start_response, {"error": str(exc)}, HTTPStatus.BAD_REQUEST)
-
-    if method == "POST" and path == "/api/calibrate":
-        try:
-            length = int(environ.get("CONTENT_LENGTH") or "0")
-        except ValueError:
-            length = 0
-        raw = environ["wsgi.input"].read(length) if length > 0 else b"{}"
-        try:
-            payload = _handle_calibrate(json.loads(raw.decode("utf-8")))
-            return _json_response(start_response, payload)
-        except Exception as exc:
-            return _json_response(start_response, {"error": str(exc)}, HTTPStatus.BAD_REQUEST)
-
-    if method == "POST" and path == "/api/batch-run":
-        try:
-            length = int(environ.get("CONTENT_LENGTH") or "0")
-        except ValueError:
-            length = 0
-        raw = environ["wsgi.input"].read(length) if length > 0 else b"{}"
-        try:
-            payload = _handle_batch_run(json.loads(raw.decode("utf-8")))
-            return _json_response(start_response, payload)
-        except Exception as exc:
-            return _json_response(start_response, {"error": str(exc)}, HTTPStatus.BAD_REQUEST)
-
-    if method == "POST" and path == "/api/narrative":
-        try:
-            length = int(environ.get("CONTENT_LENGTH") or "0")
-        except ValueError:
-            length = 0
-        raw = environ["wsgi.input"].read(length) if length > 0 else b"{}"
-        try:
-            payload = _handle_narrative(json.loads(raw.decode("utf-8")))
-            return _json_response(start_response, payload)
-        except Exception as exc:
-            return _json_response(start_response, {"error": str(exc)}, HTTPStatus.BAD_REQUEST)
-
-    if method == "POST" and path == "/api/import-csv":
+    route = ROUTES.get((method, path))
+    if route is not None:
+        if method == "GET":
+            try:
+                return _json_response(start_response, route(b"", _FakeHeaders(environ), query))
+            except Exception as exc:
+                return _json_response(start_response, {"error": str(exc)}, HTTPStatus.BAD_REQUEST)
         try:
             length = int(environ.get("CONTENT_LENGTH") or "0")
         except ValueError:
             length = 0
         raw = environ["wsgi.input"].read(length) if length > 0 else b""
-
-        class _FakeHeaders:
-            def __init__(self, environ):
-                self._ct = environ.get("CONTENT_TYPE", "")
-
-            def get(self, key, default=""):
-                if key.lower() in ("content-type", "Content-Type"):
-                    return self._ct
-                return default
-
         try:
-            payload = _handle_csv_import(raw, _FakeHeaders(environ))
+            payload = route(raw, _FakeHeaders(environ), query)
             return _json_response(start_response, payload)
         except Exception as exc:
             return _json_response(start_response, {"error": str(exc)}, HTTPStatus.BAD_REQUEST)

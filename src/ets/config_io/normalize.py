@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from ..expectations import ALLOWED_EXPECTATION_RULES, validate_expectation_rule
+from ..solvers.expectations import ALLOWED_EXPECTATION_RULES, validate_expectation_rule
 
 ALLOWED_AUCTION_MODES = {"explicit", "derive_from_cap"}
 

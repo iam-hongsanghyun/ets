@@ -555,6 +555,7 @@ function Header({
     { id: "validation", label: "Validation" },
     { id: "analysis", label: "Analysis" },
     { id: "scenario", label: "Scenario" },
+    { id: "composer", label: "Composer" },
     { id: "guide", label: "Guide" },
   ];
   useE(() => {
