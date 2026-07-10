@@ -6,8 +6,15 @@
 
 import { CollapsibleGroup, numInput } from "../../components/EditorPrimitives.jsx";
 
+// Numerical-internals fields behind this whole group (see
+// solverSectionVisible in Editor.jsx / AppShared.jsx's
+// PE_SOLVER_FIELD_DEFAULTS). The whole group counts as one "Solver
+// tuning"-style subsection, per the owner's rule — no per-field split.
+const CALIBRATION_SOLVER_FIELDS = ["solver_calibration_xatol", "solver_calibration_fatol"];
+
 function CalibrationEditorSection({ ctx }) {
-  const { workingScenario, updateScenario } = ctx;
+  const { workingScenario, updateScenario, solverSectionVisible = () => true } = ctx;
+  if (!solverSectionVisible(CALIBRATION_SOLVER_FIELDS)) return null;
   return (
     <CollapsibleGroup title="Calibration solver" defaultOpen={false}>
       <div className="solver-settings-grid">
