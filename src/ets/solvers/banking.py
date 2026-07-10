@@ -89,8 +89,9 @@ Since work order O6 the MSR rules are INJECTED as ``SupplyRuleFactory``
 objects (``ets.core.protocols``): a fresh rule instance is constructed at the
 top of every schedule evaluation, keeping evaluations pure across fixed-point
 iterations and solver invocations while the rule stays stateful across years
-within one evaluation. The rules live in ``solvers/msr.py``
-(``DecreeSupplyRule``, ``ThresholdMSRSupplyRule``). Since work order O10 the
+within one evaluation. The rules live in ``features/msr/``
+(``DecreeSupplyRule``, ``ThresholdMSRSupplyRule``; re-exported by the
+``solvers/msr.py`` shim since v1 O8 / v2 O12). Since work order O10 the
 floor-cancellation step is ``features.price_controls.rules
 .FloorCancellationRule``, called from a DEDICATED host slot in its fixed
 position — after the MSR rules, inside the fixed point (F4 — evaluation
@@ -108,6 +109,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Callable, Sequence
+from typing import TYPE_CHECKING
 
 from scipy.optimize import brentq
 
@@ -115,14 +117,6 @@ from ..core.defaults import BANKING_DEFAULTS
 from ..core.market import CarbonMarket
 from ..core.market.clearing import total_net_demand
 from ..core.protocols import Friction, Observables, SupplyRule, SupplyRuleFactory
-
-# TRANSITIONAL feature imports (O10): the price-controls rule/overlay and the
-# hoarding Friction are wired here only until the engine order moves the
-# wiring literals to engine/wiring.py (this module is LEGACY tier; the edges
-# are allowlisted in tests/test_module_isolation.py PENDING_VIOLATIONS).
-from ..features.hoarding.plugin import HoardingInflow
-from ..features.price_controls.plugin import DeliveredFloor
-from ..features.price_controls.rules import FloorCancellationRule
 
 # The decree action and both MSR supply rules moved to solvers/msr.py in O6
 # (supply-rule injection); _decree_msr_action and MSRState are re-exported so
@@ -133,6 +127,13 @@ from .msr import (  # noqa: F401
     ThresholdMSRSupplyRule,
     _decree_msr_action,
 )
+
+if TYPE_CHECKING:
+    # Annotation-only: since the engine order (v1 O8 / v2 O12) this LEGACY
+    # host reaches feature classes exclusively through the engine's wiring
+    # re-exports (lazy runtime imports below) — never features.* directly —
+    # until banking's own feature move (v1 O9 / v2 O13).
+    from ..engine.wiring import FloorCancellationRule
 
 logger = logging.getLogger(__name__)
 
@@ -154,14 +155,6 @@ def _residual_emissions(market: CarbonMarket, price: float) -> float:
     back the free allocation gives BAU-minus-abatement emissions.
     """
     return total_net_demand(market, price) + _free_allocation_total(market)
-
-
-# The hoarding inflow reader moved to features/hoarding/plugin.py (O10,
-# Friction provider); thin compat alias so this module's surface is unchanged
-# until solvers/* becomes a shim (O8). Only the READER moved — the hoarding
-# host set (static-year S_t − h_t, window-start constraint, no-arbitrage
-# prune exemption, bank accumulation) stays in solve_banking_window below.
-_hoarding_inflow = HoardingInflow().inflow
 
 
 def _static_price(market: CarbonMarket, supply: float) -> float:
@@ -277,6 +270,12 @@ def solve_banking_window(
         window exists (pure static equilibrium).
     """
     if friction is None:
+        # TRANSITIONAL lazy import (engine/events.py pattern): the engine
+        # owns the feature wiring since v1 O8 / v2 O12; this LEGACY host
+        # consumes the wiring re-export until banking's own feature move
+        # (v1 O9 / v2 O13).
+        from ..engine.wiring import HoardingInflow
+
         friction = HoardingInflow()  # attach-always neutral: 0.0 when unconfigured
     n = len(markets)
     hoarding = [friction.inflow(m) for m in markets]
@@ -496,16 +495,13 @@ def _supply_schedule(
 
 
 def _default_supply_rule_factories(m0: CarbonMarket) -> list[SupplyRuleFactory]:
-    """Today's exact supply-rule wiring, derived from ``m0``'s ``msr_*`` flags.
+    """Compat delegate: the factory-builder moved to ``engine.wiring`` (v1 O8 / v2 O12).
 
-    TRANSITIONAL: this factory-builder moves to ``engine/wiring.py`` in the
-    engine work order (``docs/feature-modules-plan.md``); it lives here in O6
-    only so every external caller of ``solve_banking_path`` is untouched.
-
-    Mode dispatch is if/elif — a scenario gets EITHER the decree rule
-    (``msr_mode`` in {``price_band``, ``surplus_rule``, ``hybrid``}) OR the
-    bank-threshold rule, never both; ``msr_initial_reserve_mt`` funds ONLY
-    the decree rule (R7, ``docs/blocks-composition-rules.md``).
+    See ``ets.engine.wiring.default_supply_rule_factories`` for the wiring
+    (decree XOR bank-threshold from ``m0``, m0-only start-year gate, R7).
+    Kept so existing callers and ``solve_banking_path``'s ``None`` default
+    are untouched until banking's own feature move (v1 O9 / v2 O13); the
+    lazy import mirrors ``engine/events.py``'s cycle-avoidance pattern.
 
     Args:
         m0: First market of the chronologically sorted scenario path.
@@ -514,36 +510,19 @@ def _default_supply_rule_factories(m0: CarbonMarket) -> list[SupplyRuleFactory]:
         Zero or one ``SupplyRuleFactory`` in a list (empty when the MSR is
         disabled).
     """
-    if not bool(getattr(m0, "msr_enabled", False)):
-        return []
-    msr_mode = str(getattr(m0, "msr_mode", "bank_threshold") or "bank_threshold")
-    # The banking path reads msr_start_year from the FIRST market only
-    # (scenario-level), while the competitive path's MSRCapRule re-reads it
-    # per year. Documented F2-family inconsistency (economist item 5d,
-    # docs/feature-modules-plan.md) — DO NOT HARMONISE without economist
-    # sign-off and new golden baselines.
-    msr_start = float(getattr(m0, "msr_start_year", 0.0) or 0.0)
-    if msr_mode != "bank_threshold":
-        initial_reserve = float(getattr(m0, "msr_initial_reserve_mt", 0.0) or 0.0)
-        return [
-            lambda: DecreeSupplyRule(
-                mode=msr_mode,
-                initial_reserve_mt=initial_reserve,
-                start_year=msr_start,
-            )
-        ]
-    return [lambda: ThresholdMSRSupplyRule(start_year=msr_start)]
+    from ..engine.wiring import default_supply_rule_factories
+
+    return default_supply_rule_factories(m0)
 
 
 def _default_friction(ordered_markets: list[CarbonMarket]) -> Friction | None:
-    """Today's exact hoarding wiring: the feature's reader when configured.
+    """Compat delegate: the hoarding wiring moved to ``engine.wiring`` (v1 O8 / v2 O12).
 
-    TRANSITIONAL: moves to ``engine/wiring.py`` in the engine work order
-    alongside ``_default_supply_rule_factories``. The gate expresses the
-    wiring intent (the hoarding feature attaches only when a scenario
-    configures it); ``None`` is behaviour-identical to an attached reader on
-    unconfigured markets, since ``HoardingInflow.inflow`` is 0.0 without
-    ``hoarding_inflow`` fields.
+    See ``ets.engine.wiring.default_friction`` (the feature's reader attaches
+    only when a scenario configures ``hoarding_inflow``; ``None`` is
+    behaviour-identical to an attached reader on unconfigured markets). Kept
+    so existing callers and ``solve_banking_path``'s ``None`` default are
+    untouched until banking's own feature move (v1 O9 / v2 O13).
 
     Args:
         ordered_markets: Markets sorted chronologically.
@@ -552,11 +531,9 @@ def _default_friction(ordered_markets: list[CarbonMarket]) -> Friction | None:
         The hoarding ``Friction`` when any year has ``hoarding_inflow > 0``,
         else ``None`` (neutral).
     """
-    if any(
-        float(getattr(m, "hoarding_inflow", 0.0) or 0.0) > 0.0 for m in ordered_markets
-    ):
-        return HoardingInflow()
-    return None
+    from ..engine.wiring import default_friction
+
+    return default_friction(ordered_markets)
 
 
 def solve_banking_path(
@@ -661,7 +638,11 @@ def solve_banking_path(
     if supply_rule_factories is None:
         supply_rule_factories = _default_supply_rule_factories(m0)
     if floor_rule_factory is None:
-        floor_rule_factory = FloorCancellationRule  # attach-always is exact
+        # TRANSITIONAL lazy import (engine/events.py pattern; the engine
+        # owns the feature wiring since v1 O8 / v2 O12).
+        from ..engine.wiring import default_floor_rule_factory
+
+        floor_rule_factory = default_floor_rule_factory()  # attach-always is exact
     if friction is None:
         friction = _default_friction(ordered_markets)
 
@@ -704,6 +685,10 @@ def solve_banking_path(
     # Price overlay: the reserve-price floor clips the delivered price ONCE,
     # LAST (features.price_controls.plugin.DeliveredFloor; clip-last is the
     # F3 operation-order doctrine — attach-always is exact, max(p, 0) = p).
+    # TRANSITIONAL lazy import via the engine's wiring re-export (v1 O8 /
+    # v2 O12) until banking's own feature move (v1 O9 / v2 O13).
+    from ..engine.wiring import DeliveredFloor
+
     price_overlay = DeliveredFloor()
     delivered = [
         price_overlay.delivered(p, m) for p, m in zip(prices, ordered_markets)

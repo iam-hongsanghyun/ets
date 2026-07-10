@@ -20,7 +20,7 @@ from dataclasses import dataclass, field
 import pandas as pd
 
 from ..config_io import normalize_config
-from ..solvers import run_simulation_from_config
+from ..engine import run_simulation_from_config
 from .adapters import ExternalModel, PriceMap
 
 logger = logging.getLogger(__name__)

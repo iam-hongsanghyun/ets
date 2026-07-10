@@ -101,11 +101,18 @@ _STDLIB_MODULES = frozenset(sys.stdlib_module_names)
 # without changing their dotted name — keeping the constant ahead of the
 # migration avoids a two-line diff later. Append `ets.solvers.*` here once
 # that package itself becomes a shim (O8+). `ets.participant.*` became a
-# shim package in O2; `ets.market.*` in O3; `ets.solvers.expectations` in O4.
+# shim package in O2; `ets.market.*` in O3; `ets.solvers.expectations` in O4;
+# `ets.solvers.{msr,ccr,events}` became pure re-export shims in the engine
+# order (v1 O8 / v2 O12). `ets.solvers.simulation` is deliberately NOT
+# listed: it still holds real solver code (solve_scenario_path) until the
+# competitive feature move (v1 O10 / v2 O14) — only pure shims belong here.
 SHIM_MODULES: frozenset[str] = frozenset(
     {
         "ets.simulation",
+        "ets.solvers.ccr",
+        "ets.solvers.events",
         "ets.solvers.expectations",
+        "ets.solvers.msr",
         "ets.market",
         "ets.market.core",
         "ets.market.equilibrium",
@@ -136,20 +143,16 @@ _T4_GROUPS: frozenset[str] = frozenset({"analysis", "coupling", "blocks"})
 # fails `test_pending_violations_allowlist_has_no_stale_entries`, so this
 # dict can only shrink. Target state (O14): empty.
 PENDING_VIOLATIONS: dict[tuple[str, str], str] = {
-    # (g) coupling/loop.py drives the solver package directly — killed when
-    # O8 rewires coupling onto ets.engine.
-    ("ets.coupling.loop", "ets.solvers"): "O8",
-    # (c) O10 transitional wiring: the LEGACY banking host constructs the
-    # price_controls rule/overlay and the hoarding Friction defaults itself
-    # (docs/feature-modules-plan.md, O10; the imports sit next to the
-    # transitional _default_* factory-builders in solvers/banking.py).
-    # Killed when the engine order moves the wiring literals to
-    # engine/wiring.py and injects them into solve_banking_path (v1 O8 /
-    # PLAN v2 renumbering O12) — features must never import features, so
-    # these edges cannot survive banking's own move to features/banking.
-    ("ets.solvers.banking", "ets.features.hoarding.plugin"): "O8",
-    ("ets.solvers.banking", "ets.features.price_controls.plugin"): "O8",
-    ("ets.solvers.banking", "ets.features.price_controls.rules"): "O8",
+    # (c)+(d) ledger move (v1 O7 / v2 O11): core/ledger.py keeps the moved
+    # function's LEGACY msr_state=/ccr_state= kwargs verbatim, whose
+    # translation constructs MSRCapRule/CCRCapRule (lazy import +
+    # TYPE_CHECKING state imports, both against the feature packages since
+    # the runtime moved there in v1 O8 / v2 O12). The kernel must not know
+    # the rule implementations; the edges die when the hotelling/nash move
+    # (v1 O11 / v2 O15) retires the last legacy caller and the kwargs are
+    # dropped.
+    ("ets.core.ledger", "ets.features.msr"): "O15",
+    ("ets.core.ledger", "ets.features.ccr"): "O15",
 }
 
 

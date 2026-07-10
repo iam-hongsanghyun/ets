@@ -34,7 +34,11 @@ from scipy.optimize import minimize_scalar
 
 from ..core.market import CarbonMarket
 from .msr import MSRState
-from .simulation import _simulate_path_details
+
+# Dead import kept as a re-export so this module's surface is unchanged
+# until the nash move (v1 O11 / v2 O15): nothing in this module calls it
+# (solve_nash_path builds its own details rows — F2).
+from ..core.ledger import simulate_path_details as _simulate_path_details  # noqa: F401
 from ..core.expectations import build_expectation_specs, derive_expected_prices
 
 logger = logging.getLogger(__name__)

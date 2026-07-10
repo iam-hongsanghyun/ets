@@ -52,7 +52,7 @@ from ets.core.protocols import CapRule
 from ets.solvers import run_simulation_from_config, solve_scenario_path
 from ets.solvers.ccr import CCRCapRule, CCRState
 from ets.solvers.msr import MSRCapRule, MSRState
-from ets.solvers.simulation import _simulate_path_details
+from ets.core.ledger import simulate_path_details as _simulate_path_details
 
 # Participant abatement optima come from bounded scalar minimisation
 # (xatol ~1e-5), so hand values are matched to ~1e-4; atol=1e-3 is safely

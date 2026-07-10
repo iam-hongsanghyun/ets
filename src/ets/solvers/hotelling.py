@@ -138,15 +138,15 @@ def _simulate_at_hotelling_prices(
 
 
 def _competitive_fallback(ordered_markets) -> list[dict]:
+    from ..core.ledger import simulate_path_details
     from .msr import MSRState
-    from .simulation import _simulate_path_details
     specs    = build_expectation_specs(ordered_markets)
     baseline = {str(m.year): m.find_equilibrium_price() for m in ordered_markets}
     expected = derive_expected_prices(
         [str(m.year) for m in ordered_markets], specs, baseline
     )
     msr_state = MSRState() if getattr(ordered_markets[0], "msr_enabled", False) else None
-    return _simulate_path_details(ordered_markets, expected, msr_state=msr_state)
+    return simulate_path_details(ordered_markets, expected, msr_state=msr_state)
 
 
 def solve_hotelling_path(
