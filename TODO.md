@@ -86,6 +86,17 @@ Items are grouped by theme. Checked items are complete. Unchecked items are pend
 
 ---
 
+## Modularization / block-composer follow-ups (non-blocking, from economist review 2026-07-10)
+
+- [ ] Validator gaps (W2): R6 misses an all-myopic per-year `expectation_rule` dict; R30 splice warning only fires when the MSR block itself is late-announced (a late-announced *other* policy crossing a bank_threshold MSR also resets the pool); add dedicated rejection tests for R6/R7/R8/R11/R13/R15/R19 (family-level coverage only today)
+- [ ] Catalogue default-value drift guard (W3): `tests/test_blocks_catalogue.py` asserts config-key existence but not default values; add a value-level test importing both catalogue and engine defaults (`MSR_DEFAULTS`, `CCR_DEFAULTS`, `banking.py` decree literals). Also reconcile the dead `discount_rate 0.055` fallback in `solvers/simulation.py:344` vs 0.04 everywhere else
+- [ ] `announced` param currently compiles to nothing (W4): synthesize `policy_events[]` from late-announced policy blocks per plan §1 "Policy timing"; until then, validator should WARN when `announced` ≠ first market year
+- [ ] CBAM canvas presentation (W5): rendered as a policy input to the market; should be styled/categorised as a diagnostics block downstream of price formation (economically inert as compiled, but the drawing implies otherwise)
+- [ ] R26 downgrade: emit WARNING instead of ERROR when `oba`/`sector` nodes are present (free-allocation check ignores OBA > sector > per-year ratio precedence; engine re-validates at run anyway)
+- [ ] Retire flat shims at v2.0 milestone (after frontend migrates fully to the graph API): delete `src/ets/{market,participant}.py` (already dead — shadowed by same-named packages), remove remaining shims + the `_underscore` re-export leakage in `simulation.py`/`webapp.py`
+- [ ] Web server asymmetry: unknown `POST /api/x` returns 404 (http.server) vs 405 (WSGI); unify
+- [ ] Vercel deploy retest with `pyproject.toml` present, then slim `requirements.txt` to a pointer
+
 ## Summary table — remaining items
 
 | Item | Effort | Criticality | What's needed |
