@@ -111,9 +111,12 @@ def test_k_msr_p1_draft_decree_is_plain_competitive() -> None:
     """Despite its "K-MSR" name, this scenario sets no msr_enabled/ccr_enabled
     and uses model_approach='competitive' — no MSR, CCR, or banking block
     anywhere in the config (verified against the raw JSON, not assumed from
-    the filename)."""
+    the filename). It does tag every participant with a sector_group (Steel,
+    Petrochem, Power, Cement, Refinery, Other), so the ``sectors`` direct
+    detector (``ets.blocks.manifest._direct_detectors``) genuinely fires even
+    though the scenario defines no ``sectors[]`` cap-pool table."""
     manifest = derive_manifest(_load("k_msr_P1_draft_decree"))
-    assert set(manifest["features"]) == {"core", "competitive", "price_controls"}
+    assert set(manifest["features"]) == {"core", "competitive", "price_controls", "sectors"}
     assert manifest["approach"] == ["competitive"]
     assert "msr" not in manifest["features"]
     assert "banking" not in manifest["features"]
@@ -155,10 +158,15 @@ def test_msr_ccr_combined_has_both_supply_operators() -> None:
 def test_lambda_msr_composes_transmission_with_msr() -> None:
     """λ overlay + bank-threshold MSR: the pf block is forward_transmission
     (feature 'transmission', NOT 'competitive' — same as k_msr_lambda_regimes)
-    and the MSR node rides inside the competitive component. Golden-scale
-    complement to the unit anchor in tests/test_cap_rule_injection.py."""
+    and the MSR node rides inside the competitive component. Every
+    participant also carries a sector_group tag (Power/Steel/Cement), so
+    ``sectors`` is genuinely active per the direct detector even with no
+    ``sectors[]`` cap-pool table defined. Golden-scale complement to the unit
+    anchor in tests/test_cap_rule_injection.py."""
     manifest = derive_manifest(_load("k_ets_lambda_msr"))
-    assert set(manifest["features"]) == {"core", "transmission", "msr", "price_controls"}
+    assert set(manifest["features"]) == {
+        "core", "transmission", "msr", "price_controls", "sectors",
+    }
     assert manifest["approach"] == ["competitive"]
     # Per-scenario: only the MSR variant carries the msr feature.
     assert "msr" in manifest["scenarios"]["lambda 0.55 + bank-threshold MSR"]["features"]
@@ -187,16 +195,47 @@ def test_hoarding_basic_is_the_sole_hoarding_example() -> None:
 
 def test_showcase_full_stack_features() -> None:
     """banking + decree MSR + reserve floor + CBAM + sector pools. The config
-    carries a 'sectors' table, but the manifest CANNOT report a 'sectors'
-    feature: decompile.py never synthesises sector nodes (documented scope
-    reduction — sectors round-trip as opaque market params; see
-    ets/blocks/manifest.py module docstring). Same inherited limitation hides
-    'oba' on k_ets_oba_benchmark."""
+    carries a 'sectors' table, and the manifest DOES report a 'sectors'
+    feature: even though decompile.py never synthesises a sector *node*
+    (documented scope reduction — sectors round-trip as opaque market
+    params), ``ets.blocks.manifest._direct_detectors`` scans the normalized
+    config directly for a non-empty ``sectors[]`` table (or a per-participant
+    ``sector_group``) and reports the feature regardless of graph coverage.
+    Same direct-detector mechanism surfaces 'oba' on k_ets_oba_benchmark (see
+    ``test_oba_benchmark_includes_oba`` below)."""
     raw = _load("showcase_full_stack")
     assert raw["scenarios"][0]["sectors"], "config must carry the sector pool table"
     manifest = derive_manifest(raw)
-    assert set(manifest["features"]) == {"core", "banking", "msr", "cbam", "price_controls"}
+    assert set(manifest["features"]) == {
+        "core", "banking", "msr", "cbam", "price_controls", "sectors",
+    }
+    assert {"sectors"} <= set(manifest["features"])
     assert manifest["approach"] == ["banking"]
+
+
+def test_oba_benchmark_includes_oba() -> None:
+    """K-ETS steel benchmark: POSCO_Pohang/Hyundai_Steel set production_output,
+    benchmark_emission_intensity, AND initial_emissions (all > 0 across every
+    year) — the exact activation condition ``config_io/builder.py``'s
+    build_market_from_year OBA-override block checks before it overrides
+    free_allocation_ratio with ``benchmark_emission_intensity *
+    production_output``. The ``oba`` direct detector mirrors that predicate
+    on the normalized config, so it fires regardless of decompile.py's
+    documented sector/oba node-synthesis gap."""
+    manifest = derive_manifest(_load("k_ets_oba_benchmark"))
+    assert {"oba"} <= set(manifest["features"])
+
+
+def test_subsector_decomposition_includes_sectors() -> None:
+    """K-ETS sub-sector decomposition: the scenario defines a non-empty
+    ``sectors[]`` cap-pool table (Steel:Integrated, Steel:EAF,
+    Petrochemical:NCC, Petrochemical:BTX), the exact condition
+    ``config_io/builder.py``'s build_market_from_year gates its sector-pool
+    derivation on (``if sectors:``). No participant sets production_output/
+    benchmark_emission_intensity, so 'oba' stays out."""
+    manifest = derive_manifest(_load("k_ets_subsector_decomposition"))
+    assert {"sectors"} <= set(manifest["features"])
+    assert "oba" not in manifest["features"]
 
 
 # ── (c) vocabulary test ──────────────────────────────────────────────

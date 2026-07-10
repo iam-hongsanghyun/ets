@@ -15,9 +15,10 @@ through the catalogue is the whole of the graph-derived signal. This mirrors
 node for (``sector``, ``technology_option``, ``oba`` — round-tripped as
 opaque pass-through data rather than drawn nodes, see ``decompile.py``'s
 module docstring) are therefore also invisible to graph-derived feature
-detection. That is inherited, not new, and is not filled in here — see
-:func:`_direct_detectors` below for the one config-shape signal
-(``policy_events``) that genuinely has no node representation today.
+detection. That gap is covered by direct detectors, not by the graph: see
+:func:`_direct_detectors` below for ``oba``, ``sectors``, and
+``policy_events`` — the config-shape signals that have no node
+representation today.
 
 Dependency law: this module imports only ``ets.blocks`` siblings
 (``catalogue``, ``decompile``) and ``ets.config_io`` — never
@@ -61,15 +62,27 @@ def _scenario_approach(scenario: dict[str, Any]) -> list[str]:
     return [approach]
 
 
+def _year_participants(scenarios: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Every participant dict across every year of every given scenario."""
+    return [
+        participant
+        for scenario in scenarios
+        for year in scenario.get("years", [])
+        for participant in year.get("participants", [])
+    ]
+
+
 def _direct_detectors(scenarios: list[dict[str, Any]]) -> set[str]:
     """Config-shape feature signals the compiled block graph cannot see.
 
     THE place to add future non-graph detectors: one clause per detector,
     each keyed off a config-shape predicate that has no node representation
-    in :func:`ets.blocks.decompile.graph_from_config` (today: the
-    ``policy_events`` timeline — splicing is engine composition, not a
-    drawable block, per ``docs/feature-modules-plan.md`` §1 "policy_events
-    → engine module"). Do not special-case a detector's result inline in
+    in :func:`ets.blocks.decompile.graph_from_config` (today: ``oba``,
+    ``sectors``, and the ``policy_events`` timeline — splicing is engine
+    composition, not a drawable block, per ``docs/feature-modules-plan.md``
+    §1 "policy_events → engine module"; ``sector``/``technology_option``/
+    ``oba`` nodes are never synthesised either, per ``decompile.py``'s module
+    docstring). Do not special-case a detector's result inline in
     :func:`derive_manifest`; add a clause here instead so every non-graph
     signal lives in one auditable place.
 
@@ -84,6 +97,31 @@ def _direct_detectors(scenarios: list[dict[str, Any]]) -> set[str]:
     detected: set[str] = set()
     if any(scenario.get("policy_events") for scenario in scenarios):
         detected.add("policy_events")
+
+    # Output-Based Allocation: mirrors config_io/builder.py's
+    # build_market_from_year OBA-override predicate exactly (the block that
+    # overrides free_allocation_ratio with benchmark_emission_intensity *
+    # production_output) — production_output, benchmark_emission_intensity,
+    # AND initial_emissions must all be positive for OBA to actually engage.
+    if any(
+        float(participant.get("production_output") or 0.0) > 0
+        and float(participant.get("benchmark_emission_intensity") or 0.0) > 0
+        and float(participant.get("initial_emissions") or 0.0) > 0
+        for participant in _year_participants(scenarios)
+    ):
+        detected.add("oba")
+
+    # Sectors: mirrors both branches config_io/builder.py keys off —
+    # (1) a non-empty scenario-level sectors[] table (build_market_from_year's
+    # sector-pool derivation only runs `if sectors:`), and (2) a participant
+    # sector_group tag, which is meaningful even without a sectors[] table
+    # (validate.py's R26 sums sector_allocation_share by sector_group
+    # regardless of whether sectors[] is defined for the scenario).
+    if any(scenario.get("sectors") for scenario in scenarios) or any(
+        participant.get("sector_group") for participant in _year_participants(scenarios)
+    ):
+        detected.add("sectors")
+
     return detected
 
 
