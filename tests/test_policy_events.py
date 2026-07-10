@@ -134,6 +134,33 @@ def test_event_validation():
         )
 
 
+def test_late_announced_decree_keeps_its_prefunded_reserve():
+    """A decree announced mid-horizon with msr_initial_reserve_mt must keep
+    that funding — the splice must not overwrite it with the (rule-less)
+    previous segment's zero pool. Bands set so every signal is neutral."""
+    cfg = _config(
+        "banking",
+        [
+            {
+                "announced": "2031",
+                "changes": {
+                    "msr_enabled": True,
+                    "msr_mode": "hybrid",
+                    "msr_initial_reserve_mt": 50.0,
+                    "msr_price_band_low": 1.0,
+                    "msr_price_band_high": 1e9,
+                    "msr_surplus_lower_ratio": 1e-9,
+                    "msr_surplus_upper_ratio": 0.99,
+                },
+            }
+        ],
+    )
+    summary, _ = run_simulation_from_config(cfg)
+    pool = dict(zip(summary["Year"], summary["MSR Reserve Pool"]))
+    np.testing.assert_allclose(pool["2031"], 50.0, atol=1e-9)
+    np.testing.assert_allclose(pool["2032"], 50.0, atol=1e-9)
+
+
 def test_msr_start_year_gates_the_rule():
     """A decree MSR with msr_start_year beyond the horizon never fires."""
     cfg = _config("banking")

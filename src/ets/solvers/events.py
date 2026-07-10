@@ -148,6 +148,11 @@ def solve_scenario_with_events(
     participant_frames: list[pd.DataFrame] = []
 
     while True:
+        # The reserve pool is only a *carried* state if the rule ran in the
+        # previous segment; a decree announced with a pre-funded reserve
+        # (msr_initial_reserve_mt in its changes) must keep that funding.
+        msr_ran_last_segment = bool(current.get("msr_enabled"))
+
         while pending and _year_num(pending[0]["announced"]) <= seg_start:
             event = pending.pop(0)
             current.update(event["changes"])
@@ -164,7 +169,8 @@ def solve_scenario_with_events(
 
         seg_scenario = deepcopy(current)
         seg_scenario["banking_initial_bank"] = carried_bank
-        seg_scenario["msr_initial_reserve_mt"] = carried_pool
+        if msr_ran_last_segment:
+            seg_scenario["msr_initial_reserve_mt"] = carried_pool
         seg_scenario["years"] = [
             y for y in seg_scenario["years"] if _year_num(y["year"]) >= seg_start
         ]
