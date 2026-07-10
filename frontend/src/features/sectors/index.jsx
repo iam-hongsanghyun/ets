@@ -214,6 +214,33 @@ function SectorGroupField({ ctx }) {
   );
 }
 
+// ── Guide: pe-shell module section (only rendered when this model uses
+// sectors — see frontend/src/components/GuideView.jsx).
+
+function SectorsGuideSection() {
+  return (
+    <div className="guide-body">
+      <p className="guide-lead">
+        <strong>Sectors</strong> group participants into shared caps and auction pools instead
+        of one economy-wide market. Each sector has its own cap trajectory and auction-share
+        trajectory; a participant joins a sector by setting its <strong>sector group</strong> to
+        match the sector's name.
+      </p>
+      <p>
+        When sectors are defined, the scenario's total cap and auction offer are derived from
+        the sum of sector caps, and each participant's free allocation is computed from its
+        <strong> sector allocation share</strong> of that sector's free-allocation pool —
+        overriding the plain free allocation ratio.
+      </p>
+      <div className="guide-tip">
+        <strong>Where to look:</strong> define sectors in the "Sectors" group on the Model tab
+        (scenario step); assign a participant to one via its "Sector group" field on the
+        Participants step.
+      </div>
+    </div>
+  );
+}
+
 export default {
   id: "sectors",
   scenarioDefaults: {
@@ -225,4 +252,5 @@ export default {
   },
   editorSections: [SectorsEditorSection],
   participantEditorSections: [SectorGroupField],
+  guideSections: [{ id: "module-sectors", tag: "SECT", title: "Sector pools", content: SectorsGuideSection }],
 };

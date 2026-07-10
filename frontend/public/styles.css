@@ -2246,6 +2246,9 @@ html[data-chart="terminal"][data-theme="light"] { --panel: #fafaf7; --bg: #eeede
   border-color: var(--accent);
   background: color-mix(in srgb, var(--accent) 10%, var(--panel));
 }
+.approach-option-static {
+  cursor: default;
+}
 .approach-option-label {
   font-size: 13px;
   font-weight: 600;

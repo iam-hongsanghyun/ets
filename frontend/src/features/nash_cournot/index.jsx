@@ -126,6 +126,31 @@ function NashApproachParams({ ctx }) {
   );
 }
 
+// ── Guide: pe-shell module section (only rendered when this model uses
+// the Nash–Cournot approach — see frontend/src/components/GuideView.jsx).
+
+function NashGuideSection() {
+  return (
+    <div className="guide-body">
+      <p className="guide-lead">
+        The <strong>Nash–Cournot</strong> approach lets selected participants behave
+        strategically: instead of taking the market price as given, a strategic participant
+        internalizes how its own abatement/trading decisions move the price, and the solver
+        iterates each participant's best response until no one can improve by changing their own
+        move (a Nash equilibrium).
+      </p>
+      <p>
+        Choose which participants are strategic (leave all unchecked to make everyone
+        strategic) inside "Modelling approach" when Nash–Cournot is selected.
+      </p>
+      <div className="guide-tip">
+        <strong>Where to look:</strong> solver tuning (price step, best-response iterations,
+        convergence tolerances) sits below the strategic-participant picker.
+      </div>
+    </div>
+  );
+}
+
 export default {
   id: "nash_cournot",
   scenarioDefaults: {
@@ -135,4 +160,5 @@ export default {
     solver_nash_convergence_tol: 0.001,
   },
   approachOptions: [NashApproachParams],
+  guideSections: [{ id: "module-nash_cournot", tag: "NASH", title: "Nash–Cournot", content: NashGuideSection }],
 };

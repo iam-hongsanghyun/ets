@@ -111,6 +111,28 @@ function HotellingApproachParams({ ctx }) {
   );
 }
 
+// ── Guide: pe-shell module section (only rendered when this model uses
+// the Hotelling approach — see frontend/src/components/GuideView.jsx).
+
+function HotellingGuideSection() {
+  return (
+    <div className="guide-body">
+      <p className="guide-lead">
+        The <strong>Hotelling Rule</strong> approach models optimal depletion of a fixed carbon
+        budget: instead of clearing a market year-by-year, the solver finds the shadow price λ
+        such that cumulative residual emissions across all years equal the cumulative carbon
+        budget, and the price path grows at the <strong>discount rate</strong> plus an optional
+        <strong> risk premium</strong> — (1 + r + ρ)^t.
+      </p>
+      <div className="guide-tip">
+        <strong>Where to look:</strong> discount rate, risk premium, and the per-year carbon
+        budget are set inside "Modelling approach" when Hotelling is selected; solver tuning
+        (bisection iterations, λ bracket, convergence tolerance) sits below them.
+      </div>
+    </div>
+  );
+}
+
 export default {
   id: "hotelling",
   scenarioDefaults: {
@@ -121,4 +143,5 @@ export default {
     solver_hotelling_convergence_tol: 0.0001,
   },
   approachOptions: [HotellingApproachParams],
+  guideSections: [{ id: "module-hotelling", tag: "HOT", title: "Hotelling Rule", content: HotellingGuideSection }],
 };

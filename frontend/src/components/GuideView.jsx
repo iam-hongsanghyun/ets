@@ -1,6 +1,11 @@
 import { useState } from "react";
+import { collectSlot } from "../features/registry.js";
 
-const STEPS = [
+// Core steps — always shown, in every shell (default and pe-scoped alike).
+// "core guide intro stays" per the pe-shell scoping design; only the
+// per-module pages below (features/*/index.jsx guideSections) are scoped to
+// the active model's manifest.
+const CORE_STEPS = [
   {
     id: "what",
     number: "00",
@@ -640,25 +645,63 @@ const STEPS = [
   },
 ];
 
-export function GuideView() {
+// Whether the Guide has anything to show for this feature set — core steps
+// are unconditional so this is true today in every shell, but the check is
+// generic (not hardcoded true) so a future core-free guide would correctly
+// report empty. Header uses this to decide whether to show the Guide tab at
+// all (see app.jsx / AppShared.jsx Header — "if a tab would be empty, hide
+// it").
+export function hasGuideContent(enabledFeatures) {
+  return CORE_STEPS.length > 0 || collectSlot(enabledFeatures, "guideSections").length > 0;
+}
+
+export function GuideView({ enabledFeatures = null }) {
+  // "Active modules" — one guide page per feature actually in play for this
+  // model (collectSlot already resolves enabledFeatures === null to "every
+  // feature", so the default/everything shell sees every module's page,
+  // same as it would if this were hardcoded — only a pe-scoped manifest
+  // narrows the list).
+  const moduleSections = collectSlot(enabledFeatures, "guideSections").map((section) => ({
+    id: section.id,
+    number: section.tag,
+    title: section.title,
+    content: section.content,
+  }));
+  const steps = [...CORE_STEPS, ...moduleSections];
   const [activeStep, setActiveStep] = useState("what");
-  const step = STEPS.find((s) => s.id === activeStep) || STEPS[0];
+  const step = steps.find((s) => s.id === activeStep) || steps[0];
   const Content = step.content;
+  const activeIndex = steps.findIndex((s) => s.id === step.id);
 
   return (
     <div className="guide-view">
       <aside className="guide-sidebar">
         <div className="guide-sidebar-title">User Guide</div>
-        {STEPS.map((s) => (
+        {CORE_STEPS.map((s) => (
           <button
             key={s.id}
-            className={"guide-nav-item " + (s.id === activeStep ? "on" : "")}
+            className={"guide-nav-item " + (s.id === step.id ? "on" : "")}
             onClick={() => setActiveStep(s.id)}
           >
             <span className="guide-nav-num">{s.number}</span>
             <span className="guide-nav-label">{s.title}</span>
           </button>
         ))}
+        {moduleSections.length > 0 && (
+          <>
+            <div className="guide-sidebar-title">Active modules</div>
+            {moduleSections.map((s) => (
+              <button
+                key={s.id}
+                className={"guide-nav-item " + (s.id === step.id ? "on" : "")}
+                onClick={() => setActiveStep(s.id)}
+              >
+                <span className="guide-nav-num">{s.number}</span>
+                <span className="guide-nav-label">{s.title}</span>
+              </button>
+            ))}
+          </>
+        )}
       </aside>
       <main className="guide-main">
         <div className="guide-header">
@@ -667,18 +710,18 @@ export function GuideView() {
         </div>
         <Content />
         <div className="guide-pagination">
-          {STEPS.findIndex((s) => s.id === activeStep) > 0 && (
+          {activeIndex > 0 && (
             <button
               className="ghost-btn"
-              onClick={() => setActiveStep(STEPS[STEPS.findIndex((s) => s.id === activeStep) - 1].id)}
+              onClick={() => setActiveStep(steps[activeIndex - 1].id)}
             >
               ← Previous
             </button>
           )}
-          {STEPS.findIndex((s) => s.id === activeStep) < STEPS.length - 1 && (
+          {activeIndex < steps.length - 1 && (
             <button
               className="ghost-btn"
-              onClick={() => setActiveStep(STEPS[STEPS.findIndex((s) => s.id === activeStep) + 1].id)}
+              onClick={() => setActiveStep(steps[activeIndex + 1].id)}
             >
               Next →
             </button>

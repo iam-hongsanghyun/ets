@@ -10,9 +10,9 @@ import {
   Tweaks,
 } from "./components/AppShared.jsx";
 import { BuildView, ValidationView, AnalysisView, Compare } from "./components/AppViews.jsx";
-import { GuideView } from "./components/GuideView.jsx";
+import { GuideView, hasGuideContent } from "./components/GuideView.jsx";
 
-export default function App({ enabledFeatures = null, initialTemplateId = null } = {}) {
+export default function App({ enabledFeatures = null, manifest = null, initialTemplateId = null } = {}) {
   const [templates, setTemplates] = useS([]);
   const [config, setConfig] = useS({ scenarios: [] });
   const [results, setResults] = useS({});
@@ -403,6 +403,12 @@ export default function App({ enabledFeatures = null, initialTemplateId = null }
     setStatus("Focused");
   };
 
+  // "Tabs: ... if a tab would be empty, hide it" — core guide content is
+  // unconditional (see GuideView.jsx), so this is always true today; the
+  // check stays generic rather than hardcoded so a manifest-scoped shell
+  // with no core content would correctly drop the tab.
+  const showGuideTab = hasGuideContent(enabledFeatures);
+
   if (!activeScenario || !yearObj || !displayResult) {
     if (activeSection === "guide") {
       return (
@@ -420,8 +426,9 @@ export default function App({ enabledFeatures = null, initialTemplateId = null }
             onLoadTemplate={loadTemplateIntoEditor}
             onSaveScenario={saveActiveScenarioToLibrary}
             status={status}
+            showGuideTab={showGuideTab}
           />
-          <GuideView />
+          <GuideView enabledFeatures={enabledFeatures} />
         </div>
       );
     }
@@ -443,6 +450,7 @@ export default function App({ enabledFeatures = null, initialTemplateId = null }
         onLoadTemplate={loadTemplateIntoEditor}
         onSaveScenario={saveActiveScenarioToLibrary}
         status={status}
+        showGuideTab={showGuideTab}
       />
 
       {serverWarnings.length > 0 && (
@@ -479,6 +487,7 @@ export default function App({ enabledFeatures = null, initialTemplateId = null }
           hasEditedChanges={hasEditedChanges}
           navigationTarget={validationTarget}
           enabledFeatures={enabledFeatures}
+          manifest={manifest}
         />
       )}
 
@@ -516,7 +525,7 @@ export default function App({ enabledFeatures = null, initialTemplateId = null }
         <Compare scenarios={scenarios} results={results} activeYear={activeYear} onYear={setActiveYear} />
       )}
 
-      {activeSection === "guide" && <GuideView />}
+      {activeSection === "guide" && <GuideView enabledFeatures={enabledFeatures} />}
 
       <Tweaks open={tweaksOpen} state={tweakState} setState={setTweakState} />
     </div>

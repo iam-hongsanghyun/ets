@@ -534,6 +534,7 @@ function Header({
   onDuplicateScenario,
   onRemoveScenario,
   status,
+  showGuideTab = true,
 }) {
   const [selectedTemplate, setSelectedTemplate] = useS(templates?.[0]?.id || "blank");
   const sections = [
@@ -541,7 +542,7 @@ function Header({
     { id: "validation", label: "Validation" },
     { id: "analysis", label: "Analysis" },
     { id: "scenario", label: "Scenario" },
-    { id: "guide", label: "Guide" },
+    ...(showGuideTab ? [{ id: "guide", label: "Guide" }] : []),
   ];
   useE(() => {
     if (templates.length && !templates.some((item) => item.id === selectedTemplate)) {

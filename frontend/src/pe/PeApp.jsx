@@ -1,25 +1,32 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import App from "../app.jsx";
 
 // PE — model-scoped shell. Reached only via `?mode=pe` (see main.jsx).
 // LANDING: a plain list of models from GET /api/templates (this file does
 // not know or care how many there are — the backend example suite grows
-// independently of this UI). SELECTED: GET /api/model-manifest?id=<id> to
-// resolve the model's feature-module subset, then mount the SAME App
-// component the default shell uses (App({ enabledFeatures, initialTemplateId }))
-// so every registry-driven host (Editor's editorSections /
-// participantEditorSections / approachOptions, AnalysisView's
-// analysisBullets / summaryPanels, ParticipantPanel's resultStats,
+// independently of this UI), with each entry's module chips filled in from
+// GET /api/model-manifest?id=<id>, fetched in small concurrent batches and
+// cached for the life of the shell (see fetchManifestsBatched / manifest
+// cache below) so re-visiting the landing page never re-fetches. SELECTED:
+// the same manifest (reused from cache when already fetched) is passed down
+// whole to the SAME App component the default shell uses
+// (App({ enabledFeatures, manifest, initialTemplateId })) so every
+// registry-driven host (Editor's editorSections / participantEditorSections
+// / approachOptions / the modelling-approach lock / the "Banking, borrowing
+// & expectations" visibility, AnalysisView's analysisBullets /
+// summaryPanels, ParticipantPanel's resultStats, GuideView's guideSections,
 // AppShared's makeBlankScenario / makeBlankParticipant / validateScenario)
-// filters automatically — WO-F1/F2 already thread enabledFeatures through
-// the registry collectors; this shell only supplies the value.
+// filters automatically — this shell only supplies the manifest.
 //
 // No new CSS: reuses .hdr/.hdr-top/.hdr-brand/.hdr-tools (main Header),
 // .panel/.panel-head/.eyebrow (AppShared/AppViews panels),
 // .builder-list/.builder-list-item/.builder-item-meta (Editor's
-// participant/technology picker lists), .pill-btn (Header's scenario
-// pills, reused here as plain module-name chips), .ghost-btn, and the
-// .server-warnings-* banner (App's own run-warnings banner).
+// participant/technology picker lists), .hdr-scenarios (Header's pill row,
+// reused as the chip strip inside each list item), .pill-btn (Header's
+// scenario pills, reused here as plain module-name chips), .ghost-btn, and
+// the .server-warnings-* banner (App's own run-warnings banner).
+
+const MANIFEST_BATCH_SIZE = 6;
 
 function sourceLabel(template) {
   if (template.source === "user") return "User model";
@@ -27,7 +34,20 @@ function sourceLabel(template) {
   return "Blank";
 }
 
-function ModelGroup({ eyebrow, title, description, templates, onSelect }) {
+function ModuleChips({ manifest }) {
+  if (!manifest) return null;
+  const features = manifest.features || [];
+  if (!features.length) return null;
+  return (
+    <span className="hdr-scenarios">
+      {features.map((feature) => (
+        <span key={feature} className="pill-btn on">{feature}</span>
+      ))}
+    </span>
+  );
+}
+
+function ModelGroup({ eyebrow, title, description, templates, manifests, onSelect }) {
   if (!templates.length) return null;
   return (
     <section className="panel">
@@ -48,6 +68,7 @@ function ModelGroup({ eyebrow, title, description, templates, onSelect }) {
           >
             <span>{template.name}</span>
             <span className="builder-item-meta">{sourceLabel(template)}</span>
+            <ModuleChips manifest={manifests[template.id]} />
           </button>
         ))}
       </div>
@@ -55,7 +76,7 @@ function ModelGroup({ eyebrow, title, description, templates, onSelect }) {
   );
 }
 
-function ModelLanding({ templates, status, error, onDismissError, onSelect }) {
+function ModelLanding({ templates, manifests, status, error, onDismissError, onSelect }) {
   const examples = templates.filter((template) => template.source === "example");
   const userModels = templates.filter((template) => template.source === "user");
   const other = templates.filter((template) => template.source !== "example" && template.source !== "user");
@@ -85,7 +106,7 @@ function ModelLanding({ templates, status, error, onDismissError, onSelect }) {
           <div className="scenario-meta">
             <div className="eyebrow">Start</div>
             <h1>Choose a model</h1>
-            <p className="lede">Every model opens with only the modules it actually uses — no unrelated MSR, CCR, CBAM, sector, or OBA sections.</p>
+            <p className="lede">Select a model — the interface loads only that model's modules. Every model opens with only the mechanisms it actually uses; no unrelated MSR, CCR, CBAM, sector, or OBA sections.</p>
           </div>
         </section>
         <ModelGroup
@@ -93,6 +114,7 @@ function ModelLanding({ templates, status, error, onDismissError, onSelect }) {
           title="Blank configuration"
           description="An empty scenario, built up from scratch."
           templates={other}
+          manifests={manifests}
           onSelect={onSelect}
         />
         <ModelGroup
@@ -100,6 +122,7 @@ function ModelLanding({ templates, status, error, onDismissError, onSelect }) {
           title="Example models"
           description="Pre-built scenarios, each exercising a specific policy mechanism."
           templates={examples}
+          manifests={manifests}
           onSelect={onSelect}
         />
         <ModelGroup
@@ -107,6 +130,7 @@ function ModelLanding({ templates, status, error, onDismissError, onSelect }) {
           title="Saved models"
           description="Models saved to the local registry."
           templates={userModels}
+          manifests={manifests}
           onSelect={onSelect}
         />
         {!templates.length && status === "Loaded" && (
@@ -142,11 +166,26 @@ function ModelToolbar({ name, features, onBack }) {
   );
 }
 
+async function fetchManifest(templateId) {
+  const response = await fetch(`/api/model-manifest?id=${encodeURIComponent(templateId)}`);
+  const payload = await response.json();
+  if (!response.ok) {
+    throw new Error(payload.error || "This model's manifest could not be loaded.");
+  }
+  return payload;
+}
+
 export function PeApp() {
   const [templates, setTemplates] = useState([]);
   const [status, setStatus] = useState("Loading…");
   const [error, setError] = useState(null);
-  const [selected, setSelected] = useState(null); // { id, name, features }
+  const [selected, setSelected] = useState(null); // { id, name, manifest }
+  // Manifest cache, keyed by template id — persists for the life of the pe
+  // shell (this component never unmounts between landing <-> model views),
+  // so both the landing chips and selectModel below reuse one fetch per id.
+  const [manifests, setManifests] = useState({});
+  const manifestsRef = useRef(manifests);
+  manifestsRef.current = manifests;
 
   useEffect(() => {
     let cancelled = false;
@@ -165,20 +204,46 @@ export function PeApp() {
     };
   }, []);
 
+  // Lazily batch-fetch every template's manifest so the landing page can
+  // show module chips per entry without one request-per-render or one giant
+  // blocking Promise.all — small concurrent batches, cached as they land.
+  useEffect(() => {
+    if (!templates.length) return;
+    let cancelled = false;
+    const ids = templates.map((template) => template.id).filter((id) => !(id in manifestsRef.current));
+    (async () => {
+      for (let start = 0; start < ids.length; start += MANIFEST_BATCH_SIZE) {
+        if (cancelled) return;
+        const batch = ids.slice(start, start + MANIFEST_BATCH_SIZE);
+        const results = await Promise.all(
+          batch.map((id) => fetchManifest(id).then((manifest) => [id, manifest]).catch(() => [id, null]))
+        );
+        if (cancelled) return;
+        setManifests((prev) => {
+          const next = { ...prev };
+          results.forEach(([id, manifest]) => {
+            next[id] = manifest;
+          });
+          return next;
+        });
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [templates]);
+
   async function selectModel(templateId) {
     setError(null);
     setStatus("Loading model…");
     try {
-      const response = await fetch(`/api/model-manifest?id=${encodeURIComponent(templateId)}`);
-      const payload = await response.json();
-      if (!response.ok) {
-        throw new Error(payload.error || "This model's manifest could not be loaded.");
-      }
+      const manifest = manifestsRef.current[templateId] || (await fetchManifest(templateId));
       const template = templates.find((item) => item.id === templateId);
+      setManifests((prev) => (prev[templateId] ? prev : { ...prev, [templateId]: manifest }));
       setSelected({
         id: templateId,
         name: template?.name || templateId,
-        features: payload.features || null,
+        manifest,
       });
       setStatus("Loaded");
     } catch (err) {
@@ -196,6 +261,7 @@ export function PeApp() {
     return (
       <ModelLanding
         templates={templates}
+        manifests={manifests}
         status={status}
         error={error}
         onDismissError={() => setError(null)}
@@ -206,8 +272,13 @@ export function PeApp() {
 
   return (
     <div className="app">
-      <ModelToolbar name={selected.name} features={selected.features} onBack={backToModels} />
-      <App key={selected.id} enabledFeatures={selected.features} initialTemplateId={selected.id} />
+      <ModelToolbar name={selected.name} features={selected.manifest?.features} onBack={backToModels} />
+      <App
+        key={selected.id}
+        enabledFeatures={selected.manifest?.features || null}
+        manifest={selected.manifest}
+        initialTemplateId={selected.id}
+      />
     </div>
   );
 }
