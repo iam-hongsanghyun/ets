@@ -155,7 +155,7 @@ def _simulate_path_details(
                 pass  # non-numeric year labels: rule active
         if msr_active:
             total_bank = sum(bank_balances.values())
-            adj_auction, msr_withheld, msr_released = msr_state.apply(
+            _, msr_withheld, msr_released = msr_state.apply(
                 total_bank=total_bank,
                 auction_offered=market.auction_offered,
                 upper_threshold=float(getattr(market, "msr_upper_threshold", 200.0)),
@@ -167,10 +167,13 @@ def _simulate_path_details(
                 year_label=str(market.year),
             )
             msr_pool = msr_state.reserve_pool
-            # Inject MSR adjustment as carry-forward so solve_equilibrium sees it
-            # (net: released adds to supply; withheld is already subtracted via adj_auction)
+            # Inject the MSR net adjustment as carry-forward so solve_equilibrium
+            # sees it (released adds to supply, withheld subtracts; the adjusted
+            # auction volume returned by apply() is deliberately unused).
+            # Compose additively with any CCR cap adjustment already applied:
+            #   Q_t = Qbar + ΔQ_t^CCR + ΔQ_t^MSR   (F1 fix, blocks-composition-rules §0)
             msr_net = msr_released - msr_withheld
-            effective_carry = carry_forward_allowances + msr_net
+            effective_carry += msr_net
 
         equilibrium = market.solve_equilibrium(
             bank_balances=bank_balances,
