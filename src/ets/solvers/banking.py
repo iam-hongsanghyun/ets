@@ -479,8 +479,16 @@ def _supply_schedule(
     msr_state = MSRState() if (msr_enabled and msr_mode == "bank_threshold") else None
     decree_reserve = float(getattr(m0, "msr_initial_reserve_mt", 0.0) or 0.0)
 
+    msr_start = float(getattr(m0, "msr_start_year", 0.0) or 0.0)
+
+    def _msr_active(market: CarbonMarket) -> bool:
+        try:
+            return float(str(market.year)) >= msr_start
+        except (TypeError, ValueError):
+            return True  # non-numeric year labels: rule active
+
     for t, market in enumerate(markets):
-        if msr_enabled and msr_mode != "bank_threshold":
+        if msr_enabled and msr_mode != "bank_threshold" and _msr_active(market):
             begin_bank = initial_bank if t == 0 else bank[t - 1]
             intake, release = _decree_msr_action(
                 market=market,
@@ -504,7 +512,7 @@ def _supply_schedule(
             diags[t]["msr_withheld"] = intake
             diags[t]["msr_released"] = release
             diags[t]["msr_pool"] = decree_reserve
-        elif msr_state is not None:
+        elif msr_state is not None and _msr_active(market):
             begin_bank = initial_bank if t == 0 else bank[t - 1]
             adj_auction, withheld, released = msr_state.apply(
                 total_bank=begin_bank,

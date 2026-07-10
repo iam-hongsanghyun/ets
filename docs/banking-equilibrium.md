@@ -83,6 +83,42 @@ are not textbook equilibria, which is the point.
 Summary output gains `Banking Aggregate Bank`, `Banking Regime`
 (static/hotelling), `Banking Window Start/End`, `Banking Floor Cancelled`.
 
+## Policy events: announcement vs execution timing
+
+Rules can be introduced mid-horizon at two distinct levels:
+
+- **Execution timing** — `msr_start_year` / `ccr_start_year` (scenario
+  fields), or per-year fields (floors, cancellations). A forward-looking
+  solver still *knows* these from the first year.
+- **Information timing** — `policy_events`: dated config changes the solver
+  does not see before their announcement year. Each announcement re-solves
+  the remaining horizon with the expanded information set, inheriting the
+  aggregate bank and MSR reserve pool across the splice
+  (`src/ets/solvers/events.py`):
+
+```json
+"policy_events": [
+  {
+    "announced": "2031",
+    "changes":        { "msr_enabled": true, "msr_mode": "hybrid" },
+    "year_overrides": { "2031": { "cancelled_allowances": 16.0 } }
+  }
+]
+```
+
+`examples/k_msr_event_timing_2x2.json` runs the same cancellation (16 Mt/yr,
+2031–35) across {banking | static} × {announced 2026 | announced 2031}: under
+banking, the price moves at the *announcement* (immediately if announced
+up front; +11 % off the no-policy path in 2031 if announced then) and nothing
+happens at execution; under static (λ≈0) clearing the two announcement dates
+produce **identical** paths — only execution moves the price. That inversion
+is the paper's instrument-choice argument as a computable experiment.
+
+Limitations: participant-level bank balances are not carried across splices
+(the aggregate bank is the banking solver's state variable), and the
+bank-threshold MSR pool resets per segment (the decree modes carry theirs via
+`msr_initial_reserve_mt`).
+
 ## Status vs the K-MSR paper (Appendix B scoreboard)
 
 `tests/test_paper_appendix_b.py` runs the shipped v0.6 calibration with the

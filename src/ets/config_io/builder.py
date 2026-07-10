@@ -199,6 +199,9 @@ def normalize_scenario(raw_scenario: dict[str, Any]) -> dict[str, Any]:
         "msr_max_intake_mt": _fval("msr_max_intake_mt", 20.0),
         "msr_max_release_mt": _fval("msr_max_release_mt", 20.0),
         "msr_initial_reserve_mt": _fval("msr_initial_reserve_mt", 0.0),
+        "msr_start_year": _fval("msr_start_year", 0.0),
+        "ccr_start_year": _fval("ccr_start_year", 0.0),
+        "policy_events": list(scenario.get("policy_events") or []),
         # CCR (Carbon Cap Rule)
         "ccr_enabled": bool(scenario.get("ccr_enabled", False)),
         "ccr_phi_emissions": _fval("ccr_phi_emissions", 0.0),
@@ -299,6 +302,8 @@ def build_markets_from_config(config: dict[str, Any]) -> list[CarbonMarket]:
             "msr_max_intake_mt": scenario.get("msr_max_intake_mt", 20.0),
             "msr_max_release_mt": scenario.get("msr_max_release_mt", 20.0),
             "msr_initial_reserve_mt": scenario.get("msr_initial_reserve_mt", 0.0),
+            "msr_start_year": scenario.get("msr_start_year", 0.0),
+            "ccr_start_year": scenario.get("ccr_start_year", 0.0),
             # CCR
             "ccr_enabled": scenario.get("ccr_enabled", False),
             "ccr_phi_emissions": scenario.get("ccr_phi_emissions", 0.0),
@@ -560,6 +565,8 @@ def build_market_from_year(
     market.msr_max_intake_mt = float(meta.get("msr_max_intake_mt") or 20.0)
     market.msr_max_release_mt = float(meta.get("msr_max_release_mt") or 20.0)
     market.msr_initial_reserve_mt = float(meta.get("msr_initial_reserve_mt") or 0.0)
+    market.msr_start_year = float(meta.get("msr_start_year") or 0.0)
+    market.ccr_start_year = float(meta.get("ccr_start_year") or 0.0)
     # Attach CCR settings (Carbon Cap Rule)
     market.ccr_enabled = bool(meta.get("ccr_enabled", False))
     market.ccr_phi_emissions = float(meta.get("ccr_phi_emissions") or 0.0)

@@ -119,7 +119,15 @@ def _simulate_path_details(
         # cost deviations (Benmir, Roman & Taschini 2025).  The adjustment is
         # injected as additional permit supply so the competitive clearing sees
         # the rule-adjusted cap Q_t = Qbar + ΔQ_t.
-        if ccr_state is not None and getattr(market, "ccr_enabled", False):
+        ccr_active = ccr_state is not None and getattr(market, "ccr_enabled", False)
+        if ccr_active:
+            try:
+                ccr_active = float(str(market.year)) >= float(
+                    getattr(market, "ccr_start_year", 0.0) or 0.0
+                )
+            except (TypeError, ValueError):
+                pass  # non-numeric year labels: rule active
+        if ccr_active:
             ccr_adjustment, ccr_emissions_deviation, ccr_cost_deviation = (
                 ccr_state.cap_adjustment(
                     phi_emissions=float(getattr(market, "ccr_phi_emissions", 0.0)),
@@ -137,7 +145,15 @@ def _simulate_path_details(
             )
             effective_carry += ccr_adjustment
 
-        if msr_state is not None and getattr(market, "msr_enabled", False):
+        msr_active = msr_state is not None and getattr(market, "msr_enabled", False)
+        if msr_active:
+            try:
+                msr_active = float(str(market.year)) >= float(
+                    getattr(market, "msr_start_year", 0.0) or 0.0
+                )
+            except (TypeError, ValueError):
+                pass  # non-numeric year labels: rule active
+        if msr_active:
             total_bank = sum(bank_balances.values())
             adj_auction, msr_withheld, msr_released = msr_state.apply(
                 total_bank=total_bank,
@@ -359,7 +375,25 @@ def run_simulation(markets: list[CarbonMarket]) -> tuple[pd.DataFrame, pd.DataFr
 
 
 def run_simulation_from_config(config: dict) -> tuple[pd.DataFrame, pd.DataFrame]:
-    return run_simulation(build_markets_from_config(config))
+    from ..config_io import normalize_config
+    from .events import solve_scenario_with_events
+
+    normalized = normalize_config(deepcopy(config))
+    plain = [s for s in normalized["scenarios"] if not s.get("policy_events")]
+    evented = [s for s in normalized["scenarios"] if s.get("policy_events")]
+
+    if not evented:
+        return run_simulation(build_markets_from_config(normalized))
+
+    frames: list[tuple[pd.DataFrame, pd.DataFrame]] = []
+    if plain:
+        frames.append(run_simulation(build_markets_from_config({"scenarios": plain})))
+    for scenario in evented:
+        frames.append(solve_scenario_with_events(scenario))
+    return (
+        pd.concat([f[0] for f in frames], ignore_index=True),
+        pd.concat([f[1] for f in frames], ignore_index=True),
+    )
 
 
 def run_simulation_from_file(config_path: str | Path) -> tuple[pd.DataFrame, pd.DataFrame]:
