@@ -277,3 +277,107 @@ Overall: PROCEED WITH CHANGES for O7-O10; O0-O6 verdicts stand.
   concept, not policy instrument); hoarding split CORRECT with the
   extended host set; two-door contract CLEAN given door-granular isolation
   testing and declared-fields discipline.
+
+---
+
+# Status: EXECUTED
+
+Work orders O0–O19 (v1 O0–O6 + v2 O7–O19 renumbering, §4) have landed.
+`src/ets` matches the target tree in §2: `core/` (T0), `config_io/` (T1),
+`features/{banking,cbam,ccr,competitive,elastic_baseline,hoarding,hotelling,
+msr,nash_cournot,oba,price_controls,sectors,transmission}/` (T2, each a
+`plugin.py` config-facing door plus runtime modules per the two-door
+contract), `engine/{dispatch,wiring,events}.py` (T3), `analysis/`,
+`coupling/`, `blocks/` (T4), `web/`, `cli.py` (T5). The flat pre-refactor
+modules (`solvers/`, `market/`, `participant/`, `expectations.py`, `msr.py`,
+`ccr.py`, `costs.py`, `config.py`, `ets_framework.py`, `app.py`, …) are
+`DeprecationWarning` shims re-exporting the moved names; `import ets` itself
+stays warning-clean.
+
+`tests/test_module_isolation.py`'s `PENDING_VIOLATIONS` allowlist is
+**empty** — the ratchet flipped clean at O14/O19: every edge the AST walk
+finds classifies into an allowed tier transition, with zero grandfathered
+exceptions. `uv run pytest` (the full suite, including the golden-baseline
+replay of §"Order 1" in `docs/blocks-graph-plan.md`) passes in the
+`uv.lock`-pinned environment.
+
+## The frontend composition point
+
+`frontend/src/features/registry.js` is the documented, binding composition
+point on the frontend — the JSX counterpart of the backend's reviewed
+wiring literals (`engine/wiring.py`'s `default_cap_rules` /
+`default_supply_rule_factories`, `config_io/builder.py`'s
+`_PARTICIPANT_TRANSFORMS`). It is a **static object literal** (`FEATURES =
+Object.freeze({...})`): one `import` line and one key per feature, no
+dynamic registration, no import-order effects, no reflection over the
+filesystem. Host components (`Editor.jsx`, `AppViews.jsx`, `AppShared.jsx`,
+`ParticipantPanel.jsx`) never import a feature module directly — they call
+`registry.js`'s `collectSlot(enabledFeatures, slotName)` to flatten one
+named slot (`editorSections`, `participantEditorSections`,
+`approachOptions`, `validators`, result-side panels, …) across active
+features, in registry order. Slot names and shapes are declared once, in
+`registry.js`'s module docstring.
+
+This is **reviewed-literal discipline, not an AST-enforced contract**: unlike
+`tests/test_module_isolation.py` on the backend, there is no test that walks
+`frontend/src/` and fails on a host component importing
+`features/<name>/index.jsx` directly. The guarantee is code-review
+discipline — every host edit that adds a feature-shaped UI element is
+expected to go through a registry slot, not a new direct import — plus the
+`activeFeatureIds`/`collectSlot` helpers making the registry path strictly
+easier to use correctly than the alternative. Any future frontend
+import-isolation test (mirroring `test_module_isolation.py`) is out of
+scope for this programme; declared here as the known asymmetry between the
+two stacks' enforcement, not silently assumed equivalent.
+
+## Adding a new mechanism end-to-end
+
+Six touchpoints, in dependency order — this is the canonical checklist;
+`MANUAL.md`'s "Model manifest" section links here rather than repeating it:
+
+**backend feature dir (plugin+runtime) → wiring/builder literal entry →
+catalogue BlockSpec (+decompile detector) → frontend features/<name>/index.jsx
+→ registry.js line → tests (feature tests + golden example + manifest
+snapshot)**
+
+1. **Backend feature dir (plugin + runtime).** `src/ets/features/<name>/`:
+   `plugin.py` is the config-facing door (field specs, build-time
+   transforms, attachable behaviour objects — imports `core` + stdlib only,
+   the only thing `config_io` may import from this feature); runtime
+   modules (`solver.py`/`rules.py`/`state.py`, naming varies per feature)
+   hold the actual math and import `core` + same-feature siblings only,
+   imported only by `engine/`. Implements the relevant `core/protocols.py`
+   protocol (`SupplyRule`, `CapRule`, `DemandOverlay`, `ParticipantTransform`,
+   `PriceOverlay`, `Friction`, `ParticipantReporter`/`SummaryReporter`,
+   `SpliceCarrier`) rather than inventing a new call shape.
+2. **Wiring/builder literal entry.** A reviewed source literal wires the new
+   feature into composition — never registry mutation or reflection: a cap
+   rule or supply-rule factory added to `engine/wiring.py`'s
+   `default_cap_rules`/`default_supply_rule_factories`, a transform appended
+   to `config_io/builder.py`'s `_PARTICIPANT_TRANSFORMS`, or a reporter
+   staged into the summary/participant reporter pipeline — whichever the
+   feature's protocol calls for.
+3. **Catalogue BlockSpec (+ decompile detector).** One entry in
+   `src/ets/blocks/catalogue.py` (`BlockSpec`: id, params with
+   `config_key`s verified against the normalised config output, ports,
+   `requires`/`excludes`) so the block appears in `GET /api/blocks` and
+   compiles via `blocks/compile.py`. If the feature's config shape is one
+   `decompile.py` never synthesises a node for (today: `oba`, `sectors`,
+   `policy_events` — see `blocks/decompile.py`'s module docstring), add one
+   clause to `blocks/manifest.py:_direct_detectors` instead of special-casing
+   it inline in `derive_manifest`.
+4. **Frontend `features/<name>/index.jsx`.** Default-exports the fragment
+   object (`scenarioDefaults`, `participantDefaults`, `editorSections`,
+   `participantEditorSections`, `approachOptions`, `validators`,
+   `guideSections`) per `registry.js`'s documented shape — only the slots
+   the feature actually uses.
+5. **`registry.js` line.** One `import` and one key in the `FEATURES`
+   object literal (alphabetical-ish, matching existing order) — see "The
+   frontend composition point" above. This is the whole of the frontend
+   wiring step; no other file changes to make the feature panel appear.
+6. **Tests.** Feature-level unit tests (mirroring `tests/features/` or the
+   flat `tests/test_<feature>.py` convention already in use); a golden
+   example under `examples/` exercising the feature, captured into
+   `tests/baselines/` and covered by `tests/test_golden_baselines.py`; and a
+   `tests/test_model_manifest.py` snapshot assertion so the new feature's
+   manifest detection (step 3) is pinned, not assumed.

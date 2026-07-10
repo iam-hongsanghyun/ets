@@ -2,6 +2,16 @@
 
 The simulator is organised as **three nested layers**. Each layer has a single, well-defined responsibility. Understanding how they compose is the key to understanding the whole system.
 
+> **Code layout note:** this page's file paths (`solvers/`, `market/`,
+> `participant/`) are the pre-refactor locations. They still work — every
+> old path is a `DeprecationWarning` shim re-exporting from its new home
+> (Layer 1 → `core/participant/`, Layer 2 → `core/market/`, Layer 3 →
+> `features/<approach>/` + `engine/dispatch.py`) — but new code should
+> import the new locations. The math on this page is unaffected by the
+> move (behaviour preserved bit-exactly, gated by `uv run pytest`); for the
+> current package tree and import rules, see
+> [feature-modules-plan.md](feature-modules-plan.md).
+
 ---
 
 ## The Three-Layer Architecture
