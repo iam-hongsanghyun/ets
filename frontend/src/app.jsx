@@ -11,6 +11,7 @@ import {
 } from "./components/AppShared.jsx";
 import { BuildView, ValidationView, AnalysisView, Compare } from "./components/AppViews.jsx";
 import { GuideView } from "./components/GuideView.jsx";
+import { Composer } from "./composer/Composer.jsx";
 
 export default function App() {
   const [templates, setTemplates] = useS([]);
@@ -403,7 +404,7 @@ export default function App() {
   };
 
   if (!activeScenario || !yearObj || !displayResult) {
-    if (activeSection === "guide") {
+    if (activeSection === "guide" || activeSection === "composer") {
       return (
         <div className="app">
           <Header
@@ -420,7 +421,7 @@ export default function App() {
             onSaveScenario={saveActiveScenarioToLibrary}
             status={status}
           />
-          <GuideView />
+          {activeSection === "guide" ? <GuideView /> : <Composer />}
         </div>
       );
     }
@@ -511,6 +512,8 @@ export default function App() {
       {activeSection === "scenario" && (
         <Compare scenarios={scenarios} results={results} activeYear={activeYear} onYear={setActiveYear} />
       )}
+
+      {activeSection === "composer" && <Composer />}
 
       {activeSection === "guide" && <GuideView />}
 
