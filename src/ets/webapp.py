@@ -1,5 +1,8 @@
 # Backward-compatibility shim — re-exports from web.handlers.
-# Logic lives in src/ets/web/handlers.py.
+# New location: src/ets/web/handlers.py (transport) and src/ets/web/api.py
+# (transport-free functions).
+import warnings
+
 from .web.handlers import (
     ASSET_CONTENT_TYPES,
     ETSRequestHandler,
@@ -13,6 +16,14 @@ from .web.handlers import (
     _lookup_sector,
     _json_safe,
     _WarningCollector,
+)
+
+warnings.warn(
+    "ets.webapp is deprecated; import from ets.web.handlers (or ets.web.api "
+    "for the transport-free functions) instead. "
+    "Removal milestone: after the frontend migrates to the graph API (v2.0).",
+    DeprecationWarning,
+    stacklevel=2,
 )
 
 __all__ = [

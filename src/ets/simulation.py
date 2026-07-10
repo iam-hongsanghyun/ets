@@ -1,5 +1,7 @@
 # Backward-compatibility shim — re-exports from solvers.simulation.
-# Logic lives in src/ets/solvers/simulation.py.
+# New location: src/ets/solvers/simulation.py.
+import warnings
+
 from .solvers.simulation import (
     solve_scenario_path,
     run_simulation,
@@ -10,6 +12,13 @@ from .solvers.simulation import (
     _collect_path_results,
     _rename_markets,
     _market_year_sort_key,
+)
+
+warnings.warn(
+    "ets.simulation is deprecated; import from ets.solvers.simulation instead. "
+    "Removal milestone: after the frontend migrates to the graph API (v2.0).",
+    DeprecationWarning,
+    stacklevel=2,
 )
 
 __all__ = [
