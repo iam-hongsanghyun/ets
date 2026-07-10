@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 from collections import defaultdict
+from collections.abc import Sequence
 from copy import deepcopy
 from pathlib import Path
 
@@ -12,10 +13,10 @@ from ..core.expectations import (
     derive_expected_prices,
     expectation_sort_key,
 )
-from ..core.defaults import MSR_DEFAULTS
 from ..core.market import CarbonMarket
-from .msr import MSRState
-from .ccr import CCRState
+from ..core.protocols import CapRule
+from .msr import MSRCapRule, MSRState
+from .ccr import CCRCapRule, CCRState
 from ..config_io import build_markets_from_config, load_config
 
 logger = logging.getLogger(__name__)
@@ -81,10 +82,10 @@ def _simulate_realized_prices(
     ordered_markets: list[CarbonMarket],
     expected_prices: dict[str, float],
 ) -> dict[str, float]:
-    # MSR / CCR are NOT applied in the inner convergence loop (prices only)
-    details = _simulate_path_details(
-        ordered_markets, expected_prices, msr_state=None, ccr_state=None
-    )
+    # MSR / CCR are NOT applied in the inner convergence loop (prices only):
+    # perfect-foresight expectations are formed on the RULE-FREE path (R29,
+    # docs/blocks-composition-rules.md), hence the explicit empty rule list.
+    details = _simulate_path_details(ordered_markets, expected_prices, cap_rules=())
     return {
         str(item["market"].year): float(item["equilibrium"]["price"])
         for item in details
@@ -96,7 +97,48 @@ def _simulate_path_details(
     expected_prices: dict[str, float],
     msr_state: MSRState | None = None,
     ccr_state: CCRState | None = None,
+    cap_rules: Sequence[CapRule] | None = None,
 ) -> list[dict]:
+    """Simulate the competitive per-year path with injected cap rules.
+
+    Supply operators (``CapRule``: CCR, MSR) act BEFORE each year's clearing
+    and read only beginning-of-year state; after clearing they record
+    realised aggregates as the next year's lagged signal (split gating —
+    see ``ets.core.protocols.CapRule``). Composition is additive in list
+    order (F1): ``effective_carry += delta_q_i``, CCR before MSR.
+
+    Args:
+        ordered_markets: Markets sorted chronologically.
+        expected_prices: Year label → expected future price [currency/tCO2].
+        msr_state: LEGACY kwarg — translated internally to ``MSRCapRule``.
+            Mutually exclusive with ``cap_rules``.
+        ccr_state: LEGACY kwarg — translated internally to ``CCRCapRule``.
+            Mutually exclusive with ``cap_rules``.
+        cap_rules: Cap rules applied in list order. ``None`` (default)
+            triggers the legacy translation: ``[CCRCapRule(ccr_state),
+            MSRCapRule(msr_state)]`` from whichever states are given —
+            preserving the wiring-literal order (CCR before MSR). Pass an
+            empty sequence for an explicitly rule-free path.
+
+    Returns:
+        One details dict per year (market, equilibrium, participant frame,
+        and the MSR/CCR diagnostics keys in their pinned order).
+    """
+    if cap_rules is None:
+        # Legacy-kwarg translation: state objects become injected rules in
+        # the fixed wiring-literal order (CCR before MSR, F1).
+        rules: list[CapRule] = []
+        if ccr_state is not None:
+            rules.append(CCRCapRule(ccr_state))
+        if msr_state is not None:
+            rules.append(MSRCapRule(msr_state))
+        cap_rules = rules
+    elif msr_state is not None or ccr_state is not None:
+        raise ValueError(
+            "Pass either cap_rules or the legacy msr_state=/ccr_state= "
+            "kwargs, not both."
+        )
+
     bank_balances = {
         participant.name: 0.0 for participant in ordered_markets[0].participants
     }
@@ -107,84 +149,26 @@ def _simulate_path_details(
         expected_future_price = float(expected_prices.get(str(market.year), 0.0))
         starting_bank_balances = dict(bank_balances)
 
-        # ── MSR: adjust auction supply before clearing ────────────────────
-        msr_withheld = 0.0
-        msr_released = 0.0
-        msr_pool = 0.0
-        ccr_adjustment = 0.0
-        ccr_emissions_deviation = 0.0
-        ccr_cost_deviation = 0.0
+        # ── Supply operators: cap rules adjust supply before clearing ─────
+        # Zero-valued defaults in the pinned key order of the details dict
+        # (golden baselines are column-order-sensitive).
+        diagnostics: dict[str, float] = {
+            "msr_withheld": 0.0,
+            "msr_released": 0.0,
+            "msr_pool": 0.0,
+            "ccr_adjustment": 0.0,
+            "ccr_emissions_deviation": 0.0,
+            "ccr_cost_deviation": 0.0,
+        }
+        # Additive composition in wiring-literal order (CCR before MSR):
+        #   Q_t = Qbar + ΔQ_t^CCR + ΔQ_t^MSR   (F1 fix, blocks-composition-rules §0)
+        # Rules read only beginning-of-year state (previous bank; their own
+        # lagged aggregates), never same-year outcomes.
         effective_carry = carry_forward_allowances
-
-        # ── CCR: adjust the per-period cap from lagged emissions / abatement
-        # cost deviations (Benmir, Roman & Taschini 2025).  The adjustment is
-        # injected as additional permit supply so the competitive clearing sees
-        # the rule-adjusted cap Q_t = Qbar + ΔQ_t.
-        ccr_active = ccr_state is not None and getattr(market, "ccr_enabled", False)
-        if ccr_active:
-            try:
-                ccr_active = float(str(market.year)) >= float(
-                    getattr(market, "ccr_start_year", 0.0) or 0.0
-                )
-            except (TypeError, ValueError):
-                pass  # non-numeric year labels: rule active
-        if ccr_active:
-            ccr_adjustment, ccr_emissions_deviation, ccr_cost_deviation = (
-                ccr_state.cap_adjustment(
-                    phi_emissions=float(getattr(market, "ccr_phi_emissions", 0.0)),
-                    phi_abatement_cost=float(
-                        getattr(market, "ccr_phi_abatement_cost", 0.0)
-                    ),
-                    reference_emissions=float(
-                        getattr(market, "ccr_reference_emissions", 0.0)
-                    ),
-                    reference_abatement_cost=float(
-                        getattr(market, "ccr_reference_abatement_cost", 0.0)
-                    ),
-                    year_label=str(market.year),
-                )
-            )
-            effective_carry += ccr_adjustment
-
-        msr_active = msr_state is not None and getattr(market, "msr_enabled", False)
-        if msr_active:
-            try:
-                msr_active = float(str(market.year)) >= float(
-                    getattr(market, "msr_start_year", 0.0) or 0.0
-                )
-            except (TypeError, ValueError):
-                pass  # non-numeric year labels: rule active
-        if msr_active:
-            total_bank = sum(bank_balances.values())
-            _, msr_withheld, msr_released = msr_state.apply(
-                total_bank=total_bank,
-                auction_offered=market.auction_offered,
-                upper_threshold=float(
-                    getattr(market, "msr_upper_threshold", MSR_DEFAULTS["msr_upper_threshold"])
-                ),
-                lower_threshold=float(
-                    getattr(market, "msr_lower_threshold", MSR_DEFAULTS["msr_lower_threshold"])
-                ),
-                withhold_rate=float(
-                    getattr(market, "msr_withhold_rate", MSR_DEFAULTS["msr_withhold_rate"])
-                ),
-                release_rate=float(
-                    getattr(market, "msr_release_rate", MSR_DEFAULTS["msr_release_rate"])
-                ),
-                cancel_excess=bool(getattr(market, "msr_cancel_excess", False)),
-                cancel_threshold=float(
-                    getattr(market, "msr_cancel_threshold", MSR_DEFAULTS["msr_cancel_threshold"])
-                ),
-                year_label=str(market.year),
-            )
-            msr_pool = msr_state.reserve_pool
-            # Inject the MSR net adjustment as carry-forward so solve_equilibrium
-            # sees it (released adds to supply, withheld subtracts; the adjusted
-            # auction volume returned by apply() is deliberately unused).
-            # Compose additively with any CCR cap adjustment already applied:
-            #   Q_t = Qbar + ΔQ_t^CCR + ΔQ_t^MSR   (F1 fix, blocks-composition-rules §0)
-            msr_net = msr_released - msr_withheld
-            effective_carry += msr_net
+        for rule in cap_rules:
+            delta_q, rule_diagnostics = rule.pre_clear(market, bank_balances)
+            effective_carry += delta_q
+            diagnostics.update(rule_diagnostics)
 
         equilibrium = market.solve_equilibrium(
             bank_balances=bank_balances,
@@ -204,21 +188,19 @@ def _simulate_path_details(
                 "starting_bank_balances": starting_bank_balances,
                 "equilibrium": equilibrium,
                 "participant_df": participant_df,
-                "msr_withheld": msr_withheld,
-                "msr_released": msr_released,
-                "msr_pool": msr_pool,
-                "ccr_adjustment": ccr_adjustment,
-                "ccr_emissions_deviation": ccr_emissions_deviation,
-                "ccr_cost_deviation": ccr_cost_deviation,
+                "msr_withheld": diagnostics["msr_withheld"],
+                "msr_released": diagnostics["msr_released"],
+                "msr_pool": diagnostics["msr_pool"],
+                "ccr_adjustment": diagnostics["ccr_adjustment"],
+                "ccr_emissions_deviation": diagnostics["ccr_emissions_deviation"],
+                "ccr_cost_deviation": diagnostics["ccr_cost_deviation"],
             }
         )
 
-        # ── CCR: record this year's realised aggregates as next year's signal
-        if ccr_state is not None and getattr(market, "ccr_enabled", False):
-            ccr_state.record(
-                emissions=float(participant_df["Residual Emissions"].sum()),
-                abatement_cost=float(participant_df["Abatement Cost"].sum()),
-            )
+        # ── Post-clearing: rules record realised aggregates as the lagged
+        # signal (flag-only gating — pre-start years accumulate history).
+        for rule in cap_rules:
+            rule.post_clear(market, participant_df)
 
         carry_forward_allowances = (
             float(equilibrium["unsold_allowances"])
