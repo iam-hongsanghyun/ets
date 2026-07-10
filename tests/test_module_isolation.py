@@ -214,7 +214,13 @@ def classify(module: str) -> ModuleInfo:
         return ModuleInfo(module, "T3")
     if len(parts) >= 2 and parts[1] in _T4_GROUPS:
         return ModuleInfo(module, "T4", t4_group=parts[1])
-    if module == "ets.cli" or module == "ets.web" or module.startswith("ets.web."):
+    if (
+        module == "ets.cli"
+        or module == "ets.web"
+        or module.startswith("ets.web.")
+        or module == "ets.mcp"
+        or module.startswith("ets.mcp.")
+    ):
         return ModuleInfo(module, "T5")
 
     # Everything else currently under ets (ets.solvers.*, ets.market.*,

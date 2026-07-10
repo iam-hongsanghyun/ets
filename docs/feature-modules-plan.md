@@ -21,7 +21,7 @@ Five tiers, enforced by AST, not convention:
 | T2 model features | `ets/features/<name>/` | T0 only. Never another feature. Never T1 |
 | T3 composition | `ets/engine/` — the only importer of features; solve dispatch, rule wiring, policy-event splicing | T0–T2 |
 | T4 workflows | `ets/analysis/*` (isolated leaves), `ets/coupling/`, `ets/blocks/` | T0, T1, T3 — never each other |
-| T5 apps | `ets/web/`, `ets/cli.py` | everything below |
+| T5 apps | `ets/web/`, `ets/cli.py`, `ets/mcp/` | everything below |
 
 Supplementary: (a) underscore names never cross tier boundaries except in
 listed compat shims; (b) each feature's `__init__.py` is its entire public
