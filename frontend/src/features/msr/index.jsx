@@ -103,6 +103,34 @@ function MsrReservePanel({ ctx }) {
   );
 }
 
+// ── Guide: pe-shell module section (only rendered when this model uses
+// MSR — see frontend/src/components/GuideView.jsx). Core guide intro stays
+// unconditional; this is additive.
+
+function MsrGuideSection() {
+  return (
+    <div className="guide-body">
+      <p className="guide-lead">
+        The <strong>Market Stability Reserve (MSR)</strong> automatically adjusts how many
+        allowances are offered at auction each year, based on the total bank of unused
+        allowances in circulation.
+      </p>
+      <p>
+        When the bank grows above the <strong>upper threshold</strong>, a share of that year's
+        auction volume is withheld and moved into the reserve instead of being sold. When the
+        bank falls below the <strong>lower threshold</strong>, allowances are released back out
+        of the reserve to top up supply. An optional cancellation rule can permanently retire
+        reserve volume once it exceeds a cancellation threshold.
+      </p>
+      <div className="guide-tip">
+        <strong>Where to look:</strong> configure MSR in the "Market Stability Reserve (MSR)"
+        group on the Model tab; the withheld / released / reserve-pool pathway appears as its
+        own panel on the Analysis tab once the reserve actually triggers for a year.
+      </div>
+    </div>
+  );
+}
+
 export default {
   id: "msr",
   scenarioDefaults: {
@@ -116,4 +144,5 @@ export default {
   },
   editorSections: [MsrEditorSection],
   summaryPanels: [MsrReservePanel],
+  guideSections: [{ id: "module-msr", tag: "MSR", title: "Market Stability Reserve", content: MsrGuideSection }],
 };

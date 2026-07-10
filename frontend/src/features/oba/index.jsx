@@ -102,6 +102,33 @@ function ObaAllocationFields({ ctx }) {
   );
 }
 
+// ── Guide: pe-shell module section (only rendered when this model uses
+// OBA — see frontend/src/components/GuideView.jsx).
+
+function ObaGuideSection() {
+  return (
+    <div className="guide-body">
+      <p className="guide-lead">
+        <strong>Output-Based Allocation (OBA)</strong> ties a participant's free allowances to
+        how much it actually produces, rather than to a fixed ratio of its baseline emissions.
+        Set both <strong>production output</strong> (units/yr) and a
+        <strong> benchmark emission intensity</strong> (tCO₂/unit) and free allocation becomes
+        their product — overriding the plain free allocation ratio.
+      </p>
+      <p>
+        The same panel also carries the participant's <strong>output price elasticity</strong>
+        (Option A price-elastic baseline): with a scenario reference carbon price set, activity
+        and baseline emissions contract as the carbon price rises above that reference.
+      </p>
+      <div className="guide-tip">
+        <strong>Where to look:</strong> production output and benchmark intensity are set per
+        participant on the Participants step, alongside the free allocation ratio field they
+        override.
+      </div>
+    </div>
+  );
+}
+
 export default {
   id: "oba",
   participantDefaults: {
@@ -110,4 +137,5 @@ export default {
     output_price_elasticity: 0,
   },
   participantEditorSections: [ObaAllocationFields],
+  guideSections: [{ id: "module-oba", tag: "OBA", title: "Output-based allocation", content: ObaGuideSection }],
 };

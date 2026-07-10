@@ -27,7 +27,7 @@ import { activeFeatureIds, collectSlot, FEATURES } from "../features/registry.js
 function BuildView({
   scenario, yearObj, activeYear, onYearChange, addYear, removeYear,
   onRunBase, onRunEdited, onRunAll, hasEditedChanges, onSave, onUpdateYearSeries, navigationTarget,
-  enabledFeatures = null,
+  enabledFeatures = null, manifest = null,
 }) {
   const [selectedSeriesField, setSelectedSeriesField] = useState("total_cap");
   const [generatorRule, setGeneratorRule] = useState("linear");
@@ -265,6 +265,7 @@ function BuildView({
           onSelectYear={onYearChange}
           navigationTarget={navigationTarget}
           enabledFeatures={enabledFeatures}
+          manifest={manifest}
         />
       </section>
     </div>

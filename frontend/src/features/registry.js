@@ -12,13 +12,20 @@
 //     participantEditorSections: [Component], // participant-level editor UI
 //     approachOptions: [Component],      // model_approach-gated solver params
 //     validators: [fn],                  // scenario -> issue[] (see AppShared.validateScenario)
-//     guideSections: [...],              // reserved for the guide view (not wired yet)
+//     guideSections: [{ id, tag, title, content: Component }],  // GuideView's
+//       "Active modules" list (frontend/src/components/GuideView.jsx) — only
+//       shown for a feature that is actually active, so a manifest-scoped pe
+//       model only sees guide pages for the modules it uses. `content` takes
+//       no props (it is a plain, non-`ctx` component, unlike every other slot
+//       here — guide prose doesn't read live scenario state).
 //   }
 //
-// This module (WO-F1) wires the editor/config side only: makeBlankScenario,
-// makeBlankParticipant, validateScenario, and the Editor's editorSections /
-// participantEditorSections / approachOptions slots. Result-side fragments
-// (WO-F2) and the pe shell's enabledFeatures filtering UI (WO-F3) land later.
+// WO-F1 wired the editor/config side (makeBlankScenario, makeBlankParticipant,
+// validateScenario, and the Editor's editorSections / participantEditorSections
+// / approachOptions slots). WO-F2 wired the result side (summaryPanels /
+// analysisBullets / resultStats). WO-F3 wires the pe shell itself: the
+// approach lock and "Banking, borrowing & expectations" visibility
+// (frontend/src/components/Editor.jsx) and guideSections (this file / GuideView.jsx).
 
 import msr from "./msr/index.jsx";
 import ccr from "./ccr/index.jsx";

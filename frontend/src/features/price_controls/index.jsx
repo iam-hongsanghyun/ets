@@ -92,6 +92,28 @@ function CancelledAllowancesBullet({ ctx }) {
   return <li>Cancelled allowances: {fmt.num(yearObj.cancelled_allowances || 0, 0)} are permanently removed from the annual cap.</li>;
 }
 
+// ── Guide: pe-shell module section (only rendered when this model uses
+// price controls — see frontend/src/components/GuideView.jsx).
+
+function PriceControlsGuideSection() {
+  return (
+    <div className="guide-body">
+      <p className="guide-lead">
+        <strong>Price controls</strong> add rising or falling price floor/ceiling trajectories
+        on top of the per-year price bounds, plus auction guardrails: a
+        <strong> reserve price</strong> below which auction volume goes unsold, a
+        <strong> minimum bid coverage</strong> threshold, and a rule for what happens to
+        <strong> unsold allowances</strong> (return to reserve, cancel, or carry forward).
+      </p>
+      <div className="guide-tip">
+        <strong>Where to look:</strong> price bound trajectories live in "Allocation & policy
+        trajectories"; the auction guardrail fields live in "Supply &amp; price bounds"; the
+        resulting auction rules and auction pathway both appear on the Analysis tab.
+      </div>
+    </div>
+  );
+}
+
 export default {
   id: "price_controls",
   scenarioDefaults: {
@@ -100,4 +122,5 @@ export default {
   },
   editorSections: [PriceBoundTrajectories, AuctionGuardrailFields],
   analysisBullets: [ReservePriceBullet, MinBidCoverageBullet, UnsoldTreatmentBullet, CancelledAllowancesBullet],
+  guideSections: [{ id: "module-price_controls", tag: "PXC", title: "Price controls", content: PriceControlsGuideSection }],
 };

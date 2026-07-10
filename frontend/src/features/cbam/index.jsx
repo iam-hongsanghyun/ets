@@ -251,6 +251,35 @@ function CbamLiabilityStat({ ctx }) {
   return <div className="stat"><span className="label">CBAM Liability</span><span className="val">{fmt.money(r.cbam_liability)}</span></div>;
 }
 
+// ── Guide: pe-shell module section (only rendered when this model uses
+// CBAM — see frontend/src/components/GuideView.jsx).
+
+function CbamGuideSection() {
+  return (
+    <div className="guide-body">
+      <p className="guide-lead">
+        The <strong>Carbon Border Adjustment Mechanism (CBAM)</strong> charges a participant's
+        exported, residual emissions the gap between an external reference price (e.g. the EUA
+        price) and the domestic carbon price, so exporters cannot simply relocate emissions to
+        avoid the domestic cap.
+      </p>
+      <p>
+        Set a participant's <strong>export share</strong> and <strong>coverage ratio</strong>
+        for a single-jurisdiction (EU-only) shorthand, or add rows to the
+        <strong> multi-jurisdiction table</strong> (UK, US, Japan, …) — each with its own
+        reference price from the year's EUA price table. <strong>Scope 2 / indirect
+        emissions</strong> (electricity consumption × grid emission factor) can also be brought
+        into CBAM coverage.
+      </p>
+      <div className="guide-tip">
+        <strong>Where to look:</strong> configure CBAM exposure per participant in the "CBAM
+        exposure" and "Scope 2 / Indirect emissions" groups on the Model tab; CBAM liability and
+        indirect-emissions stats appear on each participant's card in the Analysis tab.
+      </div>
+    </div>
+  );
+}
+
 export default {
   id: "cbam",
   participantDefaults: {
@@ -266,4 +295,5 @@ export default {
   editorSections: [CbamEuaPricesSection],
   participantEditorSections: [CbamExposureSection, Scope2Section],
   resultStats: [IndirectEmissionsStat, Scope2CbamStat, CbamLiabilityStat],
+  guideSections: [{ id: "module-cbam", tag: "CBAM", title: "Carbon Border Adjustment", content: CbamGuideSection }],
 };

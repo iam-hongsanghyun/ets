@@ -24,10 +24,32 @@ export function ReferenceCarbonPriceField({ ctx }) {
   );
 }
 
+// ── Guide: pe-shell module section (only rendered when this model uses
+// the price-elastic baseline — see frontend/src/components/GuideView.jsx).
+
+function ElasticBaselineGuideSection() {
+  return (
+    <div className="guide-body">
+      <p className="guide-lead">
+        The <strong>price-elastic baseline</strong> (Option A) lets a participant's baseline
+        activity — and therefore its baseline emissions — contract as the carbon price rises
+        above a scenario-wide <strong>reference carbon price</strong> P_ref, using each
+        participant's own <strong>output price elasticity</strong>.
+      </p>
+      <div className="guide-tip">
+        <strong>Where to look:</strong> the reference carbon price is set inside "Modelling
+        approach"; each participant's output price elasticity is set on the Participants step
+        alongside its OBA fields.
+      </div>
+    </div>
+  );
+}
+
 export default {
   id: "elastic_baseline",
   scenarioDefaults: {
     reference_carbon_price: 0.0,
   },
   approachOptions: [ReferenceCarbonPriceField],
+  guideSections: [{ id: "module-elastic_baseline", tag: "ELB", title: "Price-elastic baseline", content: ElasticBaselineGuideSection }],
 };

@@ -90,6 +90,32 @@ function CcrPanel({ ctx }) {
   );
 }
 
+// ── Guide: pe-shell module section (only rendered when this model uses
+// CCR — see frontend/src/components/GuideView.jsx).
+
+function CcrGuideSection() {
+  return (
+    <div className="guide-body">
+      <p className="guide-lead">
+        The <strong>Carbon Cap Rule (CCR)</strong> is an adaptive, Taylor-rule-style cap: each
+        year's permit quantity adjusts automatically to how far the <em>previous</em> year's
+        emissions and abatement cost deviated from their reference levels, instead of following
+        a fixed pathway.
+      </p>
+      <p>
+        Two coefficients control the response: φ<sub>e</sub> tightens the cap when emissions
+        overshoot their reference, and φ<sub>z</sub> loosens it when abatement costs run hot
+        relative to their reference. Set either to 0 to switch that term off.
+      </p>
+      <div className="guide-tip">
+        <strong>Where to look:</strong> configure CCR in the "Carbon Cap Rule (CCR)" group on
+        the Model tab; the cap adjustment and reference-deviation pathway appears as its own
+        panel on the Analysis tab once the rule actually moves the cap for a year.
+      </div>
+    </div>
+  );
+}
+
 export default {
   id: "ccr",
   scenarioDefaults: {
@@ -101,4 +127,5 @@ export default {
   },
   editorSections: [CcrEditorSection],
   summaryPanels: [CcrPanel],
+  guideSections: [{ id: "module-ccr", tag: "CCR", title: "Carbon Cap Rule", content: CcrGuideSection }],
 };

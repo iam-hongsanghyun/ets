@@ -26,7 +26,28 @@ function CalibrationEditorSection({ ctx }) {
   );
 }
 
+// ── Guide: pe-shell module section (only rendered when this model uses
+// calibration — see frontend/src/components/GuideView.jsx).
+
+function CalibrationGuideSection() {
+  return (
+    <div className="guide-body">
+      <p className="guide-lead">
+        <strong>Calibration</strong> fits scenario parameters to a target using a Nelder-Mead
+        search, rather than requiring every coefficient to be hand-tuned. Its two tolerances
+        trade fit quality for solve time.
+      </p>
+      <div className="guide-tip">
+        <strong>Where to look:</strong> the "Calibration solver" group on the Model tab sets the
+        slope-change (xatol) and error-change (fatol) convergence tolerances the calibration run
+        uses.
+      </div>
+    </div>
+  );
+}
+
 export default {
   id: "calibration",
   editorSections: [CalibrationEditorSection],
+  guideSections: [{ id: "module-calibration", tag: "CALIB", title: "Calibration", content: CalibrationGuideSection }],
 };

@@ -40,7 +40,34 @@ function BankPanel({ ctx }) {
   );
 }
 
+// ── Guide: pe-shell module section (only rendered when this model uses
+// banking — see frontend/src/components/GuideView.jsx).
+
+function BankingGuideSection() {
+  return (
+    <div className="guide-body">
+      <p className="guide-lead">
+        The <strong>Banking equilibrium</strong> approach solves for an intertemporal,
+        arbitrage-free price path: participants may bank unused allowances for later years (and,
+        if borrowing is enabled, draw on a future year's allocation today), and the solver finds
+        the bank and price path where no one can profit from shifting compliance between years.
+      </p>
+      <p>
+        Banking and borrowing are set per year in "Banking, borrowing &amp; expectations"
+        (banking allowed, borrowing allowed and its limit) along with the
+        <strong> expectation rule</strong> participants use to forecast future prices when
+        deciding whether to bank.
+      </p>
+      <div className="guide-tip">
+        <strong>Where to look:</strong> the solved aggregate bank, arbitrage regime, and banking
+        window by year appear as their own panel on the Analysis tab.
+      </div>
+    </div>
+  );
+}
+
 export default {
   id: "banking",
   summaryPanels: [BankPanel],
+  guideSections: [{ id: "module-banking", tag: "BANK", title: "Banking equilibrium", content: BankingGuideSection }],
 };

@@ -15,6 +15,42 @@ import {
 // circular dependency on Editor.jsx (which imports the feature registry).
 export { CollapsibleGroup, numInput, fieldWithPathButton, TrajectoryRangeRow };
 
+// Every price-formation approach the backend accepts (mirrors
+// ets/blocks/catalogue.py's _MODEL_APPROACHES 5-tuple). The default
+// (unscoped) shell only ever showed four of these as clickable buttons —
+// "banking" has never had a button, since a scenario only resolves to it by
+// loading a template whose config already carries model_approach="banking".
+// The pe shell's approach lock (see approachOptionsFor below) is the first
+// place "banking" needs a label at all, so it is defined here rather than
+// invented inline.
+const CANONICAL_APPROACH_OPTIONS = [
+  { id: "competitive", label: "Competitive", sub: "Walrasian price-taking equilibrium (default)" },
+  { id: "hotelling", label: "Hotelling Rule", sub: "Optimal depletion — price rises at discount rate" },
+  { id: "banking", label: "Banking equilibrium", sub: "Intertemporal banking and borrowing with arbitrage-free pricing" },
+  { id: "nash_cournot", label: "Nash–Cournot", sub: "Strategic participants with market power" },
+  { id: "all", label: "Run All", sub: "Compare all three approaches simultaneously" },
+];
+
+const ALL_EXPANSION_IDS = ["competitive", "hotelling", "nash_cournot"];
+
+function isAllApproachExpansion(approachIds) {
+  const set = new Set(approachIds);
+  return set.size === ALL_EXPANSION_IDS.length && ALL_EXPANSION_IDS.every((id) => set.has(id));
+}
+
+// The pe shell passes down the selected model's manifest approach list
+// (see frontend/src/pe/PeApp.jsx); the default shell passes null, which
+// must reproduce today's four-button grid byte-for-byte (never offering
+// "banking" as a button — see comment above).
+function approachOptionsFor(approachScope) {
+  if (approachScope == null) {
+    return CANONICAL_APPROACH_OPTIONS.filter((opt) => opt.id !== "banking");
+  }
+  return CANONICAL_APPROACH_OPTIONS.filter(
+    (opt) => approachScope.includes(opt.id) || (opt.id === "all" && isAllApproachExpansion(approachScope))
+  );
+}
+
 export function Editor({
   scenario,
   year,
@@ -24,9 +60,33 @@ export function Editor({
   onSelectYear,
   navigationTarget = null,
   enabledFeatures = null,
+  manifest = null,
 }) {
   const activeFeatures = activeFeatureIds(enabledFeatures);
   const isFeatureActive = (id) => activeFeatures.includes(id);
+  // Manifest-driven approach lock (pe shell only — see approachOptionsFor
+  // above). Prefer the active scenario's own breakdown when the manifest
+  // has one (manifest.scenarios[name].approach — more precise for a
+  // multi-scenario config where scenarios use different approaches),
+  // falling back to the whole-config approach list for a scenario the
+  // manifest doesn't know about yet (e.g. one added via "Add scenario"
+  // after selecting the model in the pe shell).
+  const approachScope = manifest
+    ? manifest.scenarios?.[scenario.name]?.approach ?? manifest.approach ?? null
+    : null;
+  const visibleApproachOptions = approachOptionsFor(approachScope);
+  // "Banking, borrowing & expectations" is core UI (no banking-specific
+  // editor section exists — see features/banking/index.jsx), so it is not
+  // gated through the feature-slot mechanism. It stays visible whenever the
+  // banking feature is in play OR the loaded config already turned banking
+  // or borrowing on for some year — matching the same OR the backend uses
+  // (banking_allowed/borrowing_allowed are meaningful on their own, not
+  // only under model_approach="banking"). Unrestricted (default) shell
+  // always shows it, unchanged.
+  const bankingGroupVisible =
+    enabledFeatures == null ||
+    isFeatureActive("banking") ||
+    (scenario.years || []).some((item) => item?.banking_allowed || item?.borrowing_allowed);
   const [workingScenario, setWorkingScenario] = React.useState(() => structuredClone(scenario));
   const [workingYear, setWorkingYear] = React.useState(() => structuredClone(year));
   const [activeStep, setActiveStep] = React.useState("scenario");
@@ -956,24 +1016,36 @@ export function Editor({
           <CollapsibleGroup title="Modelling approach" defaultOpen={true}>
           <div className="approach-selector">
             <div className="approach-selector-label">Modelling approach</div>
-            <div className="approach-selector-options">
-              {[
-                { id: "competitive", label: "Competitive", sub: "Walrasian price-taking equilibrium (default)" },
-                { id: "hotelling",   label: "Hotelling Rule", sub: "Optimal depletion — price rises at discount rate" },
-                { id: "nash_cournot", label: "Nash–Cournot", sub: "Strategic participants with market power" },
-                { id: "all",         label: "Run All", sub: "Compare all three approaches simultaneously" },
-              ].map((opt) => (
-                <button
-                  key={opt.id}
-                  type="button"
-                  className={"approach-option " + ((workingScenario.model_approach || "competitive") === opt.id ? "on" : "")}
-                  onClick={() => updateScenario({ model_approach: opt.id })}
-                >
-                  <span className="approach-option-label">{opt.label}</span>
-                  <span className="approach-option-sub">{opt.sub}</span>
-                </button>
-              ))}
-            </div>
+            {visibleApproachOptions.length === 1 ? (
+              <div className="approach-selector-options">
+                <div className="approach-option on approach-option-static">
+                  <span className="approach-option-label">{visibleApproachOptions[0].label}</span>
+                  <span className="approach-option-sub">{visibleApproachOptions[0].sub}</span>
+                </div>
+              </div>
+            ) : (
+              <div className="approach-selector-options">
+                {visibleApproachOptions.map((opt) => (
+                  <button
+                    key={opt.id}
+                    type="button"
+                    className={"approach-option " + ((workingScenario.model_approach || "competitive") === opt.id ? "on" : "")}
+                    onClick={() => updateScenario({ model_approach: opt.id })}
+                  >
+                    <span className="approach-option-label">{opt.label}</span>
+                    <span className="approach-option-sub">{opt.sub}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+            {approachScope != null && (() => {
+              const namedApproaches = visibleApproachOptions.filter((opt) => opt.id !== "all");
+              return (
+                <p className="approach-params-hint">
+                  This model is scoped to the {namedApproaches.map((opt) => opt.label).join(", ")} approach{namedApproaches.length > 1 ? "es" : ""} only.
+                </p>
+              );
+            })()}
 
             {/* Hotelling extra fields — feature-owned (includes the elastic_baseline
                 reference-carbon-price field, embedded at its original position) */}
@@ -1192,6 +1264,7 @@ export function Editor({
           </div>
           </CollapsibleGroup>
 
+          {bankingGroupVisible && (
           <CollapsibleGroup title="Banking, borrowing & expectations" defaultOpen={false}>
           <div className="builder-form-grid">
             <label>
@@ -1241,6 +1314,7 @@ export function Editor({
             </label>
           </div>
           </CollapsibleGroup>
+          )}
 
           {/* ── EUA & external prices ─────────────────────────────────────── */}
           {isFeatureActive("cbam") &&
