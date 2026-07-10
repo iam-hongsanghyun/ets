@@ -11,6 +11,10 @@ Covers:
   (d) GET /api/graph/from-template -> POST /api/graph/run round-trips for one
       template id.
   (e) Malformed JSON -> 400 for every graph POST endpoint.
+  (f) POST /api/graph/save-model "builds" a graph into the user scenario
+      registry: the saved config appears in GET /api/templates and runs via
+      POST /api/run; an invalid graph is a 400; the source graph is
+      recoverable verbatim via GET /api/graph/from-template.
 """
 
 from __future__ import annotations
@@ -20,6 +24,7 @@ from io import BytesIO
 from pathlib import Path
 from typing import Any
 
+import ets.web.api as api
 from ets.blocks import BLOCK_CATALOGUE, Graph
 from ets.web.server import app
 
@@ -183,3 +188,68 @@ def test_malformed_json_is_400_for_every_graph_post_endpoint() -> None:
         status, body = _call("POST", path, body=b"{not valid json")
         assert status == 400, f"{path} returned {status}"
         assert "error" in body
+
+
+# ── (f) POST /api/graph/save-model ───────────────────────────────────────
+
+
+def test_save_model_persists_lists_in_templates_and_runs(tmp_path, monkeypatch) -> None:
+    """A saved model is 200 + its user_<slug> id, is listed by /api/templates,
+    and its returned config runs unmodified through POST /api/run."""
+    monkeypatch.setattr(api, "USER_SCENARIOS_DIR", tmp_path)
+
+    graph_payload = _basic_linear_graph()
+    status, body = _post_json(
+        "/api/graph/save-model", {"graph": graph_payload, "name": "My Saved Model"}
+    )
+    assert status == 200, body
+    assert body["id"] == "user_my_saved_model"
+    assert body["name"] == "My Saved Model"
+    assert body["config"]["scenarios"][0]["name"]
+
+    status_templates, body_templates = _call("GET", "/api/templates")
+    assert status_templates == 200
+    saved_template = next(
+        t for t in body_templates["templates"] if t["id"] == "user_my_saved_model"
+    )
+    assert saved_template["source"] == "user"
+
+    status_run, body_run = _post_json("/api/run", body["config"])
+    assert status_run == 200, body_run
+    assert body_run["summary"]
+
+
+def test_save_model_invalid_graph_is_400(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(api, "USER_SCENARIOS_DIR", tmp_path)
+
+    status, body = _post_json(
+        "/api/graph/save-model",
+        {"graph": _two_price_formation_graph(), "name": "Bad Model"},
+    )
+    assert status == 400
+    assert "error" in body
+
+
+def test_save_model_missing_name_is_400(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(api, "USER_SCENARIOS_DIR", tmp_path)
+
+    status, body = _post_json("/api/graph/save-model", {"graph": _basic_linear_graph()})
+    assert status == 400
+    assert "error" in body
+
+
+def test_save_model_graph_sidecar_returned_by_from_template(tmp_path, monkeypatch) -> None:
+    """The .graph.json sidecar round-trips the exact source graph through
+    GET /api/graph/from-template?id=user_<slug>."""
+    monkeypatch.setattr(api, "USER_SCENARIOS_DIR", tmp_path)
+
+    graph_payload = _basic_linear_graph()
+    status, body = _post_json(
+        "/api/graph/save-model", {"graph": graph_payload, "name": "Sidecar Model"}
+    )
+    assert status == 200, body
+    assert (tmp_path / "sidecar_model.graph.json").exists()
+
+    status_ft, body_ft = _call("GET", "/api/graph/from-template", query=f"id={body['id']}")
+    assert status_ft == 200, body_ft
+    assert body_ft["graph"] == Graph.from_dict(graph_payload).to_dict()

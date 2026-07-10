@@ -20,6 +20,7 @@ import {
   validateGraph,
   compileGraph,
   runGraph,
+  saveModel,
 } from "./api.js";
 import {
   blockById,
@@ -249,6 +250,45 @@ function ComposerCanvas() {
     setRunPayload(null);
   }, [selectedTemplateId, catalogue, setNodes, setEdges]);
 
+  const handleClearCanvas = useCallback(() => {
+    if (!nodes.length && !edges.length) return;
+    if (!window.confirm("Clear the canvas? This removes every node and connection.")) return;
+    setNodes([]);
+    setEdges([]);
+    setSelectedNodeId(null);
+    setIssues([]);
+    setValidated(false);
+    setNotice(null);
+    setRunPayload(null);
+  }, [nodes.length, edges.length, setNodes, setEdges]);
+
+  const handleSaveModel = useCallback(async () => {
+    const name = window.prompt("Name this model:", "");
+    if (name == null) return;
+    const trimmedName = name.trim();
+    if (!trimmedName) {
+      setNotice({ kind: "save-model", message: "Model name cannot be empty." });
+      return;
+    }
+    setBusy("save-model");
+    setNotice(null);
+    const graph = buildGraph();
+    const result = await saveModel(graph, trimmedName);
+    setBusy(null);
+    if (result.unavailable) {
+      setNotice({ kind: "save-model", message: "Backend endpoint not available yet: POST /api/graph/save-model." });
+      return;
+    }
+    if (!result.ok) {
+      setNotice({ kind: "save-model", message: result.error || "Save model failed." });
+      return;
+    }
+    setNotice({
+      kind: "save-model",
+      message: `Saved "${result.data.name}" as ${result.data.id} — available in the main app's template list.`,
+    });
+  }, [buildGraph]);
+
   const handleIssueClick = useCallback(
     (issue) => {
       if (issue.node) {
@@ -309,14 +349,15 @@ function ComposerCanvas() {
             value={selectedTemplateId}
             onChange={(event) => setSelectedTemplateId(event.target.value)}
             disabled={!templates.length}
+            title="Start from an example model"
           >
-            <option value="">Select a template...</option>
+            <option value="">Start from an example model...</option>
             {templates.map((template) => (
               <option key={template.id} value={template.id}>{template.name}</option>
             ))}
           </select>
           <button className="ghost-btn" disabled={!selectedTemplateId || busy === "template"} onClick={handleLoadTemplate}>
-            Load template
+            Load example
           </button>
           <button className="ghost-btn" disabled={!nodes.length || busy === "validate"} onClick={handleValidate}>
             Validate
@@ -326,6 +367,16 @@ function ComposerCanvas() {
           </button>
           <button className="ghost-btn" disabled={!nodes.length || busy === "compile"} onClick={handleCompile}>
             Export config
+          </button>
+          <button className="ghost-btn" disabled={!nodes.length || busy === "save-model"} onClick={handleSaveModel}>
+            Save model
+          </button>
+          <button
+            className="ghost-btn danger-btn"
+            disabled={!nodes.length && !edges.length}
+            onClick={handleClearCanvas}
+          >
+            Clear canvas
           </button>
         </div>
       </div>

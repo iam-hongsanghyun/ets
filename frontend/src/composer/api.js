@@ -90,6 +90,17 @@ async function runGraph(graph) {
   });
 }
 
+// POST /api/graph/save-model {graph, name} -> 200 {id, name, config} or
+// 400 {error}. "Builds" the drawn graph into the scenario registry so it
+// shows up as "User · <name>" in the main app's template list.
+async function saveModel(graph, name) {
+  return safeFetchJson("/api/graph/save-model", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ graph, name }),
+  });
+}
+
 export {
   fetchBlockCatalogue,
   fetchTemplates,
@@ -97,4 +108,5 @@ export {
   validateGraph,
   compileGraph,
   runGraph,
+  saveModel,
 };
