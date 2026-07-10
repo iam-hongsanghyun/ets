@@ -18,20 +18,32 @@ from copy import deepcopy
 
 import pandas as pd
 
-from ..blocks import (
-    BLOCK_CATALOGUE,
-    Graph,
-    compile_graph,
-    derive_manifest,
-    graph_from_config,
-    validate_graph,
-)
+from ..blocks import BLOCK_CATALOGUE, Graph, derive_manifest, graph_from_config, validate_graph
+from ..blocks.serialize import serialize_catalogue
 from ..core.paths import EXAMPLES_DIR, USER_SCENARIOS_DIR
 from ..config_io import blank_config, build_markets_from_config, load_config, save_config
 from ..engine import run_simulation, solve_scenario_path
+from ..model_store import (
+    compile_graph_or_raise,
+    iter_examples,
+    iter_registry_models,
+    save_graph_as_model,
+    slugify_filename,
+)
 
 
 def _predefined_templates() -> list[dict]:
+    """List every template the frontend's picker offers: blank + examples + registry.
+
+    The example/registry enumeration (which directory, which glob, skipping
+    ``*.graph.json`` sidecars, tolerating a non-scenario JSON) is
+    ``ets.model_store.iter_examples``/``iter_registry_models`` — shared with
+    ``ets.mcp``'s ``list_models`` tool, which needs the same raw (undecorated)
+    listing. ``EXAMPLES_DIR``/``USER_SCENARIOS_DIR`` are passed through
+    explicitly (rather than relying on ``model_store``'s own defaults) so
+    tests that ``monkeypatch.setattr(api, "USER_SCENARIOS_DIR", ...)`` keep
+    working unchanged.
+    """
     templates = [
         {
             "id": "blank",
@@ -39,14 +51,8 @@ def _predefined_templates() -> list[dict]:
             "config": _decorate_frontend_config(blank_config(), template_id="blank"),
         }
     ]
-    for path in sorted(EXAMPLES_DIR.glob("*.json")):
-        try:
-            config = load_config(path)
-        except Exception:
-            # Skip non-scenario JSONs (e.g. API request payload examples)
-            continue
-        template_id = path.stem
-        label = path.stem.replace("_", " ").title()
+    for template_id, config in iter_examples(examples_dir=EXAMPLES_DIR):
+        label = template_id.replace("_", " ").title()
         templates.append(
             {
                 "id": template_id,
@@ -55,15 +61,8 @@ def _predefined_templates() -> list[dict]:
                 "config": _decorate_frontend_config(config, template_id=template_id),
             }
         )
-    USER_SCENARIOS_DIR.mkdir(parents=True, exist_ok=True)
-    for path in sorted(USER_SCENARIOS_DIR.glob("*.json")):
-        if path.name.endswith(".graph.json"):
-            # Composer-graph sidecar written by _handle_graph_save_model, not
-            # a scenario config in its own right — see that function's docstring.
-            continue
-        config = load_config(path)
-        template_id = f"user_{path.stem}"
-        label = path.stem.replace("_", " ").title()
+    for template_id, config in iter_registry_models(registry_dir=USER_SCENARIOS_DIR):
+        label = template_id.removeprefix("user_").replace("_", " ").title()
         templates.append(
             {
                 "id": template_id,
@@ -235,53 +234,15 @@ def _build_dashboard_payload(config: dict) -> dict:
 # ── Graph composer endpoints (blocks-graph-plan.md §5, Order 8) ─────────────
 
 
-def _serialize_param(param) -> dict:
-    """One ParamSpec -> the §5 wire shape: name/type/default/unit/min/max/enum/config_key/scope."""
-    low, high = param.bounds if param.bounds is not None else (None, None)
-    return {
-        "name": param.name,
-        "type": param.type,
-        "default": param.default,
-        "unit": param.unit,
-        "min": low,
-        "max": high,
-        "enum": list(param.enum) if param.enum is not None else None,
-        "config_key": param.config_key,
-        "scope": param.scope,
-    }
-
-
-def _serialize_ports(block) -> dict:
-    return {
-        "inputs": [
-            {"name": port.name, "accepts": [port.kind], "cardinality": port.cardinality}
-            for port in block.in_ports()
-        ],
-        "outputs": [{"name": port.name, "type": port.kind} for port in block.out_ports()],
-    }
-
-
-def _serialize_constraints(block) -> list[dict]:
-    constraints = [{"kind": "requires", "block": other} for other in block.requires]
-    constraints += [{"kind": "excludes", "block": other} for other in block.excludes]
-    return constraints
-
-
-def _serialize_block(block) -> dict:
-    return {
-        "id": block.id,
-        "label": block.label,
-        "category": block.category,
-        "doc": block.doc,
-        "params": [_serialize_param(p) for p in block.params],
-        "ports": _serialize_ports(block),
-        "constraints": _serialize_constraints(block),
-    }
-
-
 def _serialize_block_catalogue() -> dict:
-    """Handle GET /api/blocks — the palette/param-form contract, §5."""
-    return {"blocks": [_serialize_block(block) for block in BLOCK_CATALOGUE]}
+    """Handle GET /api/blocks — the palette/param-form contract, §5.
+
+    Delegates to ``ets.blocks.serialize`` (shared with ``ets.mcp``'s
+    ``list_blocks``/``describe_block`` tools) — see that module's docstring
+    for why the wire-shape functions live next to the catalogue rather than
+    here.
+    """
+    return {"blocks": serialize_catalogue(BLOCK_CATALOGUE)}
 
 
 def _handle_graph_validate(data: dict) -> dict:
@@ -298,18 +259,17 @@ def _handle_graph_validate(data: dict) -> dict:
 
 
 def _compile_graph_or_raise(graph: Graph) -> dict:
-    """Validate then compile, raising a summarised ValueError on any ERROR issue.
+    """Validate then compile, raising a summarised error on any ERROR issue.
 
     The caller (route dispatch) already turns any raised exception into a 400
     ``{"error": str(exc)}`` — this just makes that message useful instead of a
-    raw CompileError/config_io traceback fragment.
+    raw CompileError/config_io traceback fragment. Delegates to
+    ``ets.model_store.compile_graph_or_raise`` (shared with ``ets.mcp``'s
+    ``run_model``/``save_model`` tools, which hit the same validate-then-compile
+    step); ``ModelStoreError`` is a ``ValueError`` subclass so this stays a
+    drop-in replacement for the pre-refactor bare-``ValueError`` version.
     """
-    issues = validate_graph(graph)
-    errors = [issue for issue in issues if issue.level == "error"]
-    if errors:
-        summary = "; ".join(f"[{issue.rule}] {issue.message}" for issue in errors)
-        raise ValueError(f"Graph validation failed: {summary}")
-    return compile_graph(graph)
+    return compile_graph_or_raise(graph)
 
 
 def _handle_graph_compile(data: dict) -> dict:
@@ -398,11 +358,10 @@ def _handle_model_manifest_post(data: dict) -> dict:
     return derive_manifest(data)
 
 
-def _slugify_filename(value: str) -> str:
-    slug = "".join(char.lower() if char.isalnum() else "_" for char in str(value)).strip("_")
-    while "__" in slug:
-        slug = slug.replace("__", "_")
-    return slug or "scenario"
+# Delegates to ets.model_store (shared with ets.mcp's save_model tool) —
+# kept as a module-level name because ets.webapp / ets.web.handlers
+# re-export it under this exact spelling for backward compatibility.
+_slugify_filename = slugify_filename
 
 
 def _handle_graph_save_model(data: dict) -> dict:
@@ -432,6 +391,12 @@ def _handle_graph_save_model(data: dict) -> dict:
     unconditionally dropping any other top-level key. A sidecar file avoids
     fighting that normalization boundary.
 
+    The validate-compile-persist logic itself lives in
+    ``ets.model_store.save_graph_as_model`` — shared with ``ets.mcp``'s
+    ``save_model`` tool, which needs a model saved through the composer
+    conversation to appear in this same registry immediately. This handler
+    is now just the HTTP-payload adapter around it.
+
     Args:
         data: Parsed request body, ``{"graph": <Graph wire dict>, "name": <display name>}``.
 
@@ -445,19 +410,12 @@ def _handle_graph_save_model(data: dict) -> dict:
     if not name:
         raise ValueError("Request must include a non-empty 'name'.")
     graph = Graph.from_dict(data.get("graph") or {})
-    config = _compile_graph_or_raise(graph)
-
-    stem = _slugify_filename(name)
-    USER_SCENARIOS_DIR.mkdir(parents=True, exist_ok=True)
-    config_path = USER_SCENARIOS_DIR / f"{stem}.json"
-    graph_path = USER_SCENARIOS_DIR / f"{stem}.graph.json"
-    save_config(config, config_path)
-    graph_path.write_text(json.dumps(graph.to_dict(), indent=2), encoding="utf-8")
+    saved = save_graph_as_model(graph, name, registry_dir=USER_SCENARIOS_DIR)
 
     return {
-        "id": f"user_{stem}",
-        "name": name,
-        "config": load_config(config_path),
+        "id": saved.id,
+        "name": saved.name,
+        "config": saved.config,
     }
 
 
