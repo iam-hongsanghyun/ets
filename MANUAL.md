@@ -139,6 +139,99 @@ goes — is documented as a six-step checklist in
 
 ---
 
+## MCP composer (AI-guided setup)
+
+`src/ets/mcp` exposes the same block-graph composer as an
+[MCP](https://modelcontextprotocol.io) server, so an AI assistant (Claude
+Code, Claude Desktop, or any other MCP client) can hold a conversation with
+you and build a scenario graph turn by turn instead of you drawing it in
+`configure.command` or writing JSON by hand. It is a T5 app, same tier as
+`ets.web`/`ets.cli`, wired to the exact same `ets.blocks` catalogue/
+validator/compiler and the same `user-scenarios/` registry
+(`ets.model_store`) the web composer uses — a model saved from either place
+shows up immediately in both.
+
+### Registration
+
+Install the `mcp` optional-dependency group:
+
+```bash
+uv sync --extra mcp        # or --all-extras
+```
+
+The repo-root `.mcp.json` already registers the server for Claude Code (and
+any other client that reads that file):
+
+```json
+{
+  "mcpServers": {
+    "ets-composer": {
+      "command": "uv",
+      "args": ["run", "--extra", "mcp", "python", "-m", "ets.mcp"]
+    }
+  }
+}
+```
+
+For Claude Desktop, add the same `"ets-composer"` entry (with an absolute
+`cwd` pointing at this repo) to its own `claude_desktop_config.json`. Run it
+by hand for a manual check — it speaks MCP over stdio, so a plain
+`python -m ets.mcp` blocks waiting for a client:
+
+```bash
+uv run --extra mcp python -m ets.mcp
+```
+
+### Tools
+
+| Tool | What it does |
+|---|---|
+| `list_models()` | Examples + registry models, with feature/approach chips and a one-line description. |
+| `list_blocks(category=None)` / `describe_block(block_id)` | The block catalogue — params (type/default/unit/bounds), ports, `requires`/`excludes`. |
+| `new_graph(template_id=None)` | A blank minimum-viable graph, or a model from `list_models()` loaded onto the (conversational) canvas. |
+| `add_block(graph, block_id, params=None, target_market=None, replace_existing=False)` | Adds a node and its obvious edge into a market (port-kind matched, e.g. a policy block → `policies`); a second singular-port block (e.g. price formation) is wired anyway by default so `check()` surfaces the conflict, unless `replace_existing=True`. |
+| `set_params(graph, node_id, params)` / `remove_node(graph, node_id)` | Edit or delete a node; `set_params` with a `None` value clears that param back to its default. |
+| `check(graph)` | `validate_graph`'s issues (rules R1–R32) plus `next_steps` — a plain-language, typically yes/no-phrased suggestion for every ERROR, derived from `docs/blocks-composition-rules.md` §4. |
+| `run_model(graph, scenario=None)` | Compiles and runs the graph; returns a compact per-scenario/per-year summary (price, auction sold/offered, abatement, bank/MSR/CCR columns when active) — never a raw DataFrame. |
+| `save_model(graph, name)` | Persists the graph to the shared registry; the returned id shows up in both `run.command`'s template picker and `pe.command`'s model list. |
+
+Every mutating tool is stateless: it takes the current graph JSON and
+returns the updated graph plus fresh `issues` — the AI assistant holds the
+graph across turns, not the server.
+
+### Example conversation flow
+
+```
+You:  Model a cap-and-trade market for three sectors with a price floor
+      and an MSR that starts kicking in from year 3.
+
+AI:   [list_models(), list_blocks()] I'll start from a blank model —
+      new_graph() — and add three participants, a price_floor block, and
+      an msr_bank_threshold block. Sound good?
+
+You:  Yes.
+
+AI:   [add_block(...) x5, check(graph) after each] The MSR needs a bank
+      signal to do anything under competitive clearing: at least one year
+      with banking_allowed=true and a non-myopic expectations rule. Want
+      me to set both?
+
+You:  Yes.
+
+AI:   [set_params(...), add_block("expectations", ...), check(graph)]
+      check() is clean now. [run_model(graph)] Here's what it solves to:
+      price starts at ~12/tCO2 in year 1 and rises to ~34/tCO2 by year 5 as
+      the MSR withholds allowances... Want me to save this model?
+
+You:  Yes, call it "Three Sector MSR Pilot".
+
+AI:   [save_model(graph, "Three Sector MSR Pilot")] Saved as
+      user_three_sector_msr_pilot — it's now in run.command's template
+      picker and pe.command's model list.
+```
+
+---
+
 ## Architecture
 
 `src/ets` is organised as five import tiers (T0 kernel → T5 apps), each
@@ -151,7 +244,7 @@ does not duplicate it. In one line: `core/` (market primitives, no I/O) →
 `config_io/` (the only JSON parser) → `features/<name>/` (one directory per
 mechanism, mutually isolated) → `engine/` (the only importer of features;
 solve dispatch and rule wiring) → `analysis/`, `coupling/`, `blocks/`
-(workflows) → `web/`, `cli.py` (apps).
+(workflows) → `web/`, `cli.py`, `mcp/` (apps).
 
 The frontend mirrors this on the config/result-editing side:
 `frontend/src/features/<name>/index.jsx` per feature, composed through
@@ -623,10 +716,20 @@ src/ets/
   coupling/           T4 — Option B soft-link fixed-point loop
     loop.py, adapters.py
   blocks/             T4 — graph compiler, config_io-only (engine-blind)
-    registry.py, catalogue.py, graph.py, validate.py, compile.py, decompile.py, manifest.py
+    registry.py, catalogue.py, graph.py, validate.py, compile.py, decompile.py,
+    manifest.py, serialize.py (wire-shape helpers, shared by web + mcp)
+  model_store.py       shared registry I/O (save/list/resolve models on disk);
+                       used by both web/ and mcp/, imports neither
   web/                T5 — apps
     api.py, routes.py, handlers.py, server.py
   cli.py              T5 — command-line entry point
+  mcp/                T5 — AI-guided composer, exposed as an MCP server
+    tools.py           stateless tool implementations (list_models, list_blocks,
+                       describe_block, new_graph, add_block, set_params,
+                       remove_node, check, run_model, save_model)
+    suggestions.py     rule -> plain-language-suggestion table for check()
+    compact.py         compact per-scenario/per-year summary for run_model()
+    server.py          FastMCP wiring + server instructions; __main__.py entry
   <flat shims>        expectations.py, msr.py, ccr.py, costs.py, config.py, market.py,
                        participant.py, solvers/, market/, participant/ — DeprecationWarning,
                        re-export the moved names; see docs/feature-modules-plan.md §4 O13
