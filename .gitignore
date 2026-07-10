@@ -7,3 +7,8 @@ outputs/
 frontend/node_modules/
 tmp_template.json
 .vercel
+_clonetest/
+_probe.txt
+examples/k_msr_results.csv
+examples/k_msr_summary.md
+examples/k_msr_price_paths.png
