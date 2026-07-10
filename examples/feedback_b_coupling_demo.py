@@ -26,7 +26,7 @@ from ets.coupling import (
     NullExternalModel,
     run_coupled_simulation,
 )
-from ets.solvers import run_simulation_from_config
+from ets.engine import run_simulation_from_config
 
 REPO = Path(__file__).resolve().parents[1]
 

@@ -46,7 +46,7 @@ class NullExternalModel:
     """Identity adapter — no feedback. The loop converges in one iteration.
 
     Useful as a control: coupling with this adapter must reproduce a plain
-    :func:`ets.solvers.run_simulation_from_config` run.
+    :func:`ets.engine.run_simulation_from_config` run.
     """
 
     def respond(self, baseline_config: dict, prices: PriceMap, iteration: int) -> dict:

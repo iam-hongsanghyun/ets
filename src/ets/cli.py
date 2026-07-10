@@ -5,9 +5,9 @@ from pathlib import Path
 
 import pandas as pd
 
-from .config import EXAMPLES_DIR
+from .core.paths import EXAMPLES_DIR
 from .config_io import blank_config, save_config
-from .solvers.simulation import run_simulation_from_file
+from .engine import run_simulation_from_file
 
 SAMPLE_MODES = {
     "basic": EXAMPLES_DIR / "climate_solutions_basic_linear.json",

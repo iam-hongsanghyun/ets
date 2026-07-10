@@ -1,19 +1,19 @@
 import React from "react";
 import { fmt } from "./MarketChart.jsx";
-import { YearSeriesModal, getSeriesFieldMeta, makeBlankSector } from "./AppShared.jsx";
+import { YearSeriesModal, getSeriesFieldMeta } from "./AppShared.jsx";
+import { activeFeatureIds, collectSlot, FEATURES } from "../features/registry.js";
+import {
+  CollapsibleGroup,
+  numInput,
+  fieldWithPathButton,
+  TrajectoryRangeRow,
+} from "./EditorPrimitives.jsx";
 
-function CollapsibleGroup({ title, defaultOpen = true, children, badge = null }) {
-  return (
-    <details className="cg" open={defaultOpen || undefined}>
-      <summary className="cg-summary">
-        <span className="cg-title">{title}</span>
-        {badge ? <span className="cg-badge">{badge}</span> : null}
-        <span className="cg-chevron">▾</span>
-      </summary>
-      <div className="cg-body">{children}</div>
-    </details>
-  );
-}
+// Re-exported for backward compatibility with any existing imports of these
+// primitives from Editor.jsx; the implementations live in EditorPrimitives.jsx
+// so feature modules (frontend/src/features/*) can import them without a
+// circular dependency on Editor.jsx (which imports the feature registry).
+export { CollapsibleGroup, numInput, fieldWithPathButton, TrajectoryRangeRow };
 
 export function Editor({
   scenario,
@@ -23,7 +23,10 @@ export function Editor({
   onRemoveYear,
   onSelectYear,
   navigationTarget = null,
+  enabledFeatures = null,
 }) {
+  const activeFeatures = activeFeatureIds(enabledFeatures);
+  const isFeatureActive = (id) => activeFeatures.includes(id);
   const [workingScenario, setWorkingScenario] = React.useState(() => structuredClone(scenario));
   const [workingYear, setWorkingYear] = React.useState(() => structuredClone(year));
   const [activeStep, setActiveStep] = React.useState("scenario");
@@ -367,18 +370,6 @@ export function Editor({
       })
       .filter((block) => !Number.isNaN(block.amount) && !Number.isNaN(block.marginal_cost));
   };
-
-  const numInput = (value, onValueChange, step = 1, min = undefined, title = "") => (
-    <input
-      type="number"
-      className="num"
-      value={value}
-      step={step}
-      min={min}
-      title={title}
-      onChange={(event) => onValueChange(Number(event.target.value))}
-    />
-  );
 
   const updateScenario = (patch) => setWorkingScenario((current) => ({ ...current, ...patch }));
   const updateYear = (patch) => setWorkingYear((current) => ({ ...current, ...patch }));
@@ -824,16 +815,31 @@ export function Editor({
     });
   };
 
-  const fieldWithPathButton = (label, onClick, required = false, optional = false) => (
-    <span className="field-title-row">
-      <span>
-        {label}{" "}
-        {required ? <span className="field-flag required">required</span> : null}
-        {optional ? <span className="field-flag optional">optional</span> : null}
-      </span>
-      <button className="field-path-btn" type="button" onClick={onClick}>Edit path</button>
-    </span>
-  );
+  // Context objects handed to feature-module editor slots (see
+  // frontend/src/features/*). Feature components read/write through these
+  // rather than reaching into Editor's closure directly. `activeFeatures`
+  // is included so a feature component that embeds ANOTHER feature's field
+  // inline (e.g. hotelling embedding elastic_baseline's reference-carbon
+  // price at its original DOM position) can self-gate on that feature's
+  // enablement too, not just its own.
+  const scenarioCtx = {
+    scenario,
+    workingScenario,
+    updateScenario,
+    workingYear,
+    updateYear,
+    openMarketSeriesEditor,
+    activeFeatures,
+  };
+  const participantCtx = {
+    workingScenario,
+    workingYear,
+    participant,
+    selectedParticipantIndex,
+    updateParticipant,
+    openParticipantSeriesEditor,
+    activeFeatures,
+  };
 
   return (
     <div className="editor builder">
@@ -931,192 +937,10 @@ export function Editor({
             </div>
           </CollapsibleGroup>
 
-          {/* ── Sectors panel ─────────────────────────────────────────── */}
-          <CollapsibleGroup title="Sectors" defaultOpen={true} badge={(workingScenario.sectors||[]).length ? String((workingScenario.sectors||[]).length) : null}>
-          <div className="sector-panel">
-            <div className="sector-panel-head">
-              <button
-                type="button"
-                className="ghost-btn on"
-                style={{ fontSize: 12 }}
-                onClick={() => updateScenario({ sectors: [...(workingScenario.sectors || []), makeBlankSector()] })}
-              >
-                + Add sector
-              </button>
-            </div>
-            <span className="approach-params-hint">
-              When sectors are defined, total_cap and auction_offered are derived from the sum of sector caps.
-              Each participant's free allocation ratio is computed from their sector pool and sector_allocation_share.
-            </span>
-            <div className="sector-list">
-              {(workingScenario.sectors || []).map((sector, si) => {
-                const capActive = !!(sector.cap_trajectory?.start_year && sector.cap_trajectory?.end_year
-                  && sector.cap_trajectory?.start_value !== undefined && sector.cap_trajectory?.end_value !== undefined);
-                const aucActive = !!(sector.auction_share_trajectory?.start_year && sector.auction_share_trajectory?.end_year
-                  && sector.auction_share_trajectory?.start_value !== undefined && sector.auction_share_trajectory?.end_value !== undefined);
-                return (
-                  <div key={si} className="sector-row">
-                    <div className="sector-row-fields">
-                      <label style={{ flex: 2 }}>
-                        <span style={{ fontSize: 11 }}>Name</span>
-                        <input
-                          type="text"
-                          className="text"
-                          value={sector.name ?? ""}
-                          onChange={(e) => {
-                            const next = [...(workingScenario.sectors || [])];
-                            next[si] = { ...next[si], name: e.target.value };
-                            updateScenario({ sectors: next });
-                          }}
-                        />
-                      </label>
-                      <label style={{ flex: 1 }}>
-                        <span style={{ fontSize: 11 }}>Carbon budget (Mt)</span>
-                        <input
-                          type="number"
-                          className="num"
-                          step="1"
-                          min="0"
-                          value={sector.carbon_budget ?? 0}
-                          onChange={(e) => {
-                            const next = [...(workingScenario.sectors || [])];
-                            next[si] = { ...next[si], carbon_budget: +e.target.value };
-                            updateScenario({ sectors: next });
-                          }}
-                        />
-                      </label>
-                      <button
-                        type="button"
-                        className="ghost-btn danger-btn"
-                        style={{ fontSize: 11, padding: "2px 8px", alignSelf: "flex-end" }}
-                        onClick={() => updateScenario({ sectors: (workingScenario.sectors || []).filter((_, i) => i !== si) })}
-                      >
-                        Remove
-                      </button>
-                    </div>
-                    {/* Cap trajectory */}
-                    <div className="traj-section" style={{ marginTop: 6 }}>
-                      <div className="traj-head">
-                        <span className="traj-label" style={{ fontSize: 11 }}>Cap trajectory</span>
-                        {capActive
-                          ? <button type="button" className="ghost-btn" style={{ fontSize: 10, padding: "1px 6px" }} onClick={() => {
-                              const next = [...(workingScenario.sectors || [])];
-                              next[si] = { ...next[si], cap_trajectory: {} };
-                              updateScenario({ sectors: next });
-                            }}>Clear</button>
-                          : <button type="button" className="ghost-btn on" style={{ fontSize: 10, padding: "1px 6px" }} onClick={() => {
-                              const years = workingScenario.years || [];
-                              const startY = years.length ? String(years[0].year) : "2026";
-                              const endY = years.length ? String(years[years.length - 1].year) : "2035";
-                              const next = [...(workingScenario.sectors || [])];
-                              next[si] = { ...next[si], cap_trajectory: { start_year: startY, end_year: endY, start_value: 100, end_value: 60 } };
-                              updateScenario({ sectors: next });
-                            }}>Enable</button>
-                        }
-                      </div>
-                      {capActive && (
-                        <div className="traj-row" style={{ gridTemplateColumns: "70px 70px 100px 100px", gap: 6, padding: "6px 10px" }}>
-                          <div className="builder-form-field" style={{ margin: 0 }}>
-                            <label style={{ fontSize: 10 }}>Start year</label>
-                            <input type="text" value={sector.cap_trajectory.start_year ?? ""} onChange={(e) => {
-                              const next = [...(workingScenario.sectors || [])];
-                              next[si] = { ...next[si], cap_trajectory: { ...next[si].cap_trajectory, start_year: e.target.value } };
-                              updateScenario({ sectors: next });
-                            }} />
-                          </div>
-                          <div className="builder-form-field" style={{ margin: 0 }}>
-                            <label style={{ fontSize: 10 }}>End year</label>
-                            <input type="text" value={sector.cap_trajectory.end_year ?? ""} onChange={(e) => {
-                              const next = [...(workingScenario.sectors || [])];
-                              next[si] = { ...next[si], cap_trajectory: { ...next[si].cap_trajectory, end_year: e.target.value } };
-                              updateScenario({ sectors: next });
-                            }} />
-                          </div>
-                          <div className="builder-form-field" style={{ margin: 0 }}>
-                            <label style={{ fontSize: 10 }}>Start value (Mt)</label>
-                            <input type="number" step="1" value={sector.cap_trajectory.start_value ?? ""} onChange={(e) => {
-                              const next = [...(workingScenario.sectors || [])];
-                              next[si] = { ...next[si], cap_trajectory: { ...next[si].cap_trajectory, start_value: +e.target.value } };
-                              updateScenario({ sectors: next });
-                            }} />
-                          </div>
-                          <div className="builder-form-field" style={{ margin: 0 }}>
-                            <label style={{ fontSize: 10 }}>End value (Mt)</label>
-                            <input type="number" step="1" value={sector.cap_trajectory.end_value ?? ""} onChange={(e) => {
-                              const next = [...(workingScenario.sectors || [])];
-                              next[si] = { ...next[si], cap_trajectory: { ...next[si].cap_trajectory, end_value: +e.target.value } };
-                              updateScenario({ sectors: next });
-                            }} />
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                    {/* Auction share trajectory */}
-                    <div className="traj-section" style={{ marginTop: 4 }}>
-                      <div className="traj-head">
-                        <span className="traj-label" style={{ fontSize: 11 }}>Auction share trajectory (0–1)</span>
-                        {aucActive
-                          ? <button type="button" className="ghost-btn" style={{ fontSize: 10, padding: "1px 6px" }} onClick={() => {
-                              const next = [...(workingScenario.sectors || [])];
-                              next[si] = { ...next[si], auction_share_trajectory: {} };
-                              updateScenario({ sectors: next });
-                            }}>Clear</button>
-                          : <button type="button" className="ghost-btn on" style={{ fontSize: 10, padding: "1px 6px" }} onClick={() => {
-                              const years = workingScenario.years || [];
-                              const startY = years.length ? String(years[0].year) : "2026";
-                              const endY = years.length ? String(years[years.length - 1].year) : "2035";
-                              const next = [...(workingScenario.sectors || [])];
-                              next[si] = { ...next[si], auction_share_trajectory: { start_year: startY, end_year: endY, start_value: 0, end_value: 0.3 } };
-                              updateScenario({ sectors: next });
-                            }}>Enable</button>
-                        }
-                      </div>
-                      {aucActive && (
-                        <div className="traj-row" style={{ gridTemplateColumns: "70px 70px 100px 100px", gap: 6, padding: "6px 10px" }}>
-                          <div className="builder-form-field" style={{ margin: 0 }}>
-                            <label style={{ fontSize: 10 }}>Start year</label>
-                            <input type="text" value={sector.auction_share_trajectory.start_year ?? ""} onChange={(e) => {
-                              const next = [...(workingScenario.sectors || [])];
-                              next[si] = { ...next[si], auction_share_trajectory: { ...next[si].auction_share_trajectory, start_year: e.target.value } };
-                              updateScenario({ sectors: next });
-                            }} />
-                          </div>
-                          <div className="builder-form-field" style={{ margin: 0 }}>
-                            <label style={{ fontSize: 10 }}>End year</label>
-                            <input type="text" value={sector.auction_share_trajectory.end_year ?? ""} onChange={(e) => {
-                              const next = [...(workingScenario.sectors || [])];
-                              next[si] = { ...next[si], auction_share_trajectory: { ...next[si].auction_share_trajectory, end_year: e.target.value } };
-                              updateScenario({ sectors: next });
-                            }} />
-                          </div>
-                          <div className="builder-form-field" style={{ margin: 0 }}>
-                            <label style={{ fontSize: 10 }}>Start share</label>
-                            <input type="number" step="0.05" min="0" max="1" value={sector.auction_share_trajectory.start_value ?? ""} onChange={(e) => {
-                              const next = [...(workingScenario.sectors || [])];
-                              next[si] = { ...next[si], auction_share_trajectory: { ...next[si].auction_share_trajectory, start_value: +e.target.value } };
-                              updateScenario({ sectors: next });
-                            }} />
-                          </div>
-                          <div className="builder-form-field" style={{ margin: 0 }}>
-                            <label style={{ fontSize: 10 }}>End share</label>
-                            <input type="number" step="0.05" min="0" max="1" value={sector.auction_share_trajectory.end_value ?? ""} onChange={(e) => {
-                              const next = [...(workingScenario.sectors || [])];
-                              next[si] = { ...next[si], auction_share_trajectory: { ...next[si].auction_share_trajectory, end_value: +e.target.value } };
-                              updateScenario({ sectors: next });
-                            }} />
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-              {!(workingScenario.sectors || []).length && (
-                <div className="builder-empty">No sectors defined. Add a sector to enable sector-level cap and allocation configuration.</div>
-              )}
-            </div>
-          </div>
-          </CollapsibleGroup>
+          {isFeatureActive("sectors") &&
+            collectSlot(enabledFeatures, "editorSections", ["sectors"]).map((Section, index) => (
+              <Section key={`sectors-editor-${index}`} ctx={scenarioCtx} />
+            ))}
         </section>
       )}
 
@@ -1151,234 +975,20 @@ export function Editor({
               ))}
             </div>
 
-            {/* Hotelling extra fields */}
-            {(workingScenario.model_approach === "hotelling" || workingScenario.model_approach === "all") && (
-              <div className="approach-params">
-                <label>
-                  <span className="ekey">Discount rate <span className="field-flag optional">optional</span></span>
-                  <input
-                    type="number"
-                    className="text"
-                    step="0.01"
-                    min="0"
-                    max="0.5"
-                    value={workingScenario.discount_rate ?? 0.04}
-                    onChange={(e) => updateScenario({ discount_rate: parseFloat(e.target.value) || 0.04 })}
-                  />
-                  <span className="approach-params-hint">Risk-free annual discount rate r. Hotelling price path grows at (1+r+ρ)^t. Default 0.04 = 4%.</span>
-                </label>
-                <label>
-                  <span className="ekey">Risk premium (ρ) <span className="field-flag optional">optional</span></span>
-                  <input
-                    type="number"
-                    className="text"
-                    step="0.005"
-                    min="0"
-                    max="0.5"
-                    value={workingScenario.risk_premium ?? 0.0}
-                    onChange={(e) => updateScenario({ risk_premium: parseFloat(e.target.value) || 0 })}
-                  />
-                  <span className="approach-params-hint">Policy/market risk premium ρ added to discount rate. Steepens the Hotelling price path to match observed prices. Default 0 = pure Hotelling.</span>
-                </label>
-                <label>
-                  <span className="ekey">Reference carbon price (Option A) <span className="field-flag optional">optional</span></span>
-                  <input
-                    type="number"
-                    className="text"
-                    step="1"
-                    min="0"
-                    value={workingScenario.reference_carbon_price ?? 0.0}
-                    onChange={(e) => updateScenario({ reference_carbon_price: Math.max(0, parseFloat(e.target.value) || 0) })}
-                  />
-                  <span className="approach-params-hint">Price-elastic baseline anchor P_ref. Activity contracts when the price exceeds it. Set with each participant's output_price_elasticity. 0 = inelastic baseline (default).</span>
-                </label>
-                <label>
-                  <span className="ekey">Carbon budget (this year) <span className="field-flag optional">optional</span></span>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <input
-                      type="number"
-                      className="text"
-                      step="1"
-                      min="0"
-                      value={workingYear.carbon_budget || 0}
-                      onChange={(e) => updateYear({ carbon_budget: parseFloat(e.target.value) || 0 })}
-                    />
-                    <button type="button" className="ghost-btn" style={{ flexShrink: 0 }}
-                      onClick={() => openMarketSeriesEditor("carbon_budget")}>
-                      Edit pathway ↗
-                    </button>
-                  </div>
-                  <span className="approach-params-hint">Mt CO₂e allowed this year. Set across all years using the pathway chart.</span>
-                </label>
-                <div className="approach-params-tuning-label">Solver tuning</div>
-                <div className="solver-settings-grid">
-                  <label>
-                    <span className="ekey">Max bisection iterations <span className="field-flag optional">optional</span></span>
-                    <span className="solver-settings-desc">Iterations to find shadow price λ. Default: 80</span>
-                    {numInput(
-                      workingScenario.solver_hotelling_max_bisection_iters ?? 80,
-                      (v) => updateScenario({ solver_hotelling_max_bisection_iters: Math.max(1, Math.round(v)) }),
-                      1, 1
-                    )}
-                  </label>
-                  <label>
-                    <span className="ekey">Max bracket expansions <span className="field-flag optional">optional</span></span>
-                    <span className="solver-settings-desc">Attempts to bracket λ before fallback. Default: 20</span>
-                    {numInput(
-                      workingScenario.solver_hotelling_max_lambda_expansions ?? 20,
-                      (v) => updateScenario({ solver_hotelling_max_lambda_expansions: Math.max(1, Math.round(v)) }),
-                      1, 1
-                    )}
-                  </label>
-                  <label>
-                    <span className="ekey">Emissions convergence tolerance <span className="field-flag optional">optional</span></span>
-                    <span className="solver-settings-desc">Relative tolerance on cumulative emissions. Default: 0.0001</span>
-                    {numInput(
-                      workingScenario.solver_hotelling_convergence_tol ?? 0.0001,
-                      (v) => updateScenario({ solver_hotelling_convergence_tol: Math.max(1e-9, v) }),
-                      0.00001, 1e-9
-                    )}
-                  </label>
-                  <label>
-                    <span className="ekey">λ initial low <span className="field-flag optional">optional</span></span>
-                    <span className="solver-settings-desc">Lower bound of initial shadow-price bracket. Default: 0.001</span>
-                    {numInput(workingScenario.solver_hotelling_lambda_initial_low ?? 0.001, (v) => updateScenario({ solver_hotelling_lambda_initial_low: Math.max(1e-6, v) }), 0.001, 1e-6)}
-                  </label>
-                  <label>
-                    <span className="ekey">λ initial high <span className="field-flag optional">optional</span></span>
-                    <span className="solver-settings-desc">Upper bound of initial shadow-price bracket. Default: 20.0</span>
-                    {numInput(workingScenario.solver_hotelling_lambda_initial_high ?? 20.0, (v) => updateScenario({ solver_hotelling_lambda_initial_high: Math.max(0.01, v) }), 1, 0.01)}
-                  </label>
-                  <label>
-                    <span className="ekey">λ expand factor <span className="field-flag optional">optional</span></span>
-                    <span className="solver-settings-desc">Multiplier applied to upper λ bound when bracket is too small. Default: 3.0</span>
-                    {numInput(workingScenario.solver_hotelling_lambda_expand_factor ?? 3.0, (v) => updateScenario({ solver_hotelling_lambda_expand_factor: Math.max(1.1, v) }), 0.1, 1.1)}
-                  </label>
-                </div>
-              </div>
-            )}
+            {/* Hotelling extra fields — feature-owned (includes the elastic_baseline
+                reference-carbon-price field, embedded at its original position) */}
+            {isFeatureActive("hotelling") &&
+              (workingScenario.model_approach === "hotelling" || workingScenario.model_approach === "all") &&
+              FEATURES.hotelling.approachOptions?.map((ApproachSection, index) => (
+                <ApproachSection key={`hotelling-approach-${index}`} ctx={scenarioCtx} />
+              ))}
 
-            {/* Nash extra fields */}
-            {(workingScenario.model_approach === "nash_cournot" || workingScenario.model_approach === "all") && (
-              <div className="approach-params">
-                <div className="ekey" style={{ marginBottom: 6 }}>
-                  Strategic participants <span className="field-flag optional">optional</span>
-                  <span className="approach-params-hint" style={{ display: "block", marginTop: 2 }}>
-                    Select which participants behave strategically (internalize price impact). Leave all unchecked to make everyone strategic.
-                  </span>
-                </div>
-                {(workingYear.participants || []).length === 0 && (
-                  <span className="muted" style={{ fontSize: 12 }}>No participants yet — add them in Step 3.</span>
-                )}
-                {(() => {
-                  const allNames = (workingYear.participants || []).map((x) => x.name);
-                  const current = workingScenario.nash_strategic_participants || [];
-                  const effective = current.length === 0 ? allNames : current;
-
-                  // Group by sector_group
-                  const bySector = {};
-                  (workingYear.participants || []).forEach((p) => {
-                    const sector = p.sector_group || "";
-                    if (!bySector[sector]) bySector[sector] = [];
-                    bySector[sector].push(p);
-                  });
-
-                  // Sort keys alphabetically, empty string last
-                  const sectorKeys = Object.keys(bySector).sort((a, b) => {
-                    if (a === "" && b !== "") return 1;
-                    if (a !== "" && b === "") return -1;
-                    return a.localeCompare(b);
-                  });
-
-                  return sectorKeys.map((sector) => {
-                    const sectorParticipants = bySector[sector];
-                    const sectorNames = sectorParticipants.map((p) => p.name);
-                    const allSectorStrategic = sectorNames.every((n) => effective.includes(n));
-
-                    return (
-                      <div key={sector || "__ungrouped__"} className="approach-nash-sector-group">
-                        <div className="approach-nash-sector-header">
-                          <span className="approach-nash-sector-label">
-                            {sector || "Ungrouped"}
-                          </span>
-                          <button
-                            type="button"
-                            className="approach-nash-sector-toggle"
-                            onClick={() => {
-                              if (allSectorStrategic) {
-                                const next = effective.filter((n) => !sectorNames.includes(n));
-                                updateScenario({ nash_strategic_participants: next });
-                              } else {
-                                const next = [...new Set([...effective, ...sectorNames])];
-                                updateScenario({ nash_strategic_participants: next });
-                              }
-                            }}
-                          >
-                            {allSectorStrategic ? "Deselect all" : "Select all"}
-                          </button>
-                        </div>
-                        <div className="approach-nash-participants">
-                          {sectorParticipants.map((p) => {
-                            const isStrategic = effective.includes(p.name);
-                            return (
-                              <label key={p.name} className="approach-nash-check">
-                                <input
-                                  type="checkbox"
-                                  checked={isStrategic}
-                                  onChange={(e) => {
-                                    const base = current.length === 0 ? allNames : current;
-                                    const next = e.target.checked
-                                      ? [...new Set([...base, p.name])]
-                                      : base.filter((n) => n !== p.name);
-                                    updateScenario({ nash_strategic_participants: next });
-                                  }}
-                                />
-                                <span>{p.name}</span>
-                              </label>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    );
-                  });
-                })()}
-                <div className="approach-params-tuning-label">Solver tuning</div>
-                <div className="solver-settings-grid">
-                  <label>
-                    <span className="ekey">Price step ($/t) <span className="field-flag optional">optional</span></span>
-                    <span className="solver-settings-desc">Finite-difference step for estimating market power (dP/dQ). Default: 0.5</span>
-                    {numInput(
-                      workingScenario.solver_nash_price_step ?? 0.5,
-                      (v) => updateScenario({ solver_nash_price_step: Math.max(1e-4, v) }),
-                      0.1, 1e-4
-                    )}
-                  </label>
-                  <label>
-                    <span className="ekey">Max best-response iterations <span className="field-flag optional">optional</span></span>
-                    <span className="solver-settings-desc">Nash convergence loop limit. Default: 120</span>
-                    {numInput(
-                      workingScenario.solver_nash_max_iters ?? 120,
-                      (v) => updateScenario({ solver_nash_max_iters: Math.max(1, Math.round(v)) }),
-                      1, 1
-                    )}
-                  </label>
-                  <label>
-                    <span className="ekey">Abatement convergence tolerance <span className="field-flag optional">optional</span></span>
-                    <span className="solver-settings-desc">Max abatement change across participants per iteration. Default: 0.001</span>
-                    {numInput(
-                      workingScenario.solver_nash_convergence_tol ?? 0.001,
-                      (v) => updateScenario({ solver_nash_convergence_tol: Math.max(1e-8, v) }),
-                      0.0001, 1e-8
-                    )}
-                  </label>
-                  <label>
-                    <span className="ekey">Inner solver tolerance (xatol) <span className="field-flag optional">optional</span></span>
-                    <span className="solver-settings-desc">Abatement tolerance for the per-participant best-response minimiser. Default: 0.0001</span>
-                    {numInput(workingScenario.solver_nash_inner_xatol ?? 1e-4, (v) => updateScenario({ solver_nash_inner_xatol: Math.max(1e-10, v) }), 1e-5, 1e-10)}
-                  </label>
-                </div>
-              </div>
-            )}
+            {/* Nash extra fields — feature-owned */}
+            {isFeatureActive("nash_cournot") &&
+              (workingScenario.model_approach === "nash_cournot" || workingScenario.model_approach === "all") &&
+              FEATURES.nash_cournot.approachOptions?.map((ApproachSection, index) => (
+                <ApproachSection key={`nash-approach-${index}`} ctx={scenarioCtx} />
+              ))}
 
             {/* Competitive approach-params (always shown when competitive or all) */}
             {(workingScenario.model_approach === "competitive" || workingScenario.model_approach === "all" || !workingScenario.model_approach) && (
@@ -1504,46 +1114,24 @@ export function Editor({
           </div>
 
           {/* ── Cap & Price Bound Trajectories ─────────────────────────────── */}
-          {[
-            { key: "cap_trajectory",           label: "Cap trajectory",         hint: "Auto-declining total_cap. Overrides per-year total_cap when active.", unit: "Mt" },
-            { key: "price_floor_trajectory",   label: "Price floor trajectory", hint: "Rising price floor. Overrides per-year price_lower_bound.",             unit: "$/t" },
-            { key: "price_ceiling_trajectory", label: "Price ceiling trajectory", hint: "Rising/declining price ceiling. Overrides per-year price_upper_bound.", unit: "$/t" },
-          ].map(({ key, label, hint, unit }) => {
-            const traj = workingScenario[key] || {};
-            const active = !!(traj.start_year && traj.end_year && traj.start_value !== undefined && traj.end_value !== undefined);
-            return (
-              <div key={key} className="traj-section">
-                <div className="traj-head">
-                  <span className="traj-label">{label}</span>
-                  <span className="approach-params-hint">{hint}</span>
-                  {active
-                    ? <button type="button" className="ghost-btn" style={{fontSize:11, padding:"2px 8px"}} onClick={() => updateScenario({ [key]: {} })}>Clear</button>
-                    : <button type="button" className="ghost-btn on" style={{fontSize:11, padding:"2px 8px"}} onClick={() => updateScenario({ [key]: { start_year: "2026", end_year: "2035", start_value: 0, end_value: 0 } })}>Enable</button>
-                  }
-                </div>
-                {active && (
-                  <div className="traj-row" style={{gridTemplateColumns:"80px 80px 110px 110px", gap: 8, padding: "8px 12px"}}>
-                    <div className="builder-form-field" style={{margin:0}}>
-                      <label style={{fontSize:11}}>Start year</label>
-                      <input type="text" value={traj.start_year ?? ""} onChange={(e) => updateScenario({ [key]: { ...traj, start_year: e.target.value } })} />
-                    </div>
-                    <div className="builder-form-field" style={{margin:0}}>
-                      <label style={{fontSize:11}}>End year</label>
-                      <input type="text" value={traj.end_year ?? ""} onChange={(e) => updateScenario({ [key]: { ...traj, end_year: e.target.value } })} />
-                    </div>
-                    <div className="builder-form-field" style={{margin:0}}>
-                      <label style={{fontSize:11}}>Start value ({unit})</label>
-                      <input type="number" step="1" value={traj.start_value ?? ""} onChange={(e) => updateScenario({ [key]: { ...traj, start_value: +e.target.value } })} />
-                    </div>
-                    <div className="builder-form-field" style={{margin:0}}>
-                      <label style={{fontSize:11}}>End value ({unit})</label>
-                      <input type="number" step="1" value={traj.end_value ?? ""} onChange={(e) => updateScenario({ [key]: { ...traj, end_value: +e.target.value } })} />
-                    </div>
-                  </div>
-                )}
-              </div>
-            );
-          })}
+          {/* Cap trajectory stays core; price floor/ceiling trajectories are
+              owned by the price_controls feature (same TrajectoryRangeRow,
+              reused rather than duplicated). */}
+          <TrajectoryRangeRow
+            scenario={workingScenario}
+            updateScenario={updateScenario}
+            rowKey="cap_trajectory"
+            label="Cap trajectory"
+            hint="Auto-declining total_cap. Overrides per-year total_cap when active."
+            unit="Mt"
+          />
+          {isFeatureActive("price_controls") && (() => {
+            // price_controls.editorSections[0] = floor/ceiling trajectory rows
+            // (rendered here); [1] = auction guardrail fields (rendered further
+            // below, inside "Supply & price bounds").
+            const PriceBoundTrajectories = FEATURES.price_controls.editorSections?.[0];
+            return PriceBoundTrajectories ? <PriceBoundTrajectories ctx={scenarioCtx} /> : null;
+          })()}
           </CollapsibleGroup>
 
           <CollapsibleGroup title="Supply & price bounds" defaultOpen={true}>
@@ -1587,25 +1175,12 @@ export function Editor({
               <span className="ekey">{fieldWithPathButton("Cancelled allowances", () => openMarketSeriesEditor("cancelled_allowances"), false, true)}</span>
               {numInput(workingYear.cancelled_allowances || 0, (value) => updateYear({ cancelled_allowances: value }), 1, 0)}
             </label>
-            <label>
-              <span className="ekey">{fieldWithPathButton("Auction reserve price", () => openMarketSeriesEditor("auction_reserve_price"), false, true)}</span>
-              {numInput(workingYear.auction_reserve_price || 0, (value) => updateYear({ auction_reserve_price: value }), 1, 0)}
-            </label>
-            <label>
-              <span className="ekey">{fieldWithPathButton("Minimum bid coverage", () => openMarketSeriesEditor("minimum_bid_coverage"), false, true)}</span>
-              {numInput(workingYear.minimum_bid_coverage || 0, (value) => updateYear({ minimum_bid_coverage: value }), 0.05, 0)}
-            </label>
-            <label>
-              <span className="ekey">Unsold treatment <span className="field-flag optional">optional</span></span>
-              <select
-                value={workingYear.unsold_treatment || "reserve"}
-                onChange={(event) => updateYear({ unsold_treatment: event.target.value })}
-              >
-                <option value="reserve">reserve</option>
-                <option value="cancel">cancel</option>
-                <option value="carry_forward">carry_forward</option>
-              </select>
-            </label>
+            {isFeatureActive("price_controls") && (() => {
+              // price_controls.editorSections[1] = auction guardrail fields
+              // (reserve price, minimum bid coverage, unsold treatment).
+              const AuctionGuardrailFields = FEATURES.price_controls.editorSections?.[1];
+              return AuctionGuardrailFields ? <AuctionGuardrailFields ctx={scenarioCtx} /> : null;
+            })()}
             <label>
               <span className="ekey">{fieldWithPathButton("Price floor", () => openMarketSeriesEditor("price_lower_bound"), true)}</span>
               {numInput(workingYear.price_lower_bound, (value) => updateYear({ price_lower_bound: value }), 1, 0)}
@@ -1668,198 +1243,27 @@ export function Editor({
           </CollapsibleGroup>
 
           {/* ── EUA & external prices ─────────────────────────────────────── */}
-          <CollapsibleGroup title="EUA & external prices" defaultOpen={false}>
-          {/* ── EUA prices (per-jurisdiction) ────────────────────────────── */}
-          <div className="eua-prices-panel">
-            <div className="eua-prices-head">
-              <span className="eua-prices-label">EUA prices by jurisdiction <span className="field-flag optional">optional</span></span>
-              <button type="button" className="ghost-btn on" style={{fontSize: 12}} onClick={() => {
-                const prices = { ...(workingYear.eua_prices || {}), "UK": 50 };
-                updateYear({ eua_prices: prices });
-              }}>+ Add</button>
-            </div>
-            <span className="approach-params-hint">Per-jurisdiction reference prices for multi-jurisdiction CBAM. Key must match a jurisdiction name in participant's CBAM table (e.g. "UK", "US", "JPN").</span>
-            {Object.entries(workingYear.eua_prices || {}).map(([key, val]) => (
-              <div key={key} className="eua-prices-row">
-                <input type="text" className="text" value={key} style={{width: 70}}
-                  onChange={(e) => {
-                    const prices = { ...(workingYear.eua_prices || {}) };
-                    delete prices[key]; prices[e.target.value] = val;
-                    updateYear({ eua_prices: prices });
-                  }} />
-                {numInput(val ?? 0, (v) => {
-                  const prices = { ...(workingYear.eua_prices || {}), [key]: v };
-                  updateYear({ eua_prices: prices });
-                }, 1, 0)}
-                <button type="button" className="ghost-btn" style={{fontSize: 11, padding: "2px 6px"}} onClick={() => {
-                  const prices = { ...(workingYear.eua_prices || {}) };
-                  delete prices[key];
-                  updateYear({ eua_prices: prices });
-                }}>✕</button>
-              </div>
+          {isFeatureActive("cbam") &&
+            collectSlot(enabledFeatures, "editorSections", ["cbam"]).map((Section, index) => (
+              <Section key={`cbam-editor-${index}`} ctx={scenarioCtx} />
             ))}
-          </div>
-
-          {/* ── EUA ensemble ─────────────────────────────────────────────── */}
-          <div className="eua-prices-panel">
-            <div className="eua-prices-head">
-              <span className="eua-prices-label">EUA price ensemble <span className="field-flag optional">optional</span></span>
-              <button type="button" className="ghost-btn on" style={{fontSize: 12}} onClick={() => {
-                const ens = { ...(workingYear.eua_price_ensemble || {}), "EC": 65 };
-                updateYear({ eua_price_ensemble: ens });
-              }}>+ Add</button>
-            </div>
-            <span className="approach-params-hint">Named EUA trajectories (e.g. EC, Enerdata, BNEF). Each generates a separate CBAM liability column in the output — enabling price uncertainty analysis.</span>
-            {Object.entries(workingYear.eua_price_ensemble || {}).map(([key, val]) => (
-              <div key={key} className="eua-prices-row">
-                <input type="text" className="text" value={key} style={{width: 80}}
-                  onChange={(e) => {
-                    const ens = { ...(workingYear.eua_price_ensemble || {}) };
-                    delete ens[key]; ens[e.target.value] = val;
-                    updateYear({ eua_price_ensemble: ens });
-                  }} />
-                {numInput(val ?? 0, (v) => {
-                  const ens = { ...(workingYear.eua_price_ensemble || {}), [key]: v };
-                  updateYear({ eua_price_ensemble: ens });
-                }, 1, 0)}
-                <button type="button" className="ghost-btn" style={{fontSize: 11, padding: "2px 6px"}} onClick={() => {
-                  const ens = { ...(workingYear.eua_price_ensemble || {}) };
-                  delete ens[key];
-                  updateYear({ eua_price_ensemble: ens });
-                }}>✕</button>
-              </div>
-            ))}
-          </div>
-          </CollapsibleGroup>
 
           {/* ── MSR panel ────────────────────────────────────────────────── */}
-          <CollapsibleGroup title="Market Stability Reserve (MSR)" defaultOpen={false}>
-          <div className="msr-panel">
-            <div className="msr-panel-head">
-              <div className="msr-panel-title-row">
-                <span className="msr-panel-label">Market Stability Reserve (MSR)</span>
-                <label className="msr-enabled-toggle">
-                  <input
-                    type="checkbox"
-                    checked={!!workingScenario.msr_enabled}
-                    onChange={(e) => updateScenario({ msr_enabled: e.target.checked })}
-                  />
-                  <span>Enable MSR</span>
-                </label>
-              </div>
-              <p className="msr-panel-hint">
-                Automatically adjusts auction supply based on total banked allowances.
-                Withholds volume when the bank is too large; releases from reserve when the bank is too small.
-              </p>
-            </div>
-            {workingScenario.msr_enabled && (
-              <div className="msr-params-grid">
-                <label>
-                  <span className="ekey">Upper threshold (Mt) <span className="field-flag required">required</span></span>
-                  <span className="solver-settings-desc">Bank above this → withhold from auction. Default: 200 Mt</span>
-                  {numInput(workingScenario.msr_upper_threshold ?? 200, (v) => updateScenario({ msr_upper_threshold: Math.max(0, v) }), 10, 0)}
-                </label>
-                <label>
-                  <span className="ekey">Lower threshold (Mt) <span className="field-flag required">required</span></span>
-                  <span className="solver-settings-desc">Bank below this → release from reserve. Default: 50 Mt</span>
-                  {numInput(workingScenario.msr_lower_threshold ?? 50, (v) => updateScenario({ msr_lower_threshold: Math.max(0, v) }), 10, 0)}
-                </label>
-                <label>
-                  <span className="ekey">Withhold rate <span className="field-flag required">required</span></span>
-                  <span className="solver-settings-desc">Fraction of auction supply withheld per year (0–1). Default: 0.12 (12%)</span>
-                  {numInput(workingScenario.msr_withhold_rate ?? 0.12, (v) => updateScenario({ msr_withhold_rate: Math.min(1, Math.max(0, v)) }), 0.01, 0)}
-                </label>
-                <label>
-                  <span className="ekey">Release rate (Mt/yr) <span className="field-flag required">required</span></span>
-                  <span className="solver-settings-desc">Mt released from reserve per year when bank is below lower threshold. Default: 50 Mt</span>
-                  {numInput(workingScenario.msr_release_rate ?? 50, (v) => updateScenario({ msr_release_rate: Math.max(0, v) }), 5, 0)}
-                </label>
-                <label>
-                  <span className="ekey">Cancellation threshold (Mt) <span className="field-flag optional">optional</span></span>
-                  <span className="solver-settings-desc">Reserve pool above this is permanently cancelled if cancellation is enabled. Default: 400 Mt</span>
-                  {numInput(workingScenario.msr_cancel_threshold ?? 400, (v) => updateScenario({ msr_cancel_threshold: Math.max(0, v) }), 10, 0)}
-                </label>
-                <label className="msr-cancel-toggle-label">
-                  <span className="ekey">Cancel pool excess <span className="field-flag optional">optional</span></span>
-                  <span className="solver-settings-desc">Permanently retire reserve pool allowances above the cancellation threshold.</span>
-                  <select
-                    value={workingScenario.msr_cancel_excess ? "true" : "false"}
-                    onChange={(e) => updateScenario({ msr_cancel_excess: e.target.value === "true" })}
-                  >
-                    <option value="false">disabled</option>
-                    <option value="true">enabled</option>
-                  </select>
-                </label>
-              </div>
-            )}
-          </div>
-          </CollapsibleGroup>
+          {isFeatureActive("msr") &&
+            collectSlot(enabledFeatures, "editorSections", ["msr"]).map((Section, index) => (
+              <Section key={`msr-editor-${index}`} ctx={scenarioCtx} />
+            ))}
 
           {/* ── CCR panel ────────────────────────────────────────────────── */}
-          <CollapsibleGroup title="Carbon Cap Rule (CCR)" defaultOpen={false}>
-          <div className="msr-panel">
-            <div className="msr-panel-head">
-              <div className="msr-panel-title-row">
-                <span className="msr-panel-label">Carbon Cap Rule (CCR)</span>
-                <label className="msr-enabled-toggle">
-                  <input
-                    type="checkbox"
-                    checked={!!workingScenario.ccr_enabled}
-                    onChange={(e) => updateScenario({ ccr_enabled: e.target.checked })}
-                  />
-                  <span>Enable CCR</span>
-                </label>
-              </div>
-              <p className="msr-panel-hint">
-                Adaptive, Taylor-rule-style cap (Benmir, Roman &amp; Taschini 2025). Each year's permit
-                quantity adjusts to the <em>previous</em> year's deviation of emissions and abatement cost
-                from their reference levels:
-                Q&nbsp;=&nbsp;Q̄&nbsp;+&nbsp;φ<sub>e</sub>·(e−ē)/ē&nbsp;+&nbsp;φ<sub>z</sub>·(z−z̄)/z̄.
-                Use φ<sub>z</sub>&nbsp;&gt;&nbsp;0 to issue more permits when abatement costs run hot, and
-                φ<sub>e</sub>&nbsp;&lt;&nbsp;0 to tighten when emissions overshoot.
-              </p>
-            </div>
-            {workingScenario.ccr_enabled && (
-              <div className="msr-params-grid">
-                <label>
-                  <span className="ekey">φ emissions (Mt) <span className="field-flag required">required</span></span>
-                  <span className="solver-settings-desc">Cap change per unit fractional emissions gap. Paper-optimal sign: negative (tighten when emissions exceed reference). Default: 0 (off)</span>
-                  {numInput(workingScenario.ccr_phi_emissions ?? 0, (v) => updateScenario({ ccr_phi_emissions: v }), 1, undefined)}
-                </label>
-                <label>
-                  <span className="ekey">φ abatement cost (Mt) <span className="field-flag required">required</span></span>
-                  <span className="solver-settings-desc">Cap change per unit fractional abatement-cost gap. Paper-optimal sign: positive (loosen when costs exceed reference). Default: 0 (off)</span>
-                  {numInput(workingScenario.ccr_phi_abatement_cost ?? 0, (v) => updateScenario({ ccr_phi_abatement_cost: v }), 1, undefined)}
-                </label>
-                <label>
-                  <span className="ekey">Reference emissions ē (Mt) <span className="field-flag required">required</span></span>
-                  <span className="solver-settings-desc">Steady-state emissions the gap is measured against. 0 disables the emissions term.</span>
-                  {numInput(workingScenario.ccr_reference_emissions ?? 0, (v) => updateScenario({ ccr_reference_emissions: Math.max(0, v) }), 10, 0)}
-                </label>
-                <label>
-                  <span className="ekey">Reference abatement cost z̄ <span className="field-flag required">required</span></span>
-                  <span className="solver-settings-desc">Steady-state abatement cost the gap is measured against. 0 disables the cost term.</span>
-                  {numInput(workingScenario.ccr_reference_abatement_cost ?? 0, (v) => updateScenario({ ccr_reference_abatement_cost: Math.max(0, v) }), 100, 0)}
-                </label>
-              </div>
-            )}
-          </div>
-          </CollapsibleGroup>
+          {isFeatureActive("ccr") &&
+            collectSlot(enabledFeatures, "editorSections", ["ccr"]).map((Section, index) => (
+              <Section key={`ccr-editor-${index}`} ctx={scenarioCtx} />
+            ))}
 
-          <CollapsibleGroup title="Calibration solver" defaultOpen={false}>
-            <div className="solver-settings-grid">
-              <label>
-                <span className="ekey">Calibration xatol <span className="field-flag optional">optional</span></span>
-                <span className="solver-settings-desc">Nelder-Mead slope change tolerance. Smaller = tighter fit but slower. Default: 0.1</span>
-                {numInput(workingScenario.solver_calibration_xatol ?? 0.1, (v) => updateScenario({ solver_calibration_xatol: Math.max(1e-6, v) }), 0.01, 1e-6)}
-              </label>
-              <label>
-                <span className="ekey">Calibration fatol <span className="field-flag optional">optional</span></span>
-                <span className="solver-settings-desc">Nelder-Mead MSE change tolerance. Smaller = tighter fit but slower. Default: 0.01</span>
-                {numInput(workingScenario.solver_calibration_fatol ?? 0.01, (v) => updateScenario({ solver_calibration_fatol: Math.max(1e-8, v) }), 0.001, 1e-8)}
-              </label>
-            </div>
-          </CollapsibleGroup>
+          {isFeatureActive("calibration") &&
+            collectSlot(enabledFeatures, "editorSections", ["calibration"]).map((Section, index) => (
+              <Section key={`calibration-editor-${index}`} ctx={scenarioCtx} />
+            ))}
 
         </section>
       )}
@@ -2008,262 +1412,30 @@ export function Editor({
 
                     <CollapsibleGroup title="Allocation" defaultOpen={true}>
                     <div className="builder-form-grid">
-                      {/* ── OBA / Benchmark fields ─────────────────────── */}
-                      {(() => {
-                        const po = Number(participant.production_output ?? 0);
-                        const bei = Number(participant.benchmark_emission_intensity ?? 0);
-                        const obaActive = po > 0 && bei > 0;
-                        return (
-                          <>
-                            <label>
-                              <span className="ekey">Production output (units/yr) <span className="field-flag optional">optional</span></span>
-                              {numInput(po, (v) => updateParticipant(selectedParticipantIndex, { production_output: Math.max(0, v) }), 0.1, 0)}
-                            </label>
-                            <label>
-                              <span className="ekey">Benchmark intensity (tCO₂/unit) <span className="field-flag optional">optional</span></span>
-                              {numInput(bei, (v) => updateParticipant(selectedParticipantIndex, { benchmark_emission_intensity: Math.max(0, v) }), 0.01, 0)}
-                              {obaActive && (
-                                <span className="approach-params-hint" style={{ fontWeight: 600, color: "#1f6f55" }}>
-                                  OBA free allocation: {(bei * po).toFixed(1)} Mt
-                                </span>
-                              )}
-                              <span className="approach-params-hint">When both are &gt; 0, free allocation = intensity × output (overrides free_allocation_ratio).</span>
-                            </label>
-                            <label>
-                              <span className="ekey">Output price elasticity (Option A) <span className="field-flag optional">optional</span></span>
-                              {numInput(Number(participant.output_price_elasticity ?? 0), (v) => updateParticipant(selectedParticipantIndex, { output_price_elasticity: Math.max(0, v) }), 0.05, 0)}
-                              <span className="approach-params-hint">ε ≥ 0. Activity (and baseline emissions) contract as the carbon price rises above the scenario's reference carbon price. 0 = inelastic (default).</span>
-                            </label>
-                          </>
-                        );
-                      })()}
-                      {(() => {
-                        const po = Number(participant.production_output ?? 0);
-                        const bei = Number(participant.benchmark_emission_intensity ?? 0);
-                        const obaActive = po > 0 && bei > 0;
-                        const definedSectors = workingScenario.sectors || [];
-                        const participantSectorGroup = participant.sector_group ?? "";
-                        const sectorMatch = definedSectors.find((s) => s.name === participantSectorGroup);
-                        if (sectorMatch) {
-                          // Sector mode: show sector_allocation_share with live preview
-                          const sas = Number(participant.sector_allocation_share ?? 0);
-                          const ie = Number(participant.initial_emissions ?? 0);
-                          const cap = sectorMatch.cap_trajectory;
-                          const capActive = !!(cap?.start_year && cap?.end_year && cap?.start_value !== undefined && cap?.end_value !== undefined);
-                          let previewMt = null;
-                          if (capActive && ie > 0) {
-                            const years = workingScenario.years || [];
-                            const yearNum = Number(workingYear.year);
-                            const t0 = Number(cap.start_year), t1 = Number(cap.end_year);
-                            const v0 = Number(cap.start_value), v1 = Number(cap.end_value);
-                            let sectorCap;
-                            if (yearNum <= t0) sectorCap = v0;
-                            else if (yearNum >= t1) sectorCap = v1;
-                            else sectorCap = v0 + (v1 - v0) * (yearNum - t0) / (t1 - t0);
-                            const aucTraj = sectorMatch.auction_share_trajectory;
-                            const aucActive2 = !!(aucTraj?.start_year && aucTraj?.end_year && aucTraj?.start_value !== undefined && aucTraj?.end_value !== undefined);
-                            let aucShare = 0;
-                            if (aucActive2) {
-                              const at0 = Number(aucTraj.start_year), at1 = Number(aucTraj.end_year);
-                              const av0 = Number(aucTraj.start_value), av1 = Number(aucTraj.end_value);
-                              if (yearNum <= at0) aucShare = av0;
-                              else if (yearNum >= at1) aucShare = av1;
-                              else aucShare = av0 + (av1 - av0) * (yearNum - at0) / (at1 - at0);
-                            }
-                            const pool = sectorCap * (1 - aucShare);
-                            previewMt = Math.min(ie, pool * sas);
-                          }
-                          return (
-                            <label>
-                              <span className="ekey">Sector allocation share <span className="field-flag optional">optional</span></span>
-                              {numInput(sas, (value) => updateParticipant(selectedParticipantIndex, { sector_allocation_share: Math.min(1, Math.max(0, value)) }), 0.01, 0)}
-                              {previewMt !== null && (
-                                <span className="approach-params-hint">
-                                  ≈ {previewMt.toFixed(1)} Mt free allocation in year {workingYear.year}
-                                </span>
-                              )}
-                              <span className="approach-params-hint">
-                                Share of the {sectorMatch.name} sector's free allocation pool (0–1). Replaces free_allocation_ratio.
-                              </span>
-                            </label>
-                          );
-                        }
-                        if (obaActive) {
-                          return (
-                            <label style={{ opacity: 0.4 }}>
-                              <span className="ekey">Free allocation ratio <span className="field-flag optional">optional</span></span>
-                              {numInput(participant.free_allocation_ratio, (value) => updateParticipant(selectedParticipantIndex, { free_allocation_ratio: value }), 0.05, 0)}
-                              <span className="approach-params-hint">Overridden by OBA (production_output × benchmark_intensity).</span>
-                            </label>
-                          );
-                        }
-                        return (
-                          <label>
-                            <span className="ekey">{fieldWithPathButton("Free allocation ratio", () => openParticipantSeriesEditor("free_allocation_ratio"), true)}</span>
-                            {numInput(participant.free_allocation_ratio, (value) => updateParticipant(selectedParticipantIndex, { free_allocation_ratio: value }), 0.05, 0)}
-                          </label>
-                        );
-                      })()}
+                      {/* ── OBA / Benchmark fields (production_output, benchmark
+                          intensity, output_price_elasticity, and the free
+                          allocation ratio / sector allocation share choice) ── */}
+                      {isFeatureActive("oba") &&
+                        FEATURES.oba.participantEditorSections?.map((Field, index) => (
+                          <Field key={`oba-participant-${index}`} ctx={participantCtx} />
+                        ))}
                       <label>
                         <span className="ekey">{fieldWithPathButton("Penalty price", () => openParticipantSeriesEditor("penalty_price"), true)}</span>
                         {numInput(participant.penalty_price, (value) => updateParticipant(selectedParticipantIndex, { penalty_price: value }), 1, 0)}
                       </label>
                       {/* ── Sector group ─────────────────────────────────── */}
-                      <label>
-                        <span className="ekey">Sector group <span className="field-flag optional">optional</span></span>
-                        <input
-                          type="text"
-                          className="text"
-                          placeholder="e.g. Steel, Petrochemical"
-                          value={participant.sector_group ?? ""}
-                          onChange={(e) => updateParticipant(selectedParticipantIndex, { sector_group: e.target.value })}
-                        />
-                        <span className="approach-params-hint">Groups this participant with others for sector-level aggregated output rows.</span>
-                      </label>
-                    </div>
-                    </CollapsibleGroup>
-
-                    {/* ── CBAM exposure ────────────────────────────────── */}
-                    <CollapsibleGroup title="CBAM exposure" defaultOpen={false}>
-                    <div className="cbam-participant-panel">
-                      <div className="cbam-participant-head">
-                        <span className="cbam-participant-label">CBAM exposure</span>
-                        <span className="cbam-participant-hint">
-                          Carbon Border Adjustment Mechanism — set export share &gt; 0 to compute
-                          CBAM liability on this participant's residual emissions.
-                          Use <em>single jurisdiction</em> (EU only) or <em>multi-jurisdiction</em> for UK / US / Japan.
-                        </span>
-                      </div>
-                      <div className="builder-form-grid">
-                        <label>
-                          <span className="ekey">EU export share <span className="field-flag optional">optional</span></span>
-                          {numInput(
-                            participant.cbam_export_share ?? 0,
-                            (v) => updateParticipant(selectedParticipantIndex, { cbam_export_share: Math.min(1, Math.max(0, v)) }),
-                            0.05, 0
-                          )}
-                          <span className="approach-params-hint">Used when cbam_jurisdictions is empty (EU-only shorthand).</span>
-                        </label>
-                        <label>
-                          <span className="ekey">CBAM coverage ratio <span className="field-flag optional">optional</span></span>
-                          {numInput(
-                            participant.cbam_coverage_ratio ?? 1,
-                            (v) => updateParticipant(selectedParticipantIndex, { cbam_coverage_ratio: Math.min(1, Math.max(0, v)) }),
-                            0.05, 0
-                          )}
-                        </label>
-                      </div>
-                      {/* Multi-jurisdiction table */}
-                      <div className="cbam-jur-section">
-                        <div className="cbam-jur-head">
-                          <span className="cbam-jur-label">Multi-jurisdiction CBAM <span className="field-flag optional">optional</span></span>
-                          <button type="button" className="ghost-btn on" style={{fontSize: 12}} onClick={() => {
-                            const jurs = [...(participant.cbam_jurisdictions || []), { name: "UK", export_share: 0.1, coverage_ratio: 1.0 }];
-                            updateParticipant(selectedParticipantIndex, { cbam_jurisdictions: jurs });
-                          }}>+ Add jurisdiction</button>
-                        </div>
-                        <span className="approach-params-hint">When non-empty, replaces the EU-only fields above. Reference prices come from the year's EUA Prices table.</span>
-                        {(participant.cbam_jurisdictions || []).map((jur, ji) => (
-                          <div key={ji} className="cbam-jur-row">
-                            <input type="text" className="text" placeholder="Name (EU/UK/US/JPN)" value={jur.name ?? ""} style={{width: 90}}
-                              onChange={(e) => {
-                                const jurs = [...(participant.cbam_jurisdictions || [])];
-                                jurs[ji] = { ...jurs[ji], name: e.target.value };
-                                updateParticipant(selectedParticipantIndex, { cbam_jurisdictions: jurs });
-                              }} />
-                            {numInput(jur.export_share ?? 0, (v) => {
-                              const jurs = [...(participant.cbam_jurisdictions || [])];
-                              jurs[ji] = { ...jurs[ji], export_share: Math.min(1, Math.max(0, v)) };
-                              updateParticipant(selectedParticipantIndex, { cbam_jurisdictions: jurs });
-                            }, 0.05, 0)}
-                            <span style={{fontSize: 11, color: "#666"}}>share</span>
-                            {numInput(jur.coverage_ratio ?? 1, (v) => {
-                              const jurs = [...(participant.cbam_jurisdictions || [])];
-                              jurs[ji] = { ...jurs[ji], coverage_ratio: Math.min(1, Math.max(0, v)) };
-                              updateParticipant(selectedParticipantIndex, { cbam_jurisdictions: jurs });
-                            }, 0.05, 0)}
-                            <span style={{fontSize: 11, color: "#666"}}>cov</span>
-                            <button type="button" className="ghost-btn" style={{fontSize: 11, padding: "2px 6px"}} onClick={() => {
-                              const jurs = (participant.cbam_jurisdictions || []).filter((_, i) => i !== ji);
-                              updateParticipant(selectedParticipantIndex, { cbam_jurisdictions: jurs });
-                            }}>✕</button>
-                          </div>
+                      {isFeatureActive("sectors") &&
+                        FEATURES.sectors.participantEditorSections?.map((Field, index) => (
+                          <Field key={`sectors-participant-${index}`} ctx={participantCtx} />
                         ))}
-                      </div>
                     </div>
                     </CollapsibleGroup>
 
-                    {/* ── Scope 2 / Indirect Emissions ─────────────────── */}
-                    <CollapsibleGroup title="Scope 2 / Indirect emissions" defaultOpen={false}>
-                    <div className="scope2-panel">
-                      <div className="scope2-head">
-                        <span className="scope2-label">Scope 2 / Indirect Emissions</span>
-                        <span className="approach-params-hint">Electricity-based indirect emissions and CBAM exposure. Indirect emissions = consumption × emission factor.</span>
-                      </div>
-                      <div className="builder-form-grid">
-                        <div className="builder-form-field">
-                          <label>Electricity consumption (MWh)</label>
-                          <input type="number" min="0" step="100"
-                            value={participant.electricity_consumption ?? 0}
-                            onChange={(e) => updateParticipant(selectedParticipantIndex, { electricity_consumption: +e.target.value })} />
-                        </div>
-                        <div className="builder-form-field">
-                          <label>Grid emission factor (tCO₂/MWh)</label>
-                          <input type="number" min="0" step="0.001"
-                            value={participant.grid_emission_factor ?? 0}
-                            onChange={(e) => updateParticipant(selectedParticipantIndex, { grid_emission_factor: +e.target.value })} />
-                          <span className="approach-params-hint">Indirect emissions = consumption × factor. Korean grid ≈ 0.45 tCO₂/MWh.</span>
-                          {/* Grid emission factor trajectory */}
-                          {(() => {
-                            const traj = participant.grid_emission_factor_trajectory || {};
-                            const active = !!(traj.start_year && traj.end_year && traj.start_value !== undefined && traj.end_value !== undefined);
-                            const years = workingScenario.years || [];
-                            const startY = years.length ? String(years[0].year) : "2026";
-                            const endY = years.length ? String(years[years.length - 1].year) : "2035";
-                            const curGef = Number(participant.grid_emission_factor || 0.45);
-                            return (
-                              <div className="traj-section" style={{ marginTop: 4 }}>
-                                <div className="traj-head">
-                                  <span className="traj-label" style={{ fontSize: 10 }}>Grid EF trajectory</span>
-                                  {active
-                                    ? <button type="button" className="ghost-btn" style={{ fontSize: 10, padding: "1px 6px" }} onClick={() => updateParticipant(selectedParticipantIndex, { grid_emission_factor_trajectory: {} })}>Clear</button>
-                                    : <button type="button" className="ghost-btn on" style={{ fontSize: 10, padding: "1px 6px" }} onClick={() => updateParticipant(selectedParticipantIndex, { grid_emission_factor_trajectory: { start_year: startY, end_year: endY, start_value: curGef, end_value: curGef * 0.5 } })}>Enable trajectory</button>
-                                  }
-                                </div>
-                                {active && (
-                                  <div className="traj-row" style={{ gridTemplateColumns: "60px 60px 90px 90px", gap: 5, padding: "5px 8px" }}>
-                                    <div className="builder-form-field" style={{ margin: 0 }}>
-                                      <label style={{ fontSize: 10 }}>Start yr</label>
-                                      <input type="text" value={traj.start_year ?? ""} onChange={(e) => updateParticipant(selectedParticipantIndex, { grid_emission_factor_trajectory: { ...traj, start_year: e.target.value } })} />
-                                    </div>
-                                    <div className="builder-form-field" style={{ margin: 0 }}>
-                                      <label style={{ fontSize: 10 }}>End yr</label>
-                                      <input type="text" value={traj.end_year ?? ""} onChange={(e) => updateParticipant(selectedParticipantIndex, { grid_emission_factor_trajectory: { ...traj, end_year: e.target.value } })} />
-                                    </div>
-                                    <div className="builder-form-field" style={{ margin: 0 }}>
-                                      <label style={{ fontSize: 10 }}>Start (tCO₂/MWh)</label>
-                                      <input type="number" step="0.001" value={traj.start_value ?? ""} onChange={(e) => updateParticipant(selectedParticipantIndex, { grid_emission_factor_trajectory: { ...traj, start_value: +e.target.value } })} />
-                                    </div>
-                                    <div className="builder-form-field" style={{ margin: 0 }}>
-                                      <label style={{ fontSize: 10 }}>End (tCO₂/MWh)</label>
-                                      <input type="number" step="0.001" value={traj.end_value ?? ""} onChange={(e) => updateParticipant(selectedParticipantIndex, { grid_emission_factor_trajectory: { ...traj, end_value: +e.target.value } })} />
-                                    </div>
-                                  </div>
-                                )}
-                              </div>
-                            );
-                          })()}
-                        </div>
-                        <div className="builder-form-field">
-                          <label>Scope 2 CBAM coverage (0–1)</label>
-                          <input type="number" min="0" max="1" step="0.1"
-                            value={participant.scope2_cbam_coverage ?? 0}
-                            onChange={(e) => updateParticipant(selectedParticipantIndex, { scope2_cbam_coverage: +e.target.value })} />
-                          <span className="approach-params-hint">0 = Scope 2 not covered by CBAM (current default). 1 = fully covered (6-month extension scenario).</span>
-                        </div>
-                      </div>
-                    </div>
-                    </CollapsibleGroup>
+                    {/* ── CBAM exposure + Scope 2 / Indirect emissions ─── */}
+                    {isFeatureActive("cbam") &&
+                      FEATURES.cbam.participantEditorSections?.map((Section, index) => (
+                        <Section key={`cbam-participant-${index}`} ctx={participantCtx} />
+                      ))}
 
                     <CollapsibleGroup title="Abatement" defaultOpen={true}>
                     {renderAbatementFields(

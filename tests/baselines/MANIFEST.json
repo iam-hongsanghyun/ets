@@ -415,13 +415,84 @@
     360,
     36
    ]
+  },
+  "climate_solutions_elastic_policy": {
+   "status": "CAPTURED",
+   "reused": false,
+   "entry_point": "ets.run_simulation_from_file",
+   "git_sha": "d7de7ad1f2a1ec6f32764ea7bb40512d8b8534b1",
+   "summary_shape": [
+    10,
+    50
+   ],
+   "participants_shape": [
+    30,
+    36
+   ]
+  },
+  "k_ets_hoarding_basic": {
+   "status": "CAPTURED",
+   "reused": false,
+   "entry_point": "ets.run_simulation_from_file",
+   "git_sha": "d7de7ad1f2a1ec6f32764ea7bb40512d8b8534b1",
+   "summary_shape": [
+    10,
+    51
+   ],
+   "participants_shape": [
+    20,
+    36
+   ]
+  },
+  "k_ets_lambda_msr": {
+   "status": "CAPTURED",
+   "reused": false,
+   "entry_point": "ets.run_simulation_from_file",
+   "git_sha": "d7de7ad1f2a1ec6f32764ea7bb40512d8b8534b1",
+   "summary_shape": [
+    8,
+    78
+   ],
+   "participants_shape": [
+    24,
+    36
+   ]
+  },
+  "k_ets_msr_ccr_combined": {
+   "status": "CAPTURED",
+   "reused": false,
+   "entry_point": "ets.run_simulation_from_file",
+   "git_sha": "d7de7ad1f2a1ec6f32764ea7bb40512d8b8534b1",
+   "summary_shape": [
+    3,
+    46
+   ],
+   "participants_shape": [
+    6,
+    36
+   ]
+  },
+  "showcase_full_stack": {
+   "status": "CAPTURED",
+   "reused": false,
+   "entry_point": "ets.run_simulation_from_file",
+   "git_sha": "d7de7ad1f2a1ec6f32764ea7bb40512d8b8534b1",
+   "summary_shape": [
+    4,
+    79
+   ],
+   "participants_shape": [
+    12,
+    36
+   ]
   }
  },
  "audit_log": [
   "2026-07-10: initial capture at dca80a1 (32 scenarios).",
   "2026-07-10: 'entry_point' metadata key backfilled into the 30 simulation baselines captured before the batch/calibration dispatch was added; numeric payloads untouched (verified: full replay 32/32 bit-identical after backfill).",
   "2026-07-10: capture at dca80a1 (dirty tree) under python 3.12.10 / numpy 2.5.1 / scipy 1.18.0 / pandas 3.0.3 [--force]",
-  "2026-07-10: environment floor finding cleared - baselines recaptured under pinned uv env (py3.12.10/numpy2.5.1/scipy1.18.0/pandas3.0.3), certification chain recorded; legacy import sweep baseline superseded by Order 9 intentional DeprecationWarnings; full gate green (367 passed, 4 xfailed)."
+  "2026-07-10: environment floor finding cleared - baselines recaptured under pinned uv env (py3.12.10/numpy2.5.1/scipy1.18.0/pandas3.0.3), certification chain recorded; legacy import sweep baseline superseded by Order 9 intentional DeprecationWarnings; full gate green (367 passed, 4 xfailed).",
+  "2026-07-10: surgical capture of 5 NEW example scenarios (climate_solutions_elastic_policy, k_ets_hoarding_basic, k_ets_lambda_msr, k_ets_msr_ccr_combined, showcase_full_stack) at d7de7ad (dirty tree) under python 3.12.10 / numpy 2.5.1 / scipy 1.18.0 / pandas 3.0.3; the 31 pre-refactor baselines (dca80a1) were NOT re-captured \u2014 their provenance is unchanged and the replay gate verifies them against the current engine."
  ],
  "certification_chain": "Baselines recaptured 2026-07-10 under the pinned uv environment (python 3.12.10 / numpy 2.5.1 / scipy 1.18.0 / pandas 3.0.3) from the post-refactor working tree at dca80a1 (dirty). This recapture is sound because equivalence of the refactored tree with the pre-refactor tree was already certified bit-identically under python 3.9.6 / numpy 1.26.4 (golden replay 32/32 IDENTICAL plus full suite green). Same code => same outputs per environment, so these baselines equal what the pre-refactor code would have produced under the pinned environment. The refactor is not being grandfathered - it was already proven. The py3.9.6 baselines are superseded: they deterministically produce ULP-shifted values that amplify through solver regime boundaries (worst observed: 5.6% on one k_msr_P0 Allowance Cost cell).",
  "legacy_import_sweep": {

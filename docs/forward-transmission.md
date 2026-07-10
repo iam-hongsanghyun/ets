@@ -118,7 +118,7 @@ Paper-worked values (regression-tested in
 from ets.analysis.investment_trigger import (
     activation_year, credible_floor_multiple, trigger_multiple,
 )
-from ets.solvers import run_simulation_from_file
+from ets.engine import run_simulation_from_file
 
 summary, _ = run_simulation_from_file("examples/k_msr_lambda_regimes.json")
 a = summary[summary["Scenario"].str.contains("relapse")]

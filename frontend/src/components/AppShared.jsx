@@ -1,5 +1,6 @@
 import { useState as useS, useEffect as useE, useMemo as useM, useRef as useR } from "react";
 import { fmt } from "./MarketChart.jsx";
+import { activeFeatureIds, collectSlot, FEATURES } from "../features/registry.js";
 
 const SERIES_FIELD_META = {
   total_cap: { label: "Total cap", unit: "Mt CO₂e", step: 1, min: 0, format: (value) => `${fmt.num(value, 0)} Mt`, description: "Hard annual ceiling on covered emissions. All allowance buckets (free allocation, auction, reserved, cancelled) must sum to this." },
@@ -30,7 +31,11 @@ function getSeriesFieldMeta(field) {
   };
 }
 
-function makeBlankParticipant(index = 1) {
+// Core participant skeleton. Feature-owned defaults (cbam_*, Scope 2,
+// sector_group, sector_allocation_share, OBA/output-price-elasticity
+// fields) are composed in via the feature registry below, in
+// registry-literal order — see frontend/src/features/registry.js.
+function coreBlankParticipant(index = 1) {
   return {
     name: `Participant ${index}`,
     sector: "Other",
@@ -42,25 +47,16 @@ function makeBlankParticipant(index = 1) {
     cost_slope: 1,
     threshold_cost: 0,
     mac_blocks: [],
-    cbam_export_share: 0,
-    cbam_coverage_ratio: 1,
-    cbam_jurisdictions: [],
-    sector_group: "",
-    sector_allocation_share: 0,
-    // Scope 2 / indirect emissions
-    electricity_consumption: 0,
-    grid_emission_factor: 0,
-    scope2_cbam_coverage: 0,
     // BAU emissions trajectory
     initial_emissions_trajectory: {},
-    // Grid emission factor trajectory
-    grid_emission_factor_trajectory: {},
-    // Output-based allocation (OBA) / benchmark
-    production_output: 0,
-    benchmark_emission_intensity: 0,
-    // Feedback Option A: price-elastic baseline (ε ≥ 0; 0 = inelastic)
-    output_price_elasticity: 0,
   };
+}
+
+function makeBlankParticipant(index = 1, enabledFeatures = null) {
+  const featureDefaults = activeFeatureIds(enabledFeatures)
+    .map((id) => FEATURES[id].participantDefaults)
+    .filter(Boolean);
+  return Object.assign(coreBlankParticipant(index), ...featureDefaults);
 }
 
 function makeBlankSector() {
@@ -93,50 +89,35 @@ function makeBlankYear(label = "2030") {
   };
 }
 
-function makeBlankScenario(index = 1) {
+// Core scenario skeleton. Feature-owned defaults (msr_*, ccr_*, sectors,
+// price_floor_trajectory/price_ceiling_trajectory, hotelling/nash_cournot
+// approach + solver settings, reference_carbon_price) are composed in via
+// the feature registry below, in registry-literal order — see
+// frontend/src/features/registry.js. makeBlankYear stays entirely core
+// (year-level defaults are out of scope for this composition — WO-F1 only
+// decomposes makeBlankScenario/makeBlankParticipant).
+function coreBlankScenario(index = 1) {
   return {
     id: `custom_scenario_${Date.now()}_${index}`,
     name: `New Scenario ${index}`,
     color: "#1f6f55",
     description: "Describe the policy design, participants, and transition logic for this scenario.",
     model_approach: "competitive",
-    discount_rate: 0.04,
-    risk_premium: 0.0,
-    // Feedback Option A: reference carbon price anchoring the price-elastic
-    // baseline (0 disables the channel scenario-wide)
-    reference_carbon_price: 0.0,
-    nash_strategic_participants: [],
     free_allocation_trajectories: [],
-    sectors: [],
     cap_trajectory: {},
-    price_floor_trajectory: {},
-    price_ceiling_trajectory: {},
     // ── Solver settings (user-overridable, defaults match backend) ──────────
     solver_competitive_max_iters: 25,
     solver_competitive_tolerance: 0.001,
-    solver_hotelling_max_bisection_iters: 80,
-    solver_hotelling_max_lambda_expansions: 20,
-    solver_hotelling_convergence_tol: 0.0001,
-    solver_nash_price_step: 0.5,
-    solver_nash_max_iters: 120,
-    solver_nash_convergence_tol: 0.001,
     solver_penalty_price_multiplier: 1.25,
-    // ── MSR settings ──────────────────────────────────────────────────────
-    msr_enabled: false,
-    msr_upper_threshold: 200,
-    msr_lower_threshold: 50,
-    msr_withhold_rate: 0.12,
-    msr_release_rate: 50,
-    msr_cancel_excess: false,
-    msr_cancel_threshold: 400,
-    // ── CCR settings (Carbon Cap Rule — Benmir, Roman & Taschini 2025) ─────
-    ccr_enabled: false,
-    ccr_phi_emissions: 0,
-    ccr_phi_abatement_cost: 0,
-    ccr_reference_emissions: 0,
-    ccr_reference_abatement_cost: 0,
     years: [makeBlankYear("2030")],
   };
+}
+
+function makeBlankScenario(index = 1, enabledFeatures = null) {
+  const featureDefaults = activeFeatureIds(enabledFeatures)
+    .map((id) => FEATURES[id].scenarioDefaults)
+    .filter(Boolean);
+  return Object.assign(coreBlankScenario(index), ...featureDefaults);
 }
 
 function buildDraftResult(year) {
@@ -321,7 +302,7 @@ function validateParticipant(participant, yearLabel, yearValue) {
   return issues;
 }
 
-function validateScenario(scenario) {
+function validateScenario(scenario, enabledFeatures = null) {
   const issues = [];
   if (!scenario) return issues;
   if (!scenario.name) issues.push(makeIssue("error", "Scenario", "Scenario must have a name.", { section: "build", step: "scenario" }));
@@ -394,6 +375,11 @@ function validateScenario(scenario) {
       names.add(participant.name);
       issues.push(...validateParticipant(participant, `Year ${yearLabel}`, yearLabel));
     });
+  });
+  // Feature-specific rules (composed in registry order; none defined for
+  // msr/ccr today — see frontend/src/features/registry.js).
+  collectSlot(enabledFeatures, "validators").forEach((validate) => {
+    issues.push(...(validate(scenario) || []));
   });
   if (!issues.length) issues.push(makeIssue("note", "Scenario", "No validation issues detected for the active scenario.", { section: "validation" }));
   return issues;
@@ -555,7 +541,6 @@ function Header({
     { id: "validation", label: "Validation" },
     { id: "analysis", label: "Analysis" },
     { id: "scenario", label: "Scenario" },
-    { id: "composer", label: "Composer" },
     { id: "guide", label: "Guide" },
   ];
   useE(() => {

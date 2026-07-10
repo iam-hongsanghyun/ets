@@ -11,16 +11,24 @@ import ``ets.blocks`` (the reverse is forbidden — ``blocks/`` stays free of
 """
 from __future__ import annotations
 
+import json
 import logging
 import math
 from copy import deepcopy
 
 import pandas as pd
 
-from ..blocks import BLOCK_CATALOGUE, Graph, compile_graph, graph_from_config, validate_graph
-from ..config import EXAMPLES_DIR, USER_SCENARIOS_DIR
+from ..blocks import (
+    BLOCK_CATALOGUE,
+    Graph,
+    compile_graph,
+    derive_manifest,
+    graph_from_config,
+    validate_graph,
+)
+from ..core.paths import EXAMPLES_DIR, USER_SCENARIOS_DIR
 from ..config_io import blank_config, build_markets_from_config, load_config, save_config
-from ..solvers.simulation import run_simulation, solve_scenario_path
+from ..engine import run_simulation, solve_scenario_path
 
 
 def _predefined_templates() -> list[dict]:
@@ -49,6 +57,10 @@ def _predefined_templates() -> list[dict]:
         )
     USER_SCENARIOS_DIR.mkdir(parents=True, exist_ok=True)
     for path in sorted(USER_SCENARIOS_DIR.glob("*.json")):
+        if path.name.endswith(".graph.json"):
+            # Composer-graph sidecar written by _handle_graph_save_model, not
+            # a scenario config in its own right — see that function's docstring.
+            continue
         config = load_config(path)
         template_id = f"user_{path.stem}"
         label = path.stem.replace("_", " ").title()
@@ -316,14 +328,74 @@ def _handle_graph_run(data: dict) -> dict:
     return payload
 
 
-def _handle_graph_from_template(template_id: str | None) -> dict:
-    """Handle GET /api/graph/from-template?id=<template_id> -> {"graph"}."""
+def _resolve_config_by_id(template_id: str | None) -> dict:
+    """Resolve a template/user-model id to its compiled scenario config.
+
+    The shared id-resolution step behind every "operate on an existing
+    model" endpoint (``GET /api/graph/from-template``,
+    ``GET /api/model-manifest``): both example templates (id == the
+    ``examples/*.json`` stem) and saved user models (id ==
+    ``user_<slug>``, as returned by ``_handle_graph_save_model`` /
+    ``_save_user_scenario``) resolve through the same
+    ``_predefined_templates()`` listing ``GET /api/templates`` serves, so a
+    manifest or a from-template lookup for one id always agrees with what
+    the template picker shows.
+
+    Args:
+        template_id: A template/user-model id, or ``None``.
+
+    Returns:
+        The resolved scenario-config dict (``_decorate_frontend_config``
+        output).
+
+    Raises:
+        ValueError: ``template_id`` is falsy, or matches no known template.
+    """
     if not template_id:
         raise ValueError("Query parameter 'id' is required.")
     for template in _predefined_templates():
         if template["id"] == template_id:
-            return {"graph": graph_from_config(template["config"]).to_dict()}
+            return template["config"]
     raise ValueError(f"Unknown template id '{template_id}'.")
+
+
+def _handle_graph_from_template(template_id: str | None) -> dict:
+    """Handle GET /api/graph/from-template?id=<template_id> -> {"graph"}.
+
+    For a ``user_<slug>`` model saved through ``_handle_graph_save_model``,
+    the original composer graph is returned verbatim from its
+    ``<slug>.graph.json`` sidecar when present, rather than reconstructed by
+    decompiling the compiled scenario config — that round-trips exactly what
+    the admin drew (including canvas metadata) instead of an approximation.
+    User templates saved via the older ``/api/save-scenario`` flow (no
+    sidecar) fall back to decompile, same as example templates.
+    """
+    if template_id and template_id.startswith("user_"):
+        graph_path = USER_SCENARIOS_DIR / f"{template_id.removeprefix('user_')}.graph.json"
+        if graph_path.exists():
+            raw_graph = json.loads(graph_path.read_text(encoding="utf-8"))
+            return {"graph": Graph.from_dict(raw_graph).to_dict()}
+    return {"graph": graph_from_config(_resolve_config_by_id(template_id)).to_dict()}
+
+
+def _handle_model_manifest_get(template_id: str | None) -> dict:
+    """Handle GET /api/model-manifest?id=<template_id> -> the manifest dict.
+
+    Resolves ``template_id`` exactly like ``GET /api/graph/from-template``
+    (``_resolve_config_by_id``, which both example templates and saved
+    ``user_<slug>`` models go through), then derives its manifest.
+    """
+    return derive_manifest(_resolve_config_by_id(template_id))
+
+
+def _handle_model_manifest_post(data: dict) -> dict:
+    """Handle POST /api/model-manifest — {config} -> the manifest dict.
+
+    Args:
+        data: A raw scenario-config dict (``{"scenarios": [...]}``), i.e.
+            the same payload ``POST /api/run`` accepts.
+    """
+    return derive_manifest(data)
 
 
 def _slugify_filename(value: str) -> str:
@@ -331,6 +403,62 @@ def _slugify_filename(value: str) -> str:
     while "__" in slug:
         slug = slug.replace("__", "_")
     return slug or "scenario"
+
+
+def _handle_graph_save_model(data: dict) -> dict:
+    """Handle POST /api/graph/save-model — "build" a graph into the scenario registry.
+
+    Validates the graph and compiles it to a scenario config using the same
+    convention as ``/api/graph/compile`` (a ``ValueError`` summarising every
+    ERROR-level issue, turned into a 400 by the route dispatcher), then
+    persists two files under ``USER_SCENARIOS_DIR`` so the result is both an
+    ordinary runnable user scenario and a re-editable composer model:
+
+    * ``<slug>.json`` — the compiled scenario config, saved through the same
+      ``config_io.save_config`` helper as ``/api/save-scenario`` uses, so it
+      is picked up by ``_predefined_templates`` (``GET /api/templates``) and
+      runs unmodified through ``POST /api/run``.
+    * ``<slug>.graph.json`` — the source composer graph verbatim, read back
+      by ``_handle_graph_from_template`` so the admin can reopen this model
+      for editing.
+
+    Design note — sidecar file, not an embedded config key: an earlier
+    design embedded the graph as a top-level ``"composer_graph"`` key on the
+    scenario config. That does not survive the save/reload round trip:
+    ``config_io.normalize_config`` (invoked by both ``save_config`` and
+    ``load_config``, and therefore by every read of a user scenario file —
+    ``/api/templates``, ``/api/run``, ``/api/graph/from-template`` decompile
+    fallback) rebuilds its return value as exactly ``{"scenarios": [...]}``,
+    unconditionally dropping any other top-level key. A sidecar file avoids
+    fighting that normalization boundary.
+
+    Args:
+        data: Parsed request body, ``{"graph": <Graph wire dict>, "name": <display name>}``.
+
+    Returns:
+        ``{"id": "user_<slug>", "name": <name>, "config": <compiled config>}``.
+
+    Raises:
+        ValueError: Empty ``name``, or graph validation/compile failure.
+    """
+    name = str(data.get("name", "")).strip()
+    if not name:
+        raise ValueError("Request must include a non-empty 'name'.")
+    graph = Graph.from_dict(data.get("graph") or {})
+    config = _compile_graph_or_raise(graph)
+
+    stem = _slugify_filename(name)
+    USER_SCENARIOS_DIR.mkdir(parents=True, exist_ok=True)
+    config_path = USER_SCENARIOS_DIR / f"{stem}.json"
+    graph_path = USER_SCENARIOS_DIR / f"{stem}.graph.json"
+    save_config(config, config_path)
+    graph_path.write_text(json.dumps(graph.to_dict(), indent=2), encoding="utf-8")
+
+    return {
+        "id": f"user_{stem}",
+        "name": name,
+        "config": load_config(config_path),
+    }
 
 
 def _save_user_scenario(payload: dict) -> dict:

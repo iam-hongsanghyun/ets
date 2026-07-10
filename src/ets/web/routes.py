@@ -30,7 +30,10 @@ from .api import (
     _handle_graph_compile,
     _handle_graph_from_template,
     _handle_graph_run,
+    _handle_graph_save_model,
     _handle_graph_validate,
+    _handle_model_manifest_get,
+    _handle_model_manifest_post,
     _handle_narrative,
     _predefined_templates,
     _save_user_scenario,
@@ -92,6 +95,18 @@ def _route_graph_from_template(body: bytes, headers: Any, query: dict) -> dict:
     return _handle_graph_from_template(query.get("id"))
 
 
+def _route_graph_save_model(body: bytes, headers: Any, query: dict) -> dict:
+    return _handle_graph_save_model(_parse_json(body))
+
+
+def _route_model_manifest_get(body: bytes, headers: Any, query: dict) -> dict:
+    return _handle_model_manifest_get(query.get("id"))
+
+
+def _route_model_manifest_post(body: bytes, headers: Any, query: dict) -> dict:
+    return _handle_model_manifest_post(_parse_json(body))
+
+
 ROUTES: dict[tuple[str, str], RouteHandler] = {
     ("GET", "/api/templates"): _route_templates,
     ("POST", "/api/run"): _route_run,
@@ -105,6 +120,9 @@ ROUTES: dict[tuple[str, str], RouteHandler] = {
     ("POST", "/api/graph/compile"): _route_graph_compile,
     ("POST", "/api/graph/run"): _route_graph_run,
     ("GET", "/api/graph/from-template"): _route_graph_from_template,
+    ("POST", "/api/graph/save-model"): _route_graph_save_model,
+    ("GET", "/api/model-manifest"): _route_model_manifest_get,
+    ("POST", "/api/model-manifest"): _route_model_manifest_post,
 }
 
 __all__ = ["ROUTES", "RouteHandler"]

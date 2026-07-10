@@ -43,7 +43,7 @@ def calibrate_slopes(
           "modelled_prices": {year_str: price}
     """
     from ..config_io.builder import build_markets_from_config
-    from ..solvers.simulation import run_simulation
+    from ..engine import run_simulation
 
     scenario = base_config["scenarios"][0]
     years_order = [str(y["year"]) for y in scenario["years"]]

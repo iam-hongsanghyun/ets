@@ -114,6 +114,7 @@ function deserializeGraph(graph, catalogue) {
       position: positions[node.id] || fallbackPosition,
       data: {
         blockId: node.block,
+        block,
         label: block?.label || node.block,
         category: block?.category || "unknown",
         params: { ...defaultParamsForBlock(block), ...node.params },

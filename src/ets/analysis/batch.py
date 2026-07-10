@@ -74,7 +74,7 @@ def run_batch(
         Each run has "params" (dict of path->value) and "results" (list of year summaries).
     """
     from ..config_io.builder import build_markets_from_config
-    from ..solvers.simulation import run_simulation
+    from ..engine import run_simulation
 
     paths = [s["path"] for s in sweeps]
     value_lists = [s["values"] for s in sweeps]
