@@ -99,6 +99,7 @@ def _market_block() -> BlockSpec:
             "One node = one scenario in {'scenarios': [...]} "
             "(config_io/builder.py:build_market_from_year)."
         ),
+        feature="core",
         params=(
             ParamSpec("name", "name", "scenario", "str", "New Scenario"),
             ParamSpec(
@@ -142,6 +143,7 @@ def _price_formation_blocks() -> tuple[BlockSpec, ...]:
         label="Competitive Clearing",
         category="price_formation",
         doc="solvers/simulation.py:solve_scenario_path, market/equilibrium.py:solve_equilibrium",
+        feature="competitive",
         params=(
             ParamSpec(
                 "model_approach", "model_approach", "scenario", "enum",
@@ -164,6 +166,7 @@ def _price_formation_blocks() -> tuple[BlockSpec, ...]:
         label="Rubin/Schennach Banking Equilibrium",
         category="price_formation",
         doc="solvers/banking.py:solve_banking_path",
+        feature="banking",
         params=(
             ParamSpec(
                 "model_approach", "model_approach", "scenario", "enum",
@@ -183,6 +186,7 @@ def _price_formation_blocks() -> tuple[BlockSpec, ...]:
         label="Hotelling Exhaustible-Resource Path",
         category="price_formation",
         doc="solvers/hotelling.py:solve_hotelling_path",
+        feature="hotelling",
         params=(
             ParamSpec(
                 "model_approach", "model_approach", "scenario", "enum",
@@ -203,6 +207,7 @@ def _price_formation_blocks() -> tuple[BlockSpec, ...]:
         label="Nash–Cournot",
         category="price_formation",
         doc="solvers/nash.py:solve_nash_path",
+        feature="nash_cournot",
         params=(
             ParamSpec(
                 "model_approach", "model_approach", "scenario", "enum",
@@ -225,6 +230,7 @@ def _price_formation_blocks() -> tuple[BlockSpec, ...]:
         label="Forward Transmission (λ overlay)",
         category="price_formation",
         doc="solvers/transmission.py:solve_transmission_path, blend_prices",
+        feature="transmission",
         params=(
             ParamSpec(
                 "model_approach", "model_approach", "scenario", "enum",
@@ -255,6 +261,7 @@ def _policy_blocks() -> tuple[BlockSpec, ...]:
         label="MSR (bank threshold)",
         category="policy",
         doc="solvers/msr.py:MSRState.apply",
+        feature="msr",
         params=(
             ParamSpec("msr_enabled", "msr_enabled", "scenario", "bool", True),
             ParamSpec("msr_mode", "msr_mode", "scenario", "enum", "bank_threshold", enum=_MSR_MODES),
@@ -276,6 +283,7 @@ def _policy_blocks() -> tuple[BlockSpec, ...]:
         label="K-MSR Decree",
         category="policy",
         doc="solvers/banking.py:_decree_msr_action",
+        feature="msr",
         params=(
             ParamSpec("msr_enabled", "msr_enabled", "scenario", "bool", True),
             ParamSpec("msr_mode", "msr_mode", "scenario", "enum", "hybrid", enum=("price_band", "surplus_rule", "hybrid")),
@@ -298,6 +306,7 @@ def _policy_blocks() -> tuple[BlockSpec, ...]:
         label="Carbon Cap Rule (CCR)",
         category="policy",
         doc="solvers/ccr.py:CCRState.cap_adjustment",
+        feature="ccr",
         params=(
             ParamSpec("ccr_enabled", "ccr_enabled", "scenario", "bool", True),
             ParamSpec("ccr_phi_emissions", "ccr_phi_emissions", "scenario", "float", 0.0),
@@ -315,6 +324,7 @@ def _policy_blocks() -> tuple[BlockSpec, ...]:
         label="Price Floor",
         category="policy",
         doc="bound clamping in market/equilibrium.py",
+        feature="price_controls",
         params=(
             ParamSpec("price_lower_bound", "price_lower_bound", "year", "float", 0.0, unit="currency/tCO2e"),
             ParamSpec("price_floor_trajectory", "price_floor_trajectory", "scenario", "dict", default={}),
@@ -327,6 +337,7 @@ def _policy_blocks() -> tuple[BlockSpec, ...]:
         label="Price Ceiling",
         category="policy",
         doc="bound clamping in market/equilibrium.py",
+        feature="price_controls",
         params=(
             ParamSpec("price_upper_bound", "price_upper_bound", "year", "float", 100.0, unit="currency/tCO2e"),
             ParamSpec("price_ceiling_trajectory", "price_ceiling_trajectory", "scenario", "dict", default={}),
@@ -339,6 +350,7 @@ def _policy_blocks() -> tuple[BlockSpec, ...]:
         label="Auction Reserve",
         category="policy",
         doc="auction mechanics in market/equilibrium.py:solve_equilibrium",
+        feature="price_controls",
         params=(
             ParamSpec("auction_reserve_price", "auction_reserve_price", "year", "float", 0.0, unit="currency/tCO2e"),
             ParamSpec("minimum_bid_coverage", "minimum_bid_coverage", "year", "float", 0.0, bounds=(0.0, 1.0)),
@@ -352,6 +364,7 @@ def _policy_blocks() -> tuple[BlockSpec, ...]:
         label="Cancellation Schedule",
         category="policy",
         doc="year-level cap removal",
+        feature="price_controls",
         params=(
             ParamSpec(
                 "cancelled_allowances", "cancelled_allowances", "year", "float", 0.0,
@@ -366,6 +379,7 @@ def _policy_blocks() -> tuple[BlockSpec, ...]:
         label="Cap Trajectory",
         category="policy",
         doc="config_io/builder.py:_interp_value",
+        feature="core",
         params=(
             ParamSpec("cap_trajectory", "cap_trajectory", "scenario", "dict", default={}),
             _ANNOUNCED_PARAM,
@@ -377,6 +391,7 @@ def _policy_blocks() -> tuple[BlockSpec, ...]:
         label="Free-Allocation Phase-Out",
         category="policy",
         doc="config_io/builder.py:_interp_ratio",
+        feature="core",
         params=(
             ParamSpec("free_allocation_trajectories", "free_allocation_trajectories", "scenario", "list", default=()),
             _ANNOUNCED_PARAM,
@@ -392,6 +407,7 @@ def _policy_blocks() -> tuple[BlockSpec, ...]:
             "no owned params: production_output/benchmark_emission_intensity "
             "already live on the participant block."
         ),
+        feature="oba",
         params=(_ANNOUNCED_PARAM,),
         ports=(_POLICY_OUT_PORT,),
     )
@@ -400,6 +416,7 @@ def _policy_blocks() -> tuple[BlockSpec, ...]:
         label="CBAM",
         category="policy",
         doc="CBAM liability in market/results.py (diagnostics-only, F6)",
+        feature="cbam",
         params=(
             ParamSpec("eua_price", "eua_price", "year", "float", 0.0, unit="currency/tCO2e"),
             ParamSpec("eua_prices", "eua_prices", "year", "dict", default={}, label="Per-jurisdiction EUA prices"),
@@ -413,6 +430,7 @@ def _policy_blocks() -> tuple[BlockSpec, ...]:
         label="Hoarding Inflow",
         category="policy",
         doc="solvers/banking.py:_hoarding_inflow",
+        feature="hoarding",
         params=(
             ParamSpec(
                 "hoarding_inflow", "hoarding_inflow", "year", "float", 0.0,
@@ -436,6 +454,7 @@ def _expectations_blocks() -> tuple[BlockSpec, ...]:
         label="Expectations Rule",
         category="expectations",
         doc="solvers/expectations.py:ExpectationSpec, derive_expected_prices",
+        feature="core",
         params=(
             ParamSpec("expectation_rule", "expectation_rule", "year", "enum", "next_year_baseline", enum=_EXPECTATION_RULES),
             ParamSpec("manual_expected_price", "manual_expected_price", "year", "float", 0.0, unit="currency/tCO2e"),
@@ -447,6 +466,7 @@ def _expectations_blocks() -> tuple[BlockSpec, ...]:
         label="Price-Elastic Baseline (Option A)",
         category="expectations",
         doc="participant/models.py:MarketParticipant.activity_multiplier",
+        feature="elastic_baseline",
         params=(
             ParamSpec("reference_carbon_price", "reference_carbon_price", "scenario", "float", 0.0, unit="currency/tCO2e"),
         ),
@@ -461,6 +481,7 @@ def _participant_blocks() -> tuple[BlockSpec, ...]:
         label="Participant",
         category="participants",
         doc="participant/models.py:MarketParticipant via build_participant",
+        feature="core",
         params=(
             ParamSpec("name", "name", "participant", "str", "New Participant"),
             ParamSpec("sector_group", "sector_group", "participant", "str", "", label="sector"),
@@ -498,6 +519,7 @@ def _participant_blocks() -> tuple[BlockSpec, ...]:
         label="Technology Option",
         category="participants",
         doc="participant/models.py:TechnologyOption via build_technology_option",
+        feature="core",
         params=(
             ParamSpec("name", "name", "participant", "str", "New Technology"),
             ParamSpec("initial_emissions", "initial_emissions", "participant", "float", 0.0, unit="Mt CO2e"),
@@ -518,6 +540,7 @@ def _participant_blocks() -> tuple[BlockSpec, ...]:
         label="Sector",
         category="participants",
         doc="sector pool derivation in config_io/builder.py:build_market_from_year",
+        feature="sectors",
         params=(
             ParamSpec("sector_name", "sectors", "scenario", "str", "New Sector", label="name"),
             ParamSpec("cap_trajectory", "sectors", "scenario", "dict", default=None),
@@ -543,6 +566,7 @@ def _analysis_blocks() -> tuple[BlockSpec, ...]:
         label="Batch Sweep",
         category="analysis",
         doc="analysis/batch.py:run_batch",
+        feature="batch_analysis",
         params=(ParamSpec("sweeps", "sweeps", "edge", "list", default=()),),
         ports=(PortSpec("results", "in", "results", cardinality="1"),),
     )
@@ -551,6 +575,7 @@ def _analysis_blocks() -> tuple[BlockSpec, ...]:
         label="Calibration",
         category="analysis",
         doc="analysis/calibration.py:calibrate_slopes",
+        feature="calibration",
         params=(
             ParamSpec("observed_prices", "observed_prices", "edge", "dict", default=None),
             ParamSpec("participant_names", "participant_names", "edge", "list", default=()),
@@ -564,6 +589,7 @@ def _analysis_blocks() -> tuple[BlockSpec, ...]:
         label="Narrative",
         category="analysis",
         doc="analysis/narrative.py:generate_narrative",
+        feature="narrative",
         params=(ParamSpec("scenario_name", "scenario_name", "edge", "str", ""),),
         ports=(PortSpec("results", "in", "results", cardinality="1"),),
     )
@@ -572,6 +598,7 @@ def _analysis_blocks() -> tuple[BlockSpec, ...]:
         label="Investment Trigger",
         category="analysis",
         doc="analysis/investment_trigger.py",
+        feature="investment_trigger",
         params=(
             ParamSpec("sigma", "sigma", "edge", "float", 0.2),
             ParamSpec("r", "r", "edge", "float", 0.04),
@@ -585,6 +612,7 @@ def _analysis_blocks() -> tuple[BlockSpec, ...]:
         label="External Feedback Loop",
         category="analysis",
         doc="coupling/loop.py:run_coupled_simulation + coupling/adapters.py",
+        feature="feedback_coupling",
         params=(
             ParamSpec("adapter", "adapter", "edge", "str", ""),
             ParamSpec("elasticity", "elasticity", "edge", "float", 0.0),

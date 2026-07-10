@@ -18,7 +18,14 @@ from copy import deepcopy
 
 import pandas as pd
 
-from ..blocks import BLOCK_CATALOGUE, Graph, compile_graph, graph_from_config, validate_graph
+from ..blocks import (
+    BLOCK_CATALOGUE,
+    Graph,
+    compile_graph,
+    derive_manifest,
+    graph_from_config,
+    validate_graph,
+)
 from ..config import EXAMPLES_DIR, USER_SCENARIOS_DIR
 from ..config_io import blank_config, build_markets_from_config, load_config, save_config
 from ..solvers.simulation import run_simulation, solve_scenario_path
@@ -321,6 +328,37 @@ def _handle_graph_run(data: dict) -> dict:
     return payload
 
 
+def _resolve_config_by_id(template_id: str | None) -> dict:
+    """Resolve a template/user-model id to its compiled scenario config.
+
+    The shared id-resolution step behind every "operate on an existing
+    model" endpoint (``GET /api/graph/from-template``,
+    ``GET /api/model-manifest``): both example templates (id == the
+    ``examples/*.json`` stem) and saved user models (id ==
+    ``user_<slug>``, as returned by ``_handle_graph_save_model`` /
+    ``_save_user_scenario``) resolve through the same
+    ``_predefined_templates()`` listing ``GET /api/templates`` serves, so a
+    manifest or a from-template lookup for one id always agrees with what
+    the template picker shows.
+
+    Args:
+        template_id: A template/user-model id, or ``None``.
+
+    Returns:
+        The resolved scenario-config dict (``_decorate_frontend_config``
+        output).
+
+    Raises:
+        ValueError: ``template_id`` is falsy, or matches no known template.
+    """
+    if not template_id:
+        raise ValueError("Query parameter 'id' is required.")
+    for template in _predefined_templates():
+        if template["id"] == template_id:
+            return template["config"]
+    raise ValueError(f"Unknown template id '{template_id}'.")
+
+
 def _handle_graph_from_template(template_id: str | None) -> dict:
     """Handle GET /api/graph/from-template?id=<template_id> -> {"graph"}.
 
@@ -332,17 +370,32 @@ def _handle_graph_from_template(template_id: str | None) -> dict:
     User templates saved via the older ``/api/save-scenario`` flow (no
     sidecar) fall back to decompile, same as example templates.
     """
-    if not template_id:
-        raise ValueError("Query parameter 'id' is required.")
-    if template_id.startswith("user_"):
+    if template_id and template_id.startswith("user_"):
         graph_path = USER_SCENARIOS_DIR / f"{template_id.removeprefix('user_')}.graph.json"
         if graph_path.exists():
             raw_graph = json.loads(graph_path.read_text(encoding="utf-8"))
             return {"graph": Graph.from_dict(raw_graph).to_dict()}
-    for template in _predefined_templates():
-        if template["id"] == template_id:
-            return {"graph": graph_from_config(template["config"]).to_dict()}
-    raise ValueError(f"Unknown template id '{template_id}'.")
+    return {"graph": graph_from_config(_resolve_config_by_id(template_id)).to_dict()}
+
+
+def _handle_model_manifest_get(template_id: str | None) -> dict:
+    """Handle GET /api/model-manifest?id=<template_id> -> the manifest dict.
+
+    Resolves ``template_id`` exactly like ``GET /api/graph/from-template``
+    (``_resolve_config_by_id``, which both example templates and saved
+    ``user_<slug>`` models go through), then derives its manifest.
+    """
+    return derive_manifest(_resolve_config_by_id(template_id))
+
+
+def _handle_model_manifest_post(data: dict) -> dict:
+    """Handle POST /api/model-manifest — {config} -> the manifest dict.
+
+    Args:
+        data: A raw scenario-config dict (``{"scenarios": [...]}``), i.e.
+            the same payload ``POST /api/run`` accepts.
+    """
+    return derive_manifest(data)
 
 
 def _slugify_filename(value: str) -> str:

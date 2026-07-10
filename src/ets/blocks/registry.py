@@ -93,6 +93,12 @@ class BlockSpec:
         category: One of ``market``, ``price_formation``, ``policy``,
             ``expectations``, ``participants``, ``analysis``.
         doc: One-line description of what the block wraps.
+        feature: The feature-module this block belongs to (e.g.
+            ``"core"``, ``"banking"``, ``"msr"``, ``"batch_analysis"``) —
+            the vocabulary ``ets.blocks.manifest.derive_manifest`` reports
+            to the frontend and, once ``src/ets/features/*`` lands, the
+            directory this block's mechanism will live under. Every block
+            must declare exactly one.
         params: Declared parameters (order preserved for form rendering).
         ports: Declared ports (order preserved).
         requires: Block ids that must appear elsewhere in a valid graph
@@ -106,6 +112,7 @@ class BlockSpec:
     label: str
     category: str
     doc: str
+    feature: str
     params: tuple[ParamSpec, ...] = field(default_factory=tuple)
     ports: tuple[PortSpec, ...] = field(default_factory=tuple)
     requires: tuple[str, ...] = field(default_factory=tuple)

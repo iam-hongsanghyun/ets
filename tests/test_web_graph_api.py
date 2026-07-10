@@ -15,6 +15,9 @@ Covers:
       registry: the saved config appears in GET /api/templates and runs via
       POST /api/run; an invalid graph is a 400; the source graph is
       recoverable verbatim via GET /api/graph/from-template.
+  (g) GET/POST /api/model-manifest (WO-M1): id-resolved GET for an example
+      template and a saved user model, raw-config POST, and 400s for an
+      unknown id / unparseable body.
 """
 
 from __future__ import annotations
@@ -253,3 +256,67 @@ def test_save_model_graph_sidecar_returned_by_from_template(tmp_path, monkeypatc
     status_ft, body_ft = _call("GET", "/api/graph/from-template", query=f"id={body['id']}")
     assert status_ft == 200, body_ft
     assert body_ft["graph"] == Graph.from_dict(graph_payload).to_dict()
+
+
+# ── (g) GET/POST /api/model-manifest ─────────────────────────────────────
+
+
+def test_model_manifest_get_for_example_template() -> None:
+    status, body = _call(
+        "GET", "/api/model-manifest", query="id=climate_solutions_basic_linear"
+    )
+    assert status == 200, body
+    assert set(body.keys()) == {"features", "blocks", "approach", "categories", "scenarios"}
+    assert "core" in body["features"]
+    assert "competitive" in body["features"]
+
+
+def test_model_manifest_get_for_saved_user_model(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(api, "USER_SCENARIOS_DIR", tmp_path)
+
+    graph_payload = _basic_linear_graph()
+    status_save, body_save = _post_json(
+        "/api/graph/save-model", {"graph": graph_payload, "name": "Manifest Model"}
+    )
+    assert status_save == 200, body_save
+
+    status, body = _call(
+        "GET", "/api/model-manifest", query=f"id={body_save['id']}"
+    )
+    assert status == 200, body
+    assert "core" in body["features"]
+    assert "competitive" in body["features"]
+
+
+def test_model_manifest_get_unknown_id_is_400() -> None:
+    status, body = _call("GET", "/api/model-manifest", query="id=does-not-exist")
+    assert status == 400
+    assert "error" in body
+
+
+def test_model_manifest_get_missing_id_is_400() -> None:
+    status, body = _call("GET", "/api/model-manifest")
+    assert status == 400
+    assert "error" in body
+
+
+def test_model_manifest_post_raw_config() -> None:
+    config = json.loads(
+        (EXAMPLES_DIR / "k_msr_P1_decree_banking.json").read_text()
+    )
+    status, body = _post_json("/api/model-manifest", config)
+    assert status == 200, body
+    assert {"banking", "msr"} <= set(body["features"])
+    assert body["approach"] == ["banking"]
+
+
+def test_model_manifest_post_malformed_json_is_400() -> None:
+    status, body = _call("POST", "/api/model-manifest", body=b"{not valid json")
+    assert status == 400
+    assert "error" in body
+
+
+def test_model_manifest_post_unparseable_config_is_400() -> None:
+    status, body = _post_json("/api/model-manifest", {"not_scenarios": []})
+    assert status == 400
+    assert "error" in body
