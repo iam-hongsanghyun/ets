@@ -5,34 +5,45 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$SCRIPT_DIR"
 
-VENV_DIR="$SCRIPT_DIR/.venv"
-PYTHON_BIN="$VENV_DIR/bin/python"
-REQUIREMENTS="$SCRIPT_DIR/requirements.txt"
-STAMP="$VENV_DIR/.requirements-installed"
+# Prefer uv: it owns .venv and syncs the pinned environment (pyproject.toml +
+# uv.lock — the same environment the golden-baseline gate certifies).
+if command -v uv >/dev/null 2>&1; then
+  echo "Syncing environment with uv ..."
+  uv sync --all-extras
+  PY=(uv run python)
+else
+  # Fallback: classic venv + pip from requirements.txt.
+  VENV_DIR="$SCRIPT_DIR/.venv"
+  PYTHON_BIN="$VENV_DIR/bin/python"
+  REQUIREMENTS="$SCRIPT_DIR/requirements.txt"
+  STAMP="$VENV_DIR/.requirements-installed"
 
-if [[ ! -x "$PYTHON_BIN" ]]; then
-  echo "Creating virtual environment in $VENV_DIR ..."
-  python3 -m venv "$VENV_DIR"
-fi
+  if [[ ! -x "$PYTHON_BIN" ]] || ! "$PYTHON_BIN" -m pip --version >/dev/null 2>&1; then
+    echo "Creating virtual environment in $VENV_DIR ..."
+    rm -rf "$VENV_DIR"
+    python3 -m venv "$VENV_DIR"
+  fi
 
-if [[ -f "$REQUIREMENTS" ]] && { [[ ! -f "$STAMP" ]] || [[ "$REQUIREMENTS" -nt "$STAMP" ]]; }; then
-  echo "Installing requirements ..."
-  "$PYTHON_BIN" -m pip install --upgrade pip
-  "$PYTHON_BIN" -m pip install -r "$REQUIREMENTS"
-  touch "$STAMP"
+  if [[ -f "$REQUIREMENTS" ]] && { [[ ! -f "$STAMP" ]] || [[ "$REQUIREMENTS" -nt "$STAMP" ]]; }; then
+    echo "Installing requirements ..."
+    "$PYTHON_BIN" -m pip install --upgrade pip
+    "$PYTHON_BIN" -m pip install -r "$REQUIREMENTS"
+    touch "$STAMP"
+  fi
+  PY=("$PYTHON_BIN")
 fi
 
 if [[ "$#" -eq 0 ]]; then
-  exec "$PYTHON_BIN" "$SCRIPT_DIR/ets_framework.py" --gui
+  exec "${PY[@]}" "$SCRIPT_DIR/ets_framework.py" --gui
 fi
 
 if [[ "$1" == "sample" ]]; then
   shift
-  exec "$PYTHON_BIN" "$SCRIPT_DIR/ets_framework.py" --mode "${1:-banking}"
+  exec "${PY[@]}" "$SCRIPT_DIR/ets_framework.py" --mode "${1:-banking}"
 fi
 
 if [[ "$1" == "samples" ]]; then
-  exec "$PYTHON_BIN" "$SCRIPT_DIR/ets_framework.py" --list-modes
+  exec "${PY[@]}" "$SCRIPT_DIR/ets_framework.py" --list-modes
 fi
 
-exec "$PYTHON_BIN" "$SCRIPT_DIR/ets_framework.py" "$@"
+exec "${PY[@]}" "$SCRIPT_DIR/ets_framework.py" "$@"
