@@ -138,6 +138,67 @@ def test_k_msr_event_timing_2x2_includes_policy_events() -> None:
     assert "policy_events" in manifest["scenarios"]["static / announced 2031"]["features"]
 
 
+# ── (b′) snapshots for the gap-filling examples (examples work order) ──
+# Each asserts the EXACT intended feature set, ground-truthed against the
+# derived manifest at authoring time.
+
+
+def test_msr_ccr_combined_has_both_supply_operators() -> None:
+    """First golden-scale example with MSR and CCR active on ONE competitive
+    scenario — valid since the F1 fix (blocks-composition-rules.md §0, R10
+    downgraded); unit anchor in tests/test_msr_ccr_composition.py."""
+    manifest = derive_manifest(_load("k_ets_msr_ccr_combined"))
+    assert set(manifest["features"]) == {"core", "competitive", "msr", "ccr", "price_controls"}
+    assert manifest["approach"] == ["competitive"]
+
+
+def test_lambda_msr_composes_transmission_with_msr() -> None:
+    """λ overlay + bank-threshold MSR: the pf block is forward_transmission
+    (feature 'transmission', NOT 'competitive' — same as k_msr_lambda_regimes)
+    and the MSR node rides inside the competitive component. Golden-scale
+    complement to the unit anchor in tests/test_cap_rule_injection.py."""
+    manifest = derive_manifest(_load("k_ets_lambda_msr"))
+    assert set(manifest["features"]) == {"core", "transmission", "msr", "price_controls"}
+    assert manifest["approach"] == ["competitive"]
+    # Per-scenario: only the MSR variant carries the msr feature.
+    assert "msr" in manifest["scenarios"]["lambda 0.55 + bank-threshold MSR"]["features"]
+    assert "msr" not in manifest["scenarios"]["lambda 0.55, no MSR"]["features"]
+
+
+def test_elastic_policy_combines_elastic_baseline_with_msr_and_floor() -> None:
+    manifest = derive_manifest(_load("climate_solutions_elastic_policy"))
+    assert set(manifest["features"]) == {
+        "core", "competitive", "elastic_baseline", "msr", "price_controls",
+    }
+    assert manifest["approach"] == ["competitive"]
+    assert "msr" not in manifest["scenarios"]["Elastic baseline, no policy"]["features"]
+    assert "msr" in manifest["scenarios"]["Elastic baseline + auction floor + MSR"]["features"]
+
+
+def test_hoarding_basic_is_the_sole_hoarding_example() -> None:
+    """First example with a nonzero hoarding_inflow anywhere in examples/
+    (k_msr_paper_reproduction never sets one, verified against the raw JSON)."""
+    manifest = derive_manifest(_load("k_ets_hoarding_basic"))
+    assert set(manifest["features"]) == {"core", "banking", "hoarding", "price_controls"}
+    assert manifest["approach"] == ["banking"]
+    assert "hoarding" not in manifest["scenarios"]["Textbook banking (no hoarding)"]["features"]
+    assert "hoarding" in manifest["scenarios"]["Structural hoarding 2026-27"]["features"]
+
+
+def test_showcase_full_stack_features() -> None:
+    """banking + decree MSR + reserve floor + CBAM + sector pools. The config
+    carries a 'sectors' table, but the manifest CANNOT report a 'sectors'
+    feature: decompile.py never synthesises sector nodes (documented scope
+    reduction — sectors round-trip as opaque market params; see
+    ets/blocks/manifest.py module docstring). Same inherited limitation hides
+    'oba' on k_ets_oba_benchmark."""
+    raw = _load("showcase_full_stack")
+    assert raw["scenarios"][0]["sectors"], "config must carry the sector pool table"
+    manifest = derive_manifest(raw)
+    assert set(manifest["features"]) == {"core", "banking", "msr", "cbam", "price_controls"}
+    assert manifest["approach"] == ["banking"]
+
+
 # ── (c) vocabulary test ──────────────────────────────────────────────
 
 # Frozen literal vocabulary for BlockSpec.feature, per the catalogue-mapping

@@ -86,6 +86,11 @@ Items are grouped by theme. Checked items are complete. Unchecked items are pend
 
 ---
 
+## Engine defects found during modularization (math changes — need economist sign-off + new baselines)
+
+- [ ] **Nash–Cournot equilibrium is degenerate**: `solvers/nash.py:_solve_nash_year` runs the best-response iteration but returns `market.solve_equilibrium(...)` (plain competitive clearing) — converged strategic abatements never feed the reported equilibrium, so Nash prices are bit-identical to competitive (verified empirically, dP/dQ = 0.526, two strategic gencos). Fix is a math change: report the strategic equilibrium; then add a Nash golden example (deliberately not added while degenerate). Related: F2 wiring inconsistencies (ungated MSR, no CCR in nash path).
+- [ ] `climate_solutions_msr_stability` never fires its MSR (bank never crosses the threshold; withheld = 0 in every golden year) — either retune the example so the mechanism demonstrably fires or rename its intent; `k_ets_msr_ccr_combined` now provides firing coverage.
+
 ## Modularization / block-composer follow-ups (non-blocking, from economist review 2026-07-10)
 
 - [ ] Validator gaps (W2): R6 misses an all-myopic per-year `expectation_rule` dict; R30 splice warning only fires when the MSR block itself is late-announced (a late-announced *other* policy crossing a bank_threshold MSR also resets the pool); add dedicated rejection tests for R6/R7/R8/R11/R13/R15/R19 (family-level coverage only today)
