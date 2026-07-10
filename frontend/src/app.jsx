@@ -12,7 +12,7 @@ import {
 import { BuildView, ValidationView, AnalysisView, Compare } from "./components/AppViews.jsx";
 import { GuideView } from "./components/GuideView.jsx";
 
-export default function App() {
+export default function App({ enabledFeatures = null } = {}) {
   const [templates, setTemplates] = useS([]);
   const [config, setConfig] = useS({ scenarios: [] });
   const [results, setResults] = useS({});
@@ -172,7 +172,7 @@ export default function App() {
   const result = activeScenario && yearObj ? results?.[activeScenario.name]?.[String(yearObj.year)] : null;
   const displayResult = yearObj ? (result || buildDraftResult(yearObj)) : null;
   const hasEditedChanges = loadedConfigRef.current ? !configsEqual(config, loadedConfigRef.current) : false;
-  const validationIssues = validateScenario(activeScenario);
+  const validationIssues = validateScenario(activeScenario, enabledFeatures);
 
   const commitConfig = (updater) => {
     setConfig((prev) => {
@@ -209,7 +209,7 @@ export default function App() {
 
   const addScenario = () => {
     const nextIndex = (scenarios || []).length + 1;
-    const nextScenario = makeBlankScenario(nextIndex);
+    const nextScenario = makeBlankScenario(nextIndex, enabledFeatures);
     commitConfig((prev) => ({
       ...prev,
       scenarios: [...prev.scenarios, nextScenario],
@@ -254,7 +254,7 @@ export default function App() {
     const nextYear = existingYears.length ? Math.max(...existingYears) + 5 : 2030;
     const templateParticipants = yearObj?.participants?.length
       ? yearObj.participants.map((participant) => ({ ...participant }))
-      : [makeBlankParticipant(1)];
+      : [makeBlankParticipant(1, enabledFeatures)];
     const nextYearConfig = {
       ...makeBlankYear(nextYear),
       participants: templateParticipants,
@@ -477,6 +477,7 @@ export default function App() {
           onRunAll={runAllScenarios}
           hasEditedChanges={hasEditedChanges}
           navigationTarget={validationTarget}
+          enabledFeatures={enabledFeatures}
         />
       )}
 

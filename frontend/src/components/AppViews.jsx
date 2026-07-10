@@ -26,6 +26,7 @@ import {
 function BuildView({
   scenario, yearObj, activeYear, onYearChange, addYear, removeYear,
   onRunBase, onRunEdited, onRunAll, hasEditedChanges, onSave, onUpdateYearSeries, navigationTarget,
+  enabledFeatures = null,
 }) {
   const [selectedSeriesField, setSelectedSeriesField] = useState("total_cap");
   const [generatorRule, setGeneratorRule] = useState("linear");
@@ -262,6 +263,7 @@ function BuildView({
           onRemoveYear={removeYear}
           onSelectYear={onYearChange}
           navigationTarget={navigationTarget}
+          enabledFeatures={enabledFeatures}
         />
       </section>
     </div>
