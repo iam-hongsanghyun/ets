@@ -17,3 +17,6 @@ user-scenarios/
 database/
 .env
 .worktrees/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/

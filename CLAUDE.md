@@ -1,7 +1,8 @@
 # CLAUDE.md
 
 Scientific modelling project (data science / energy / finance / economic).
-Full team handbook: `docs/HANDBOOK.md`. Algorithm docs: `docs/ALGORITHM.md`.
+Algorithm docs: `docs/algorithm-overview.md`, `docs/joint-equilibrium.md`. User
+guide: `docs/joint-model-guide.md`. Module map: `MODULES.md`. Manual: `MANUAL.md`.
 
 ## Commands
 
@@ -52,15 +53,21 @@ Pytest. New features need tests. Aim for **meaningful** coverage of math correct
 ## Project layout
 
 ```
-src/<pkg>/
-  core/       algorithms (no I/O)
-  data/       loaders, validators, transforms
-  config.py   loads .env, validates types
-  logger.py   centralized logging
-tests/        mirrors src/
-docs/         ALGORITHM.md (math), HANDBOOK.md (team standards), API.md
+core/backend/     the `pe` package — kernel (core/), engine/ (dispatch, scc, joint),
+                  config_io/, blocks/ (composer graph), web/, mcp/, registry/, analysis/
+core/frontend/    Vite/React composer + pe-shell (dist/ is built and served in prod)
+modules/<name>/   one feature each, fully isolated: backend/ (-> pe.features.<name>),
+                  frontend/, doc/  (banking, price_controls, market_links, ccr, oba,
+                  sectors, transmission, elastic_baseline, endogenous_investment, ...)
+compat/ets/       ets->pe deprecation shims (backward-compat import mirror)
+api/              Vercel serverless entry (serves core/frontend/dist)
+examples/         scenario configs (the joint-equilibrium model is the centrepiece)
+tests/            mirrors the source tree; golden baselines in tests/baselines/
+docs/             algorithm-overview.md, joint-equilibrium.md (math),
+                  joint-model-guide.md (user guide), platform/plan specs
 .env, .env.example
-pyproject.toml    single source of truth
+pyproject.toml    single source of truth (package-dir remaps the split package)
 ```
 
-See `docs/HANDBOOK.md` for: full directory layout, docstring template, ready-to-copy `config.py` / `logger.py` / CI workflow, code review checklist, deprecation strategy, experiment tracking patterns.
+See `MODULES.md` for the module map and `MANUAL.md` for the operator manual. The
+conventions above are the source of truth — there is no separate handbook file.

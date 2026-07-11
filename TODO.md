@@ -2,6 +2,13 @@
 
 Items are grouped by theme. Checked items are complete. Unchecked items are pending.
 
+**Status (2026-07-12):** the general partial-equilibrium platform — including the
+joint (multi-market cyclic) equilibrium model (D0–D2) and endogenous investment
+feedback — is COMPLETE and on `main`. See `docs/joint-model-guide.md` (usage) and
+`docs/joint-equilibrium.md` (theory). Paths below that read `src/ets/` or
+`solvers/` are HISTORICAL: the tree is now `core/backend/` (the `pe` package) plus
+`modules/<name>/backend/`.
+
 ---
 
 ## Infrastructure
@@ -88,7 +95,7 @@ Items are grouped by theme. Checked items are complete. Unchecked items are pend
 
 ## Engine defects found during modularization (math changes — need economist sign-off + new baselines)
 
-- [ ] **Floor-cancellation 2-cycle in the banking fixed point**: a deeply binding auction-reserve floor with `unsold_treatment: "cancel"` produces a genuine 16.9-Mt supply 2-cycle (diagnosed via the DEBUG delta trace while building `k_msr_decree_induces_investment`; dodged there with `unsold_treatment: "reserve"`). The supply-rule iteration has no damping for the cancellation channel — needs an economist-designed convergence treatment (dampen the cancellation delta, or a cycle-detection fallback) rather than an ad-hoc fix.
+- [x] **Floor-cancellation 2-cycle in the banking fixed point** (RESOLVED 2026-07-12: direct complementarity solve — the price-free contemporaneous binding test e_t(F_t) < S_t, converges in <=2 iterations; economist-ratified; `modules/banking/backend/solver.py` + `modules/price_controls/backend/rules.py`; see `docs/floor-cancellation-fix.md`): a deeply binding auction-reserve floor with `unsold_treatment: "cancel"` produced a genuine 16.9-Mt supply 2-cycle (diagnosed via the DEBUG delta trace while building `k_msr_decree_induces_investment`; dodged there with `unsold_treatment: "reserve"`). The supply-rule iteration has no damping for the cancellation channel — needs an economist-designed convergence treatment (dampen the cancellation delta, or a cycle-detection fallback) rather than an ad-hoc fix.
 
 - [ ] **Nash–Cournot equilibrium is degenerate**: `solvers/nash.py:_solve_nash_year` runs the best-response iteration but returns `market.solve_equilibrium(...)` (plain competitive clearing) — converged strategic abatements never feed the reported equilibrium, so Nash prices are bit-identical to competitive (verified empirically, dP/dQ = 0.526, two strategic gencos). Fix is a math change: report the strategic equilibrium; then add a Nash golden example (deliberately not added while degenerate). Related: F2 wiring inconsistencies (ungated MSR, no CCR in nash path).
 - [ ] Nash caveat in docs/UI (economist sign-off warning 2): until the degenerate-Nash fix lands, "Nash–Cournot" output is bit-identical to competitive — the label overstates the equilibrium; add a user-facing note.
@@ -119,4 +126,4 @@ Items are grouped by theme. Checked items are complete. Unchecked items are pend
 
 ## Pre-main-merge blocker (restructure introduced)
 
-- [ ] **Vercel/wheel path resolution**: WO-0 switched Vercel to a wheel install, so `pe.core.paths.PROJECT_DIR = parents[3]` computes from site-packages, NOT the repo checkout — FRONTEND_DIST_DIR / EXAMPLES_DIR / DOCS_DIR would be wrong in prod. Local editable install works (parents[3] = repo). FIX before any main merge that deploys: have the deployment entry points (api/index.py, the .command launchers) set PE_PROJECT_DIR = their own repo-relative anchor; paths.py honors the env var, falling back to parents[3] (bit-identical locally, env unset). Then run a Vercel PREVIEW to confirm the served dist/examples resolve.
+- [x] **Vercel/wheel path resolution** (RESOLVED: `PE_PROJECT_DIR` env anchor set by `api/index.py` + the `.command` launchers; `core/backend/core/paths.py` honors it, falling back to `parents[3]` — bit-identical locally): WO-0 switched Vercel to a wheel install, so `PROJECT_DIR = parents[3]` computes from site-packages, NOT the repo checkout — FRONTEND_DIST_DIR / EXAMPLES_DIR / DOCS_DIR would be wrong in prod. Local editable install works (parents[3] = repo). FIX before any main merge that deploys: have the deployment entry points (api/index.py, the .command launchers) set PE_PROJECT_DIR = their own repo-relative anchor; paths.py honors the env var, falling back to parents[3] (bit-identical locally, env unset). Then run a Vercel PREVIEW to confirm the served dist/examples resolve.
