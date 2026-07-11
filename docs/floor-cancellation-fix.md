@@ -104,6 +104,36 @@ e(p) = E0 − p/σ, static clearing P(S) = σ(E0 − S); unsold_treatment "cance
 
 V1 is the captured NEW golden. V2 is the inertness witness.
 
+### 4a. Window-clip refinement — economist-ratified deviation from §2 (2026-07-11)
+
+The executor deviated from §2's literal "cancel only for t OUTSIDE [a,b]"
+because the blanket static-only gate SUPPRESSES cancellation for a WINDOW
+year whose delivered price is dragged DOWN to the floor by an in-window
+release valve (MSR intake or investment adoption lowering demand). That
+leaves unsold-at-floor volume unaccounted and breaks the V6 supply
+partition sum_t e_t = B_0 + sum_t S_t − sum_t u_t − MSR_net − B_T by
+22.5–28.8 Mt (two test_anchors.py::test_v6 cases). The ratified gate
+(solver.py:270): STATIC years apply the price-free complementarity
+e_t(F_t) < S_t UNCONDITIONALLY (kills the orbit); WINDOW years cancel ONLY
+where the floor clips the arbitrage price (F_t > P_t). Economist verdict
+(2026-07-11): CONFIRMED — window-clip cancellation is Rule A at the
+delivered clip (D2 §3 delivered-floor family), nets the residual once
+against the re-solved post-cancellation window budget, no double-count;
+the identity is the correct waterbed partition with window-year u_t
+included. Two standing conditions, both satisfied in the merge:
+1. The subordinate period-2 guard (§2 SECONDARY) stays LIVE on the
+   window-clip branch — it operates at the outer supply fixed point
+   (solver.py:417) over both regimes; on detection it takes the
+   complementarity solution (min circulating supply = P=F, u=base−e(F)),
+   never an arbitrary iterate.
+2. **Residual (D3, approximation NOT leak):** the window is solved
+   UNCONSTRAINED at shadow prices then floor-CLIPPED, rather than solved
+   with P_t ≥ F_t as an intertemporal boundary constraint (the §2
+   "fold the floor into solve_banking_window" item). This is a modelling
+   approximation, not a conservation violation — **V6 conservation pinned
+   green is the standing witness that it is an approximation, not a leak.**
+   Single-market property, unchanged by cycles, orthogonal to D2-5.
+
 ## 5. Relation to D2 — separate loops, this GATES D2-5
 
 The inner fix lives INSIDE one market's supply-schedule fixed point
