@@ -9,6 +9,7 @@ The graph-composer endpoints (Order 8) live here too: ``web`` is allowed to
 import ``ets.blocks`` (the reverse is forbidden — ``blocks/`` stays free of
 ``web``/``solvers`` imports).
 """
+
 from __future__ import annotations
 
 import json
@@ -22,7 +23,7 @@ from ..blocks import BLOCK_CATALOGUE, Graph, derive_manifest, graph_from_config,
 from ..blocks.serialize import serialize_catalogue
 from ..core.paths import EXAMPLES_DIR, USER_SCENARIOS_DIR
 from ..config_io import blank_config, build_markets_from_config
-from ..engine import run_simulation, solve_scenario_path
+from ..engine import run_simulation, solve_multi_market_scenario, solve_scenario_path
 from ..model_store import (
     compile_graph_or_raise,
     iter_examples,
@@ -92,6 +93,7 @@ def _decorate_frontend_config(config: dict, template_id: str) -> dict:
 
 class _WarningCollector(logging.Handler):
     """Lightweight log handler that accumulates WARNING-level messages."""
+
     def __init__(self, store: list[str]) -> None:
         super().__init__(level=logging.WARNING)
         self._store = store
@@ -100,9 +102,207 @@ class _WarningCollector(logging.Handler):
         self._store.append(self.format(record))
 
 
+def _participant_entry(row: dict, sector: str) -> dict:
+    """One ``perParticipant`` result entry from a solved participant-frame row.
+
+    The single place a participant-result row (from
+    ``core/market/reporting.py:participant_results``, whether it arrives via the
+    flat ``solve_scenario_path`` detail loop or a linked
+    ``solve_multi_market_scenario`` frame — both write identical column labels)
+    is projected to the frontend's per-participant shape. ``sector`` is passed in
+    because the two callers resolve it differently (flat: ``_lookup_sector`` on
+    the scenario config; linked: per-market body map), but every other field is
+    identical, so this stays one mapping rather than two.
+    """
+    return {
+        "name": row["Participant"],
+        "technology": row.get("Chosen Technology", "Base Technology"),
+        "technology_mix": row.get("Technology Mix", ""),
+        "initial": row["Initial Emissions"],
+        "free": row["Free Allocation"],
+        "abatement": row["Abatement"],
+        "residual": row["Residual Emissions"],
+        "net_trade": row["Net Allowances Traded"],
+        "ratio": (
+            0.0
+            if row["Initial Emissions"] == 0
+            else row["Free Allocation"] / row["Initial Emissions"]
+        ),
+        "allowance_buys": row["Allowance Buys"],
+        "allowance_sells": row["Allowance Sells"],
+        "penalty_emissions": row["Penalty Emissions"],
+        "starting_bank_balance": row.get("Starting Bank Balance", 0.0),
+        "ending_bank_balance": row.get("Ending Bank Balance", 0.0),
+        "banked_allowances": row.get("Banked Allowances", 0.0),
+        "borrowed_allowances": row.get("Borrowed Allowances", 0.0),
+        "expected_future_price": row.get("Expected Future Price", 0.0),
+        "fixed_cost": row.get("Fixed Technology Cost", 0.0),
+        "abatement_cost": row["Abatement Cost"],
+        "allowance_cost": row["Allowance Cost"],
+        "penalty_cost": row["Penalty Cost"],
+        "sales_revenue": row["Sales Revenue"],
+        "total_compliance_cost": row["Total Compliance Cost"],
+        "indirect_emissions": row.get("Indirect Emissions", 0.0),
+        "scope2_cbam_liability": row.get("Scope 2 CBAM Liability", 0.0),
+        "cbam_liability": row.get("CBAM Liability", 0.0),
+        "sector": sector,
+    }
+
+
+# D2 joint-equilibrium convergence diagnostics — stamped by dispatch ONLY on
+# cyclic-SCC summary rows (mirror of ets.mcp.compact._JOINT_COLUMNS). PRESENCE is
+# the signal (a non-converged SCC stamps ``Joint Converged = 0.0``); an
+# acyclic/single-market row must never carry them, so the concat of a cyclic and
+# an acyclic frame (which back-fills the missing labels with NaN) is scrubbed by
+# _strip_absent_joint_columns before the record reaches the wire.
+_JOINT_SUMMARY_COLUMNS: tuple[str, ...] = (
+    "Joint Converged",
+    "Joint Outer Iterations",
+    "Joint Max Normalized Change",
+    "Joint Cycle Detected",
+)
+
+
+def _strip_absent_joint_columns(record: dict) -> dict:
+    """Drop NaN ``Joint *`` keys so only genuinely-cyclic rows carry them.
+
+    ``pd.concat`` of a cyclic-SCC frame (with the four ``Joint *`` columns) and
+    an acyclic frame (without) back-fills the missing cells with NaN — and the
+    same happens WITHIN one linked scenario that mixes a cyclic SCC and a size-1
+    acyclic SCC. Left alone, ``_json_safe`` would turn those NaN into ``null`` and
+    an acyclic market would wrongly present a (null) joint panel. Removing the
+    NaN-valued keys restores the dispatch present-guard the frontend reads.
+    """
+    for label in _JOINT_SUMMARY_COLUMNS:
+        value = record.get(label)
+        if isinstance(value, float) and math.isnan(value):
+            record.pop(label, None)
+    return record
+
+
+def _multi_market_meta(scenario: dict) -> dict[tuple[str, str], dict]:
+    """Per ``(market_id, year)`` sector map + price bounds from a linked scenario.
+
+    Read straight off the compiled market bodies (``scenario["markets"]``) — the
+    linked scenario has no top-level ``years``/``participants`` for
+    ``_lookup_sector`` or the year price-bound axis to key on, so the per-market
+    display metadata is resolved here instead. Absent values fall through to the
+    caller's defaults (sector ``"Other"``, the ``MarketChart`` axis fallback).
+    """
+    meta: dict[tuple[str, str], dict] = {}
+    for market in scenario.get("markets", []):
+        market_id = str(market.get("market_id"))
+        for year in market.get("years", []):
+            year_label = str(year.get("year"))
+            meta[(market_id, year_label)] = {
+                "sectors": {
+                    str(participant.get("name")): participant.get("sector", "Other")
+                    for participant in year.get("participants", [])
+                },
+                "price_lower_bound": year.get("price_lower_bound"),
+                "price_upper_bound": year.get("price_upper_bound"),
+            }
+    return meta
+
+
+def _multi_market_result(summary_row: dict, participant_rows: list[dict], entry_meta: dict) -> dict:
+    """Build one composite ``scenario :: market`` year result from solved frames.
+
+    Same result shape as the flat ``solve_scenario_path`` detail loop, sourced
+    from the ``solve_multi_market_scenario`` summary/participant frames (which the
+    joint solver returns instead of the per-market MAC objects a 121-point demand
+    curve is drawn from). The KPIs carry the exact joint price/revenue; the
+    market-clearing chart gets the same TWO-point schematic demand curve the
+    frontend's ``buildDraftResult`` fallback uses — a flat net-demand line the
+    solved equilibrium dot sits on — rather than a fabricated curve shape.
+    """
+    sectors = entry_meta.get("sectors", {})
+    per_participant = [
+        _participant_entry(row, sectors.get(str(row["Participant"]), "Other"))
+        for row in participant_rows
+    ]
+    price = float(summary_row.get("Equilibrium Carbon Price", 0.0))
+    auction_sold = float(summary_row.get("Auction Sold", 0.0))
+    net_demand = float(sum(row["Net Allowances Traded"] for row in participant_rows))
+    per_part_net = [float(row["Net Allowances Traded"]) for row in participant_rows]
+    expected = [float(row.get("Expected Future Price", 0.0)) for row in participant_rows]
+    expected_future_price = float(sum(expected) / len(expected)) if expected else 0.0
+    lower = entry_meta.get("price_lower_bound")
+    upper = entry_meta.get("price_upper_bound")
+    lower = float(lower) if lower is not None else 0.0
+    upper = float(upper) if upper is not None else max(lower + 1.0, 250.0)
+    return {
+        "price": price,
+        "Q": auction_sold,
+        "auctionOffered": float(summary_row.get("Auction Offered", 0.0)),
+        "auctionSold": auction_sold,
+        "unsoldAllowances": float(summary_row.get("Unsold Allowances", 0.0)),
+        "auctionCoverageRatio": float(summary_row.get("Auction Coverage Ratio", 0.0)),
+        "expectationRule": summary_row.get("Expectation Rule", "next_year_baseline"),
+        "manualExpectedPrice": expected_future_price,
+        "expectedFuturePrice": expected_future_price,
+        "totalAbate": float(sum(row["Abatement"] for row in participant_rows)),
+        "totalTraded": float(
+            sum(max(0.0, row["Net Allowances Traded"]) for row in participant_rows)
+        ),
+        "revenue": float(summary_row.get("Total Auction Revenue", 0.0)),
+        "analysis": None,
+        "perParticipant": per_participant,
+        "demandCurve": [
+            {"p": lower, "total": net_demand, "perPart": per_part_net},
+            {"p": upper, "total": net_demand, "perPart": per_part_net},
+        ],
+    }
+
+
+def _collect_multi_market_results(
+    summary_df: pd.DataFrame,
+    participant_df: pd.DataFrame,
+    scenario: dict,
+    by_scenario: dict,
+) -> None:
+    """Populate ``by_scenario`` with a linked scenario's per-(market, year) results.
+
+    Keys mirror the engine's composite grouping key ``f"{scenario} :: {market_id}"``
+    (the ``Scenario`` column of both frames), so the frontend — which flattens the
+    same linked scenario into one pseudo-scenario per market whose ``name`` is that
+    composite — looks each market's result up by name exactly as it does a flat run.
+    """
+    if participant_df.empty:
+        return
+    meta = _multi_market_meta(scenario)
+    summary_by_key: dict[tuple[str, str], dict] = {}
+    for row in summary_df.to_dict(orient="records"):
+        summary_by_key[(str(row.get("Scenario")), str(row.get("Year", "Base Year")))] = row
+    grouped: dict[tuple[str, str], list[dict]] = {}
+    for row in participant_df.to_dict(orient="records"):
+        grouped.setdefault(
+            (str(row.get("Scenario")), str(row.get("Year", "Base Year"))), []
+        ).append(row)
+    for (composite, year_label), participant_rows in grouped.items():
+        market_id = composite.rsplit(" :: ", 1)[1] if " :: " in composite else ""
+        entry_meta = meta.get((market_id, year_label), {})
+        result = _multi_market_result(
+            summary_by_key.get((composite, year_label), {}), participant_rows, entry_meta
+        )
+        by_scenario.setdefault(composite, {})[year_label] = result
+
+
 def _build_dashboard_payload(config: dict) -> dict:
     frontend_config = _decorate_frontend_config(config, template_id="run")
-    markets = build_markets_from_config(frontend_config)
+    all_scenarios = frontend_config.get("scenarios", [])
+    # A linked (multi-market / joint-equilibrium) scenario carries a ``markets``
+    # key that ``build_markets_from_config`` refuses — it is solved by
+    # ``solve_multi_market_scenario`` instead (D2-7). Flat single-market scenarios
+    # stay on the byte-identical legacy builder, so a run with NO ``markets``
+    # scenario is built, solved, and serialized EXACTLY as before this change.
+    flat_scenarios = [s for s in all_scenarios if "markets" not in s]
+    multi_scenarios = [s for s in all_scenarios if "markets" in s]
+    flat_markets = (
+        build_markets_from_config({**frontend_config, "scenarios": flat_scenarios})
+        if flat_scenarios
+        else []
+    )
 
     # Capture logger warnings during simulation so they can be surfaced in the UI
     _warnings: list[str] = []
@@ -114,15 +314,26 @@ def _build_dashboard_payload(config: dict) -> dict:
     ets_logger = logging.getLogger("ets")
     pe_logger.addHandler(_log_handler)
     ets_logger.addHandler(_log_handler)
+    summary_frames: list[pd.DataFrame] = []
+    participant_frames: list[pd.DataFrame] = []
+    multi_frames: list[tuple[dict, pd.DataFrame, pd.DataFrame]] = []
     try:
-        summary_df, participant_df = run_simulation(markets)
+        if flat_markets:
+            flat_summary_df, flat_participant_df = run_simulation(flat_markets)
+            summary_frames.append(flat_summary_df)
+            participant_frames.append(flat_participant_df)
+        for scenario in multi_scenarios:
+            m_summary_df, m_participant_df = solve_multi_market_scenario(scenario)
+            summary_frames.append(m_summary_df)
+            participant_frames.append(m_participant_df)
+            multi_frames.append((scenario, m_summary_df, m_participant_df))
     finally:
         pe_logger.removeHandler(_log_handler)
         ets_logger.removeHandler(_log_handler)
 
     by_scenario: dict[str, dict[str, dict]] = {}
     scenario_market_map: dict[str, list] = {}
-    for market in markets:
+    for market in flat_markets:
         scenario_market_map.setdefault(market.scenario_name, []).append(market)
 
     for scenario_name, scenario_markets in scenario_market_map.items():
@@ -142,16 +353,20 @@ def _build_dashboard_payload(config: dict) -> dict:
             participant_rows = item["participant_df"].to_dict(orient="records")
             demand_curve = []
             lower = market.price_lower_bound if market.price_lower_bound is not None else 0.0
-            upper = market.price_upper_bound if market.price_upper_bound is not None else max(
-                participant.penalty_price for participant in market.participants
-            ) * 1.25
+            upper = (
+                market.price_upper_bound
+                if market.price_upper_bound is not None
+                else max(participant.penalty_price for participant in market.participants) * 1.25
+            )
             point_count = 121
             for step in range(point_count):
                 probe = lower + (upper - lower) * (step / (point_count - 1))
                 per_part = [
                     participant.allowance_demand_or_supply(
                         probe,
-                        starting_bank_balance=float(starting_bank_balances.get(participant.name, 0.0)),
+                        starting_bank_balance=float(
+                            starting_bank_balances.get(participant.name, 0.0)
+                        ),
                         expected_future_price=expected_future_price,
                         banking_allowed=market.banking_allowed,
                         borrowing_allowed=market.borrowing_allowed,
@@ -178,51 +393,48 @@ def _build_dashboard_payload(config: dict) -> dict:
                 "manualExpectedPrice": market.manual_expected_price,
                 "expectedFuturePrice": expected_future_price,
                 "totalAbate": float(sum(row["Abatement"] for row in participant_rows)),
-                "totalTraded": float(sum(max(0.0, row["Net Allowances Traded"]) for row in participant_rows)),
-                "revenue": float(market.calculate_auction_revenue(price, float(equilibrium["auction_sold"]))),
+                "totalTraded": float(
+                    sum(max(0.0, row["Net Allowances Traded"]) for row in participant_rows)
+                ),
+                "revenue": float(
+                    market.calculate_auction_revenue(price, float(equilibrium["auction_sold"]))
+                ),
                 "analysis": None,
                 "perParticipant": [
-                    {
-                        "name": row["Participant"],
-                        "technology": row.get("Chosen Technology", "Base Technology"),
-                        "technology_mix": row.get("Technology Mix", ""),
-                        "initial": row["Initial Emissions"],
-                        "free": row["Free Allocation"],
-                        "abatement": row["Abatement"],
-                        "residual": row["Residual Emissions"],
-                        "net_trade": row["Net Allowances Traded"],
-                        "ratio": (
-                            0.0
-                            if row["Initial Emissions"] == 0
-                            else row["Free Allocation"] / row["Initial Emissions"]
+                    _participant_entry(
+                        row,
+                        _lookup_sector(
+                            frontend_config, market.scenario_name, market.year, row["Participant"]
                         ),
-                        "allowance_buys": row["Allowance Buys"],
-                        "allowance_sells": row["Allowance Sells"],
-                        "penalty_emissions": row["Penalty Emissions"],
-                        "starting_bank_balance": row.get("Starting Bank Balance", 0.0),
-                        "ending_bank_balance": row.get("Ending Bank Balance", 0.0),
-                        "banked_allowances": row.get("Banked Allowances", 0.0),
-                        "borrowed_allowances": row.get("Borrowed Allowances", 0.0),
-                        "expected_future_price": row.get("Expected Future Price", 0.0),
-                        "fixed_cost": row.get("Fixed Technology Cost", 0.0),
-                        "abatement_cost": row["Abatement Cost"],
-                        "allowance_cost": row["Allowance Cost"],
-                        "penalty_cost": row["Penalty Cost"],
-                        "sales_revenue": row["Sales Revenue"],
-                        "total_compliance_cost": row["Total Compliance Cost"],
-                        "indirect_emissions": row.get("Indirect Emissions", 0.0),
-                        "scope2_cbam_liability": row.get("Scope 2 CBAM Liability", 0.0),
-                        "cbam_liability": row.get("CBAM Liability", 0.0),
-                        "sector": _lookup_sector(frontend_config, market.scenario_name, market.year, row["Participant"]),
-                    }
+                    )
                     for row in participant_rows
                 ],
                 "demandCurve": demand_curve,
             }
-            by_scenario.setdefault(market.scenario_name, {})[str(market.year or "Base Year")] = result
+            by_scenario.setdefault(market.scenario_name, {})[str(market.year or "Base Year")] = (
+                result
+            )
 
-    summary_records = summary_df.to_dict(orient="records")
-    participant_records = participant_df.to_dict(orient="records")
+    for scenario, m_summary_df, m_participant_df in multi_frames:
+        _collect_multi_market_results(m_summary_df, m_participant_df, scenario, by_scenario)
+
+    # Records are built PER FRAME (not from the concatenated frame) so a flat
+    # summary row never inherits a NaN ``Joint *`` column from a cyclic frame;
+    # _strip_absent_joint_columns then handles the same back-fill WITHIN a linked
+    # scenario that mixes a cyclic and an acyclic SCC. Analysis reads the
+    # concatenated frames (it ignores the Joint columns).
+    summary_records = [
+        _strip_absent_joint_columns(record)
+        for frame in summary_frames
+        for record in frame.to_dict(orient="records")
+    ]
+    participant_records = [
+        record for frame in participant_frames for record in frame.to_dict(orient="records")
+    ]
+    summary_df = pd.concat(summary_frames, ignore_index=True) if summary_frames else pd.DataFrame()
+    participant_df = (
+        pd.concat(participant_frames, ignore_index=True) if participant_frames else pd.DataFrame()
+    )
     analysis = build_analysis(summary_df, participant_df)
 
     return {
@@ -257,7 +469,10 @@ def _handle_graph_validate(data: dict) -> dict:
     try:
         graph = Graph.from_dict(data.get("graph") or {})
     except Exception as exc:
-        return {"ok": False, "issues": [{"level": "error", "rule": "malformed", "message": str(exc)}]}
+        return {
+            "ok": False,
+            "issues": [{"level": "error", "rule": "malformed", "message": str(exc)}],
+        }
     issues = validate_graph(graph)
     return {
         "ok": not any(issue.level == "error" for issue in issues),
@@ -478,7 +693,9 @@ def _save_user_scenario(payload: dict) -> dict:
     }
 
 
-def _lookup_sector(config: dict, scenario_name: str, year: str | None, participant_name: str) -> str:
+def _lookup_sector(
+    config: dict, scenario_name: str, year: str | None, participant_name: str
+) -> str:
     for scenario in config.get("scenarios", []):
         if scenario.get("name") != scenario_name:
             continue
@@ -511,6 +728,7 @@ def _json_safe(value):
 def _handle_calibrate(data: dict) -> dict:
     """Handle POST /api/calibrate — fit abatement slopes to observed prices."""
     from ..analysis.calibration import calibrate_slopes
+
     config = data.get("config")
     observed_prices = data.get("observed_prices", {})
     participant_names = data.get("participant_names", [])
@@ -534,6 +752,7 @@ def _handle_calibrate(data: dict) -> dict:
 def _handle_batch_run(data: dict) -> dict:
     """Handle POST /api/batch-run — sweep parameters and aggregate results."""
     from ..analysis.batch import run_batch
+
     config = data.get("config")
     sweeps = data.get("sweeps", [])
     if not config:
@@ -546,6 +765,7 @@ def _handle_batch_run(data: dict) -> dict:
 def _handle_narrative(data: dict) -> dict:
     """Handle POST /api/narrative — generate plain-language summary."""
     from ..analysis.narrative import generate_narrative
+
     results = data.get("results", [])
     scenario_name = str(data.get("scenario_name", ""))
     narrative = generate_narrative(results, scenario_name=scenario_name)
@@ -555,12 +775,14 @@ def _handle_narrative(data: dict) -> dict:
 def _handle_csv_import(body: bytes, headers) -> dict:
     """Handle POST /api/import-csv — convert CSV to ETS config."""
     from ..analysis.csv_import import csv_to_config
+
     content_type = headers.get("Content-Type", "") or headers.get("content-type", "") or ""
 
     if "multipart/form-data" in content_type:
         # Parse multipart — extract 'file' and optional 'scenario_name' fields
         # Use a simple boundary-based parser
         import email
+
         full = b"Content-Type: " + content_type.encode() + b"\r\n\r\n" + body
         msg = email.message_from_bytes(full)
         csv_text = None
@@ -570,7 +792,9 @@ def _handle_csv_import(body: bytes, headers) -> dict:
             if 'name="file"' in cd:
                 csv_text = part.get_payload(decode=True).decode("utf-8", errors="replace")
             elif 'name="scenario_name"' in cd:
-                scenario_name = part.get_payload(decode=True).decode("utf-8", errors="replace").strip()
+                scenario_name = (
+                    part.get_payload(decode=True).decode("utf-8", errors="replace").strip()
+                )
         if csv_text is None:
             raise ValueError("Multipart form must include a 'file' field with CSV content.")
     else:
@@ -625,9 +849,10 @@ def build_analysis(summary_df: pd.DataFrame, participant_df: pd.DataFrame) -> li
         analysis.append(
             f"Expectation rule: {row.get('Expectation Rule', 'next_year_baseline')} with expected future price {float(scenario_slice['Expected Future Price'].mean()) if 'Expected Future Price' in scenario_slice.columns else 0.0:.2f}."
         )
-        if float(row.get("Total Banked Allowances", 0.0)) > 0.0 or float(
-            row.get("Total Borrowed Allowances", 0.0)
-        ) > 0.0:
+        if (
+            float(row.get("Total Banked Allowances", 0.0)) > 0.0
+            or float(row.get("Total Borrowed Allowances", 0.0)) > 0.0
+        ):
             analysis.append(
                 f"Intertemporal channel: firms carry {float(row.get('Total Banked Allowances', 0.0)):.2f} allowances forward and borrow {float(row.get('Total Borrowed Allowances', 0.0)):.2f} from future years."
             )
@@ -646,7 +871,9 @@ def build_analysis(summary_df: pd.DataFrame, participant_df: pd.DataFrame) -> li
                 continue
             first = group.iloc[0]
             last = group.iloc[-1]
-            price_delta = float(last["Equilibrium Carbon Price"]) - float(first["Equilibrium Carbon Price"])
+            price_delta = float(last["Equilibrium Carbon Price"]) - float(
+                first["Equilibrium Carbon Price"]
+            )
             abatement_delta = float(last["Total Abatement"]) - float(first["Total Abatement"])
             analysis.append(
                 f"{scenario} trend: from {first['Year']} to {last['Year']}, carbon price changes by {price_delta:.2f} and total abatement changes by {abatement_delta:.2f}."
