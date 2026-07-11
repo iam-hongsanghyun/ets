@@ -307,6 +307,41 @@ def test_endogenous_investment_detector_absent_when_neither_condition_holds() ->
     assert "endogenous_investment" not in manifest["features"]
 
 
+# ── (b″) snapshots for the EI-7 investment showcase examples ─────────────
+# Ground-truthed against the derived manifests at authoring time (EI-7,
+# docs/invest-feedback-plan.md): the first two examples/*.json to activate
+# the endogenous_investment feature.
+
+
+def test_investment_competitive_transition_features() -> None:
+    """Competitive + endogenous investment: the flag AND the flagged option
+    both trip the direct detector; price_controls comes from the explicit
+    price_upper_bound override (the basic_linear precedent)."""
+    manifest = derive_manifest(_load("investment_competitive_transition"))
+    assert set(manifest["features"]) == {
+        "core", "competitive", "endogenous_investment", "price_controls",
+    }
+    assert manifest["approach"] == ["competitive"]
+
+
+def test_k_msr_decree_induces_investment_features() -> None:
+    """The K-MSR transition showcase: banking + hybrid decree MSR + reserve
+    floor + endogenous investment (sectors via the per-participant
+    sector_group tags, the direct-detector precedent). Per-scenario: only
+    the P1 decree arm carries the MSR; BOTH arms flag the same technology,
+    so endogenous_investment is active in both — the twins differ by the
+    decree package and its credibility, not by the investment feature."""
+    manifest = derive_manifest(_load("k_msr_decree_induces_investment"))
+    assert set(manifest["features"]) == {
+        "core", "banking", "msr", "price_controls", "sectors", "endogenous_investment",
+    }
+    assert manifest["approach"] == ["banking"]
+    p1 = manifest["scenarios"]["P1 decree (credible floor)"]["features"]
+    p0 = manifest["scenarios"]["P0 no reserve (twin)"]["features"]
+    assert "msr" in p1 and "msr" not in p0
+    assert "endogenous_investment" in p1 and "endogenous_investment" in p0
+
+
 # ── (c) vocabulary test ──────────────────────────────────────────────
 
 # Frozen literal vocabulary for BlockSpec.feature, per the catalogue-mapping

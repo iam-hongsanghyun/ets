@@ -30,6 +30,20 @@ reporter families):
                                          per-jurisdiction/ensemble columns).
     k_ets_subsector_decomposition     — sectors configured (sector aggregate
                                          + percentile columns exercised).
+    investment_competitive_transition — endogenous investment configured
+                                         (EI-7 fourth pin; plan D3,
+                                         docs/invest-feedback-plan.md):
+                                         unlike the attach-always reporter
+                                         families above, the four
+                                         ``Investment *`` columns are
+                                         GUARDED (key-presence in
+                                         core/ledger.py, the banking-columns
+                                         precedent) and land at the summary
+                                         TAIL, after the per-participant
+                                         block; the participant frame gains
+                                         NO columns in v1. Captured from the
+                                         solved example at authoring time
+                                         (EI-7).
 """
 
 from __future__ import annotations
@@ -195,6 +209,94 @@ _PINNED_COLUMNS: dict[str, dict[str, list[str]]] = {
             "Power Technology Mix",
             "Power Abatement",
             "Power Net Trade",
+        ],
+        "participant_columns": [
+            "Scenario",
+            "Participant",
+            "Sector Group",
+            "Chosen Technology",
+            "Technology Mix",
+            "Initial Emissions",
+            "Free Allocation",
+            "Abatement",
+            "Residual Emissions",
+            "Allowance Buys",
+            "Allowance Sells",
+            "Penalty Emissions",
+            "Net Allowances Traded",
+            "Starting Bank Balance",
+            "Ending Bank Balance",
+            "Banked Allowances",
+            "Borrowed Allowances",
+            "Expected Future Price",
+            "Fixed Technology Cost",
+            "Abatement Cost",
+            "Allowance Cost",
+            "Penalty Cost",
+            "Sales Revenue",
+            "Total Compliance Cost",
+            "EUA Price",
+            "CBAM Gap",
+            "CBAM Export Share",
+            "CBAM Liable Emissions",
+            "CBAM Liability",
+            "Total Cost incl. CBAM",
+            "Electricity Consumption",
+            "Grid Emission Factor",
+            "Indirect Emissions",
+            "Scope 2 CBAM Coverage",
+            "Scope 2 CBAM Liability",
+            "Year",
+        ],
+    },
+    "investment_competitive_transition": {
+        "summary_columns": [
+            "Scenario",
+            "Equilibrium Carbon Price",
+            "Total Abatement",
+            "Total Allowance Buys",
+            "Total Allowance Sells",
+            "Total Penalty Emissions",
+            "Total Net Allowances Traded",
+            "Auction Offered",
+            "Auction Sold",
+            "Unsold Allowances",
+            "Auction Coverage Ratio",
+            "Reserved Allowances",
+            "Cancelled Allowances",
+            "Unallocated Allowances",
+            "Total Auction Revenue",
+            "Total Starting Bank",
+            "Total Ending Bank",
+            "Total Banked Allowances",
+            "Total Borrowed Allowances",
+            "Expectation Rule",
+            "Manual Expected Price",
+            "Total Compliance Cost",
+            "EUA Price",
+            "CBAM Gap",
+            "Total CBAM Liability",
+            "Total Cost incl. CBAM",
+            "MSR Withheld",
+            "MSR Released",
+            "MSR Reserve Pool",
+            "CCR Cap Adjustment",
+            "CCR Emissions Deviation",
+            "CCR Cost Deviation",
+            "Year",
+            "Domestic Retained Revenue",
+            "CBAM Foregone Revenue",
+            "Potential Revenue if KAU=EUA",
+            "Total Indirect Emissions",
+            "Total Scope 2 CBAM Liability",
+            "Steel Technology",
+            "Steel Technology Mix",
+            "Steel Abatement",
+            "Steel Net Trade",
+            "Investment Adoptions",
+            "Investment Newly Effective",
+            "Investment Feedback Iterations",
+            "Investment Converged",
         ],
         "participant_columns": [
             "Scenario",
