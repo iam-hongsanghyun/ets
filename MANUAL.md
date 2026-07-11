@@ -341,6 +341,7 @@ Runs competitive, Hotelling, and Nash-Cournot in parallel on the same config and
 | Carbon Cap Rule (CCR) | `ccr_enabled: true` | Taylor-rule adaptive cap responding to emissions & abatement-cost gaps |
 | Price-elastic baseline (feedback A) | `reference_carbon_price`, `output_price_elasticity` | Carbon-intensive activity contracts as the price rises — demand destruction inside clearing |
 | Soft-link coupling (feedback B) | `ets.coupling.run_coupled_simulation` | Iterate the ETS to a joint equilibrium with an external energy/CGE/DSGE model |
+| Endogenous investment feedback | `investment_feedback_enabled`, technology option `investment_trigger` | Outer loop irreversibly adopts technology options whose Dixit–Pindyck trigger crosses the DELIVERED price path — competitive or banking approach only |
 | Piecewise MAC | `abatement_type: "piecewise"`, `mac_blocks[]` | Step-function marginal abatement cost curve |
 | Technology switching | `technology_options[]` | Endogenous technology choice via SLSQP portfolio optimisation |
 | Auction design | `auction_reserve_price`, `minimum_bid_coverage` | Reserve price and minimum coverage rules |
@@ -370,9 +371,109 @@ relax that closure boundary:
   a pluggable adapter — general-equilibrium feedback without embedding a GE model.
   See [`docs/feedback-coupling.md`](docs/feedback-coupling.md).
 
+A third, distinct mechanism — [endogenous investment feedback](#investment-feedback)
+— does not relax the closure boundary above (it stays a single-market, single-engine
+model); it makes *technology adoption itself* an outer-loop equilibrium object instead
+of a static config choice or a post-processed reading of an already-solved path.
+
 New to the tool? Open [`docs/tutorials/`](docs/tutorials/index.html) — a follow-along
 [walkthrough](docs/tutorials/build-your-first-scenario.html) that climbs the closure ladder, plus a
 [scenario cookbook](docs/tutorials/scenario-cookbook.html) of ~20 ready-to-run recipes (one per feature).
+
+---
+
+## Investment Feedback
+
+Endogenous technology adoption (Phase 1): an outer loop (`engine/feedback.py`)
+around the FULL path solve prices each flagged technology's Dixit–Pindyck
+investment trigger against the DELIVERED price path of the previous iterate,
+irreversibly adopts at most one crossing pair per iteration, and re-runs the
+whole path solve — converging in at most `N_flagged + 1` iterations
+(monotone adoption, no price relaxation, no tolerance). See
+[`docs/algorithm-overview.md`, "Endogenous Investment Feedback (Phase 1)"](docs/algorithm-overview.md#endogenous-investment-feedback-phase-1)
+for the trigger math, the outer-loop pseudocode, and the termination theorem,
+and [`docs/invest-feedback-spec.md`](docs/invest-feedback-spec.md) for the
+binding economic spec.
+
+Enable it with `investment_feedback_enabled: true` on the scenario and an
+`investment_trigger` sub-dict on one or more `technology_options[]` entries
+(the sub-dict's presence IS the flag). Supported under
+`model_approach: "competitive"` or `"banking"` only — `"hotelling"`,
+`"nash_cournot"`, and `"all"` raise a config error if flagged.
+
+### Scenario-level fields
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `investment_feedback_enabled` | bool | `false` | Master gate. A flagged `investment_trigger` block with the gate off, or the gate on with nothing flagged, raises a `ValueError` — never a silent no-op. |
+| `investment_max_iterations` | int ≥ 1 | `N_flagged + 1` | Safety rail on outer iterations; exhaustion logs a `WARNING` and returns the last iterate with `Investment Converged = 0`. There is no relaxation or tolerance parameter — termination is combinatorial. |
+| `investment_initial_adoptions` | array | `[]` | Pre-committed adoptions `[{participant, technology, adoption_year}]`; also the landing field the policy-event splice carrier stamps into the next segment. Carried adoptions are FLOORS — a later segment can never un-adopt them. |
+| `invest_credibility` | float [0,1] | unset | Scenario-wide override of every flagged option's own `investment_trigger.credibility`; the field an announced policy event raises via `changes: {"invest_credibility": ...}`. |
+
+### Technology option: `investment_trigger` sub-dict
+
+Add this sub-dict to any entry in a participant's `technology_options[]` to flag it for adoption. Unknown keys raise loudly.
+
+| Field | Type | Units | Required / Default | Description |
+|---|---|---|---|---|
+| `break_even_price` | float | currency/tCO₂ | REQUIRED — exactly one of this or `break_even_prices` | Constant Marshallian break-even θ. |
+| `break_even_prices` | object `{year: value}` | currency/tCO₂ | REQUIRED — exactly one of this or `break_even_price` | Declining/rising break-even schedule (e.g. θ falling with hydrogen input costs). |
+| `payout_yield` | float | 1/yr | REQUIRED, no default | y — sets the certainty-limit hurdle r/y; deliberately has no default. |
+| `sigma` | float ≥ 0 | 1/√yr | `0.0` | Unfloored price volatility σ. |
+| `credibility` | float [0,1] | dimensionless | `0.0` | q — probability the announced floor/decree holds; overridden scenario-wide by `invest_credibility`. |
+| `discount_rate` | float | 1/yr | scenario `discount_rate` | Per-pair override of r. |
+| `trigger_mode` | `"dixit_pindyck"` \| `"break_even"` | — | `"dixit_pindyck"` | `"break_even"` pins the multiple M ≡ 1 (NPV activation dating instead of the D-P trigger). |
+| `trigger_multiple_override` | float ≥ 1 | dimensionless | unset | Bypasses M resolution entirely when set. |
+| `build_lag_years` | int ≥ 0 | yr | `0` | L — years between the decision year τ (state flips) and capacity effective at τ+L. |
+
+### Output columns
+
+Four diagnostic columns appear in the scenario-summary output only when the
+feature is configured (key-presence guarded — every pre-existing golden stays
+column-identical when nothing is flagged): `Investment Adoptions` (sorted JSON
+of `{participant, technology, adoption_year}`, effective through that row's
+year), `Investment Newly Effective` (count of pairs whose capacity arrives
+that year, τ+L == year), `Investment Feedback Iterations`, `Investment
+Converged` (`1.0`/`0.0`).
+
+### Examples
+
+- **`examples/investment_competitive_transition.json`** — competitive path,
+  one participant, one flagged H2-DRI option, `build_lag_years: 1`. Masked
+  (pre-adoption) prices climb 60 → 76 → 90 → 104 → 116 across 2026–2030; the
+  trigger (θ=48, y=0.03, σ=0, so M = r/y = 11/6, P\*=88) first crosses in
+  2028 (masked price 90 ≥ 88). The DECISION year 2028 still clears at 90
+  (capacity isn't in yet); capacity arrives 2029 and the entrant's cheaper
+  demand curve collapses the price to 44 — below the trigger, the spec's
+  ex-post-regret asymmetry (D1.1). Delivered prices: `[60, 76, 90, 44, 56]`.
+  Two outer iterations, converged.
+- **`examples/k_msr_decree_induces_investment.json`** — the K-MSR paper's
+  central transition claim, solved as an endogenous equilibrium rather than
+  post-processing. Two twin banking scenarios (6 years, 2026–2031) flag the
+  same Steel H2-DRI option (θ=5,000 KRW, σ=0.48, y=0.03):
+  - **P1 decree (credible floor)** — hybrid-mode MSR plus a rising auction
+    reserve 9,000 → 12,800 KRW, `invest_credibility: 0.8` (σ_eff=0.096,
+    M≈2.124, P\*≈10,618 KRW). Delivered prices track the reserve floor
+    exactly: `[9000, 9700, 10400, 11200, 12000, 12800]`. **Steel/H2-DRI
+    adopts in 2029** — the first year the floor-delivered price (11,200)
+    clears the trigger.
+  - **P0 no reserve (twin)** — identical fundamentals, no MSR, no floor,
+    `invest_credibility: 0.0` (M≈6.386, P\*≈31,931 KRW). Delivered prices:
+    `[7055.70, 7443.76, 7853.17, 8285.09, 8740.77, 9221.51]`. **Never
+    adopts** — the pure banking ramp tops out around 9,222 KRW, roughly a
+    third of the uncredible trigger.
+
+  Same technology, same fundamentals: the decree package changes whether and
+  when adoption happens through two channels at once — the floor delivers
+  the trigger price, and its credibility shrinks the option-value wedge. The
+  adopted capacity then feeds back into the very banking window it was
+  priced on (lower emissions → bigger bank → MSR intake responds), with zero
+  MSR-module changes.
+
+```bash
+PYTHONPATH=src uv run python -m ets.cli --config examples/k_msr_decree_induces_investment.json
+PYTHONPATH=src uv run python -m ets.cli --config examples/investment_competitive_transition.json
+```
 
 ---
 
@@ -405,6 +506,10 @@ New to the tool? Open [`docs/tutorials/`](docs/tutorials/index.html) — a follo
 | `price_ceiling_trajectory` | object | `{}` | Linearly rising price ceiling |
 | `free_allocation_trajectories` | array | `[]` | Per-participant free ratio phase-out |
 | `sectors` | array | `[]` | Sector objects with cap and auction share trajectories |
+| `investment_feedback_enabled` | bool | `false` | Master gate for endogenous investment feedback (see [Investment Feedback](#investment-feedback)); flagged `investment_trigger` blocks with the gate off (or vice versa) raise a `ValueError` |
+| `investment_max_iterations` | int ≥ 1 | `N_flagged + 1` | Safety rail on outer adoption-loop iterations; not a relaxation/tolerance knob |
+| `investment_initial_adoptions` | array | `[]` | Pre-committed adoptions `[{participant, technology, adoption_year}]`; also the splice-carrier landing field |
+| `invest_credibility` | float [0,1] | unset | Scenario-wide override of every flagged option's `investment_trigger.credibility` |
 | `years` | array | required | Year config objects |
 
 ### Year-level fields
@@ -459,7 +564,7 @@ New to the tool? Open [`docs/tutorials/`](docs/tutorials/index.html) — a follo
 | `grid_emission_factor` | float ≥ 0 | `0.0` | Grid carbon intensity (tCO₂/MWh) |
 | `grid_emission_factor_trajectory` | object | `{}` | Linearly interpolated grid factor over years |
 | `scope2_cbam_coverage` | float [0,1] | `0.0` | Fraction of indirect emissions in CBAM scope |
-| `technology_options` | array | `[]` | Alternative production technologies |
+| `technology_options` | array | `[]` | Alternative production technologies; each entry may carry an `investment_trigger` sub-dict to flag it for endogenous adoption — see [Investment Feedback](#investment-feedback) |
 
 ---
 
@@ -690,6 +795,7 @@ walkthrough above, via `configure.command`.
 | `docs/market-equilibrium.md` | Brent's method details, auction rules, bracketing procedure |
 | `docs/technology-transition.md` | Technology options, SLSQP portfolio optimisation, fixed-cost switching |
 | `docs/k-msr-condensed.md`, `docs/k-msr-vs-repo-comparison.md` | K-MSR (decree-mode) paper reproduction — condensed source translation and repo-vs-paper comparison |
+| `docs/invest-feedback-spec.md`, `docs/invest-feedback-plan.md` | Endogenous investment feedback (Phase 1) — binding economic spec (trigger, equilibrium concept, termination theorem) and architecture/work-order history; see also [Investment Feedback](#investment-feedback) and `docs/algorithm-overview.md` |
 
 ---
 
@@ -770,6 +876,7 @@ docs/                 Extended documentation
 - **Static abatement curves:** MAC parameters do not evolve endogenously. Technological learning curves must be specified explicitly via trajectories. (MAC blocks may include negative-cost "no-regret" measures — see [docs/mac-abatement.md](docs/mac-abatement.md).)
 - **No financial intermediaries:** Banks, brokers, and speculative traders are not modelled. Banking is purely a compliance firm decision.
 - **Partial equilibrium by design:** The core engine clears the allowance market with activity, energy, and macro conditions exogenous. Two opt-in channels relax this: [price-elastic baseline](docs/feedback-price-elastic-baseline.md) (feedback A — own-price activity response, still partial equilibrium) and [soft-link coupling](docs/feedback-coupling.md) (feedback B — joint equilibrium with an external energy/CGE/DSGE model). Both default off.
+- **Endogenous investment feedback covers competitive and banking only (v1):** [Investment feedback](#investment-feedback) wraps the competitive and Rubin/Schennach banking path solves; scenarios under `model_approach: "hotelling"`, `"nash_cournot"`, or `"all"` cannot flag `technology_options[]` for adoption yet (a flagged option under those approaches raises a config error rather than silently ignoring the flag). The partial-credibility interior mapping σ_eff(q) = (1−q)·σ is a documented modelling choice, not a paper result (see [`docs/invest-feedback-spec.md`](docs/invest-feedback-spec.md) D2.1).
 - **Calibration is single-scenario:** The `/api/calibrate` endpoint calibrates `abatement_cost_slope` for linear MAC only; piecewise blocks are not calibrated automatically.
 - **Nash-Cournot convergence:** The Jacobi iteration may not converge for all market configurations; the solver logs a warning and uses its best approximation if the iteration limit is reached.
 - **Integer compliance:** The model operates in continuous tonnes; compliance is not restricted to integer lots.

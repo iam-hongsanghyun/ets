@@ -725,6 +725,123 @@ See [Feedback Option B — Soft-Link Coupling](feedback-coupling.md) for the ful
 
 ---
 
+## Endogenous Investment Feedback (Phase 1)
+
+**Files:** `src/ets/core/investment.py` (Dixit–Pindyck trigger math, T0), `src/ets/engine/feedback.py` (the outer adoption loop host), `src/ets/features/endogenous_investment/plugin.py` (config door), `rule.py` (`InvestmentRule`, the `PathFeedback` implementation), `vintage.py` (availability gating)
+
+**Binding spec:** [`invest-feedback-spec.md`](invest-feedback-spec.md) (ets-lead-economist design gate). Architecture: [`invest-feedback-plan.md`](invest-feedback-plan.md).
+
+**Enabled by:** scenario `investment_feedback_enabled: true` **and** at least one `technology_options[]` entry carrying a non-empty `investment_trigger` sub-dict — presence of the sub-dict IS the flag. Both-or-neither is a loud `ValueError`, at config-build time and again at solve time (spec D3.2/D6): a flagged option with the gate off, or the gate on with nothing flagged anywhere in a year, never silently no-ops. `model_approach` must be `"competitive"` or `"banking"` — v1 approach coverage (spec D1.3); `"hotelling"`, `"nash_cournot"`, and `"all"` raise.
+
+### Equilibrium framing
+
+Before this feature, technology adoption was either a static per-year config choice (`technology_options[]`, chosen by the SLSQP portfolio optimiser at whatever price cleared) or *post-processing*: `core/investment.py` (formerly `ets.analysis.investment_trigger`, now a permanent re-export facade) computed a Dixit–Pindyck trigger and dated its crossing on an *already-solved*, exogenous price path — the gap the K-MSR paper's Section 7 names directly: "the firm's investment is post-processing on an exogenous price path, not a two-way equilibrium … the priority extension is the investment decision as optimal stopping against a partially credible, escalating price barrier" (`docs/k-msr-condensed.md:118-126`).
+
+This feature closes that gap in reduced form by computing a **trigger-consistent adoption equilibrium** (spec D1.1): a pair $(P, A)$, with $A = \{(i, j) \to \tau_{ij}\}$ mapping (participant, technology) pairs to adoption years, such that:
+
+- **market consistency** — $P$ is the approach's own equilibrium (competitive per-year clearing, or the Rubin/Schennach banking equilibrium with its internal supply-rule fixed point) given the participant structure implied by $A$ (capacity effective from $\tau + L$);
+- **stopping consistency** — every adopted pair crossed its trigger on the iterate that adopted it, $\tau_{ij} = \min\{t : P^{\text{delivered}}(t) \ge P^*_j(t)\}$; and on the FINAL path every non-adopted flagged pair satisfies $P^{\text{delivered}}(t) < P^*_j(t)$ for all $t$ — a loud assertion, the investment analogue of the banking window's no-arbitrage boundary checks.
+
+Deliberate asymmetry: an adopted pair MAY sit below its trigger on the final path (the entrant depresses the post-adoption price — standard discrete entry). Adoption events may violate the trigger inequality *ex post*, never *ex ante*.
+
+The price signal is the **delivered** spot path (post-overlay, floor-clipped, clip-last) of the previous outer iterate — the same value `core.ledger.collect_path_results` reports as `"Equilibrium Carbon Price"` — never the expectations module's one-year-ahead banking signal (that would double-count waiting value: the Dixit–Pindyck multiple already capitalizes deferral option value) and never a myopic within-iteration read (the adoption loop is strictly OUTSIDE the existing per-year / perfect-foresight solve). NOT configurable (spec D1.2).
+
+### Trigger rule (spec D2.1)
+
+$$ P^*_j(t) = M_j\,\theta_j(t), \qquad M_j = \frac{\beta_j}{\beta_j - 1} $$
+
+with $\beta_j > 1$ the positive root of the Dixit–Pindyck fundamental quadratic (`core/investment.py:beta_positive_root`, see also ["Forward transmission (λ) and the Dixit–Pindyck investment trigger"](forward-transmission.md)):
+
+$$ \tfrac{1}{2}\sigma_{\text{eff},j}^2\,\beta(\beta-1) + (r_j - y_j)\,\beta - r_j = 0 $$
+
+ASCII fallback: `(sigma_eff^2/2)*beta*(beta-1) + (r-y)*beta - r = 0 ; M = beta/(beta-1)`.
+
+Effective volatility is a partial-credibility interpolation between "no credible floor" ($q=0$) and "fully credible floor" ($q=1$) — the paper (A.10) fixes only the endpoints; the interior linear-in-$\sigma$ mapping is a documented modelling choice, not a paper result:
+
+$$ \sigma_{\text{eff},j} = (1 - q_j)\,\sigma_j $$
+
+At $\sigma_{\text{eff}} \to 0$ the multiple does **not** collapse to 1 — it retains the pure timing wedge that survives under certainty because the price drifts up at $r - y > 0$:
+
+$$ \lim_{\sigma_{\text{eff}} \to 0} M = \frac{r}{y} \qquad (\approx 1.83 \text{ at } r=0.055,\ y=0.03,\ \text{paper A.10}) $$
+
+`trigger_mode="break_even"` pins $M \equiv 1$ instead (the paper's own NPV activation dating — a *mode*, not a limit).
+
+| Symbol | Name | Units | Config field |
+|---|---|---|---|
+| $\theta_j(t)$ | Marshallian break-even | currency/tCO₂ | `investment_trigger.break_even_price` (scalar) or `break_even_prices` (`{year: value}`); REQUIRED, exactly one of the two |
+| $\sigma_j$ | Unfloored price volatility | 1/√yr | `investment_trigger.sigma`, default `0.0` |
+| $q_j$ | Credibility | dimensionless, [0,1] | `investment_trigger.credibility` (default `0.0`), overridden scenario-wide by `invest_credibility` |
+| $r_j$ | Discount rate | 1/yr | `investment_trigger.discount_rate`, default scenario `discount_rate` |
+| $y_j$ | Payout / convenience yield | 1/yr | `investment_trigger.payout_yield`; REQUIRED, no default |
+| $M_j$ | Trigger multiple | dimensionless, ≥ 1 | `investment_trigger.trigger_multiple_override` bypasses resolution when set |
+| $\tau_{ij}$ | Adoption (decision) year | yr (label) | first crossing, `core.investment.activation_year(price_path, theta, M)` |
+| $L_j$ | Build lag | yr, int ≥ 0 | `investment_trigger.build_lag_years`, default `0` |
+
+$q$ is CONFIG STATE, not an automatic consequence of a configured floor (spec D2.2): "a guaranteed price is not a guaranteed investment" (paper §6; Kydland–Prescott) — the model does not automatically believe its own announced rules. An announced decree raises $q$ only if the policy event explicitly declares `changes: {"invest_credibility": ...}`.
+
+### Outer loop (spec D1, `engine/feedback.py`)
+
+$$ A_0 = \text{carried adoptions}, \qquad
+   \mathcal{M}_k = \mathrm{apply}(\mathcal{M}_0, A_k), \qquad
+   P_k = \Pi(\mathcal{M}_k) $$
+$$ A_{k+1} = \mathrm{propose}(P_k, A_k) \ \text{s.t.}\ A_k \subseteq A_{k+1},\ |A_{k+1}| \le |A_k| + 1 $$
+$$ A_{k+1} = A_k \implies \text{converged: } (P_k, A_k) \text{ is the equilibrium} $$
+
+ASCII fallback:
+
+```
+state_0 = carried adoptions (splice carrier / config); k = 0
+loop:
+  markets_k = fresh_rule().apply(base_markets, state_k)   # vintaging + masking
+  path_k    = path_solver(markets_k)                      # FULL untouched solve
+  P_k       = delivered price path of path_k
+  proposal  = fresh_rule().propose(P_k, state_k, markets_k)
+  host enforces: proposal >= state_k (superset), no re-dating, <= 1 new event
+  if proposal == state_k: converged (final = path_k)       # combinatorial
+  state_{k+1} = proposal
+```
+
+$\Pi(\cdot)$ is the approach's own FULL path solve — the same closure any non-investment scenario calls (`engine/dispatch.py`'s `_path_solver_for`): the competitive fixed point, or the complete Rubin/Schennach banking solve including its window search and supply-rule fixed point. The loop sits strictly OUTSIDE the expectations perfect-foresight inner loop and OUTSIDE `solve_banking_path` (spec D1.3): a banking-window evaluation must stay a pure function of (prices, bank) with $e_t(\cdot)$ fixed, so mutating participants inside it would leave "which iterate's prices" undefined. Every outer iteration therefore re-runs the ENTIRE inner solve, window search included — the K-MSR transition feedback (adoption → lower emissions → bigger bank → MSR intake) flows through automatically, with zero MSR-module changes.
+
+At most one candidate flips per iteration, tie-broken deterministically (spec D1.4): earliest crossing year → largest relative exceedance $P^{\text{delivered}}(\tau)/P^*(\tau)$ → declared config order (participant order, then per-participant technology-option order). The event records the crossing (DECISION) year $\tau$, never $\tau + L$ — the lag applies only at vintaging.
+
+### Termination theorem (spec D1.4)
+
+Adoption is monotone across outer iterations (once adopted, never un-adopted — that IS irreversibility) and at most one pair flips per iteration, so $|A_k|$ strictly increases on every non-converged iteration and is bounded by $N$, the number of flagged pairs:
+
+$$ A_0 \subseteq A_1 \subseteq \cdots \subseteq A_k, \quad
+   |A_{k+1}| \le |A_k| + 1, \quad |A_k| \le N
+   \implies k^{*} \le N + 1 $$
+
+ASCII: at most `N` flipping iterations can occur; the `(N+1)`-th iteration must return `proposal == state`. No damping parameter, no outer price tolerance — termination is purely combinatorial. `investment_max_iterations` (default $N+1$) is a SAFETY RAIL only, reachable only by a rule that violates its own contract; exhaustion logs a `WARNING` and returns the last iterate with `Investment Converged = 0`. Anchor V8 (`tests/engine/test_investment_feedback.py`) pins `N` adversarial triggers converging in exactly `<= N+1` iterations, one flip each, in tie-break order.
+
+### Vintaging semantics (spec D2.3–D2.5, D3)
+
+Availability gating only — never a build transform, never a MAC or `initial_emissions` mutation (`features/endogenous_investment/vintage.py`):
+
+$$ \text{available}_{ij}(t) \iff (i,j) \in A \ \wedge\ t \ge \tau_{ij} + L_j $$
+
+ASCII: `available(i, j, t) = adopted(i, j) and t >= tau_ij + L_j`.
+
+- **Supersession (D2.5), binding and subtle:** a flagged technology is REMOVED from the reversible choice set until $\tau+L$. A flagged pair that never crosses its trigger is therefore identical to the same scenario with that option DELETED — not merely "with the flag removed" (anchor V3: `assert_frame_equal` exact against the option-deleted config; all 37 pre-existing goldens stay bit-identical when nothing is flagged anywhere).
+- **Capacity vs. decision (D2.3):** the state flips at $\tau$ (the decision year — what carries across policy-event splices); capacity, and its price effect, only arrive at $\tau + L$. In $[\tau, \tau+L)$ the participant's choice set is structurally unchanged and no cost is booked.
+- **Utilization stays reversible (D2.4):** adoption makes the flagged `TechnologyOption` available at its configured `max_activity_share` — the existing SLSQP portfolio optimiser still chooses freely within that cap every year. Capex is irreversible; dispatch is not.
+- **Capex lives in $\theta$ only (D2.4, anchor V5):** one-time adoption capex belongs inside the break-even $\theta$ the trigger reads, never simultaneously in the technology option's per-period `fixed_cost` — `fixed_cost` keeps its existing overhead-while-active semantics. Anchor V5 pins the double-count visibly: the same post-adoption clearing price, but a total-compliance-cost delta equal to exactly the re-booked capex when a config stuffs it into both places.
+
+### Identities (spec D4, loud assertions)
+
+- **Fixed-cap waterbed (D4.1):** with no cancellation/MSR valve active, cumulative residual emissions equal cumulative circulating supply plus initial bank minus terminal bank, ON vs. OFF equal to 1e-3 Mt — adoption shifts *who* abates and *when*, never the cumulative total. (With the release valve active, D4.2 generalises this: the only legal channel for the total to move is $\Delta(\text{cum. floor-cancelled} + \text{net MSR retention})$.)
+- **Irreversibility (D4.4):** an adoption year $\tau$ is written at most once; availability is monotone in $t$, in outer iteration $k$, and across policy-event segments. The splice carrier (`ADOPTION_CARRIER`, column `"Investment Adoptions"` → field `investment_initial_adoptions`) stamps the adoption state into the next segment as a FLOOR: a late policy event that prices the technology back out cannot un-adopt it (anchor V7) — irreversibility doing policy work, in the spirit of Kydland–Prescott time-consistency.
+- **No double-counting (D4.5):** zero share / fixed-cost / abatement pre-adoption; base-technology MAC blocks stay bytewise identical pre/post adoption (vintaging never mutates them); capex never counted in both $\theta$ and post-adoption `fixed_cost` (V5, above).
+
+Both identities are exercised ON vs. OFF, with and without the release valve (floor cancellation, MSR), by anchor V6 (`tests/features/endogenous_investment/test_anchors.py`).
+
+### Configuration and worked examples
+
+Scenario-level fields, the `investment_trigger` sub-dict, and two worked examples (a competitive build-lag transition, and the K-MSR decree-induces-investment showcase with its headline P1-adopts / P0-never numbers) are in [MANUAL.md, "Investment Feedback"](../MANUAL.md#investment-feedback).
+
+---
+
 ## Negative-Cost MAC Blocks (No-Regret Abatement)
 
 **Files:** `src/ets/config_io/normalize.py`, `src/ets/costs.py`
@@ -1246,3 +1363,5 @@ In practice, all three solvers complete in under 1–2 seconds for typical K-ETS
 - [Carbon Cap Rule](carbon-cap-rule.md)
 - [Feedback Option A — Price-Elastic Baseline](feedback-price-elastic-baseline.md)
 - [Feedback Option B — Soft-Link Coupling](feedback-coupling.md)
+- [Endogenous Investment Feedback — binding spec (Phase 1)](invest-feedback-spec.md)
+- [Endogenous Investment Feedback — architecture plan (Phase 1)](invest-feedback-plan.md)

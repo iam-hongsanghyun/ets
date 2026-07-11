@@ -2,6 +2,11 @@
 
 Regression-tests the closed-form β and trigger multiple against the K-MSR
 paper's worked values (Appendices A.7/A.10) and the analytical σ = 0 limit.
+
+Deliberately imports from ``ets.analysis.investment_trigger`` — the permanent
+re-export facade over ``ets.core.investment`` — so this suite proves the
+facade surface stays intact (core-path anchors live in
+``tests/core/test_investment_math.py``).
 """
 
 from __future__ import annotations

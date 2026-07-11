@@ -38,8 +38,10 @@ an expanded information set — the standard way to model policy surprises
 repricing in Kollenberg & Taschini 2019).
 
 State carried across splices: ``banking_initial_bank`` (the aggregate bank at
-the end of the pre-splice year) and ``msr_initial_reserve_mt`` (the decree
-reserve pool). Participant-level bank balances are NOT carried — under the
+the end of the pre-splice year), ``msr_initial_reserve_mt`` (the decree
+reserve pool), and ``investment_initial_adoptions`` (the endogenous-
+investment adoption state, carried as a FLOOR when the feature ran in the
+finished segment — spec D3.4). Participant-level bank balances are NOT carried — under the
 banking approach the aggregate bank is the solver's state variable; under the
 competitive approach nothing is carried (each year clears independently, so
 an announcement without same-year execution changes nothing — which is
@@ -54,15 +56,16 @@ from copy import deepcopy
 
 import pandas as pd
 
-from ..core.protocols import SpliceCarrier
+from ..core.protocols import SpliceCarrier, parse_adoption_state
 from ..features.banking.plugin import BANK_CARRIER
+from ..features.endogenous_investment.plugin import ADOPTION_CARRIER
 from ..features.msr.plugin import RESERVE_CARRIER
 
 logger = logging.getLogger(__name__)
 
 
 # ── SpliceCarrier wiring literal (binding Arbitration outcome on PLAN v2) ────
-# Declarative form of the two state variables carried across event segments:
+# Declarative form of the state variables carried across event segments:
 #
 #   1. the aggregate bank — ALWAYS carried (predicate always-true). Provided
 #      by the banking feature's plugin door (``features/banking/plugin.py``
@@ -71,13 +74,21 @@ logger = logging.getLogger(__name__)
 #      segment (the ``msr_ran_last_segment`` condition; a decree announced
 #      mid-horizon with a pre-funded reserve keeps its funding). Provided by
 #      the MSR feature's plugin door (``features/msr/plugin.py``).
+#   3. the adoption state — carried only when the endogenous-investment
+#      feature ran in the finished segment (EI-5; spec D3.4,
+#      docs/invest-feedback-spec.md). Carried adoptions are FLOORS on later
+#      segments: the feedback host's monotone check keeps every later state
+#      a superset of the carried one, so a late announcement can never
+#      un-adopt an earlier investment (irreversibility doing policy work).
+#      Provided by the endogenous_investment feature's plugin door.
 #
 # The solve loop below keeps its inline reads and stamps VERBATIM — the
 # pre-funded-decree ordering is pinned by tests/test_policy_events.py and
 # behaviour preservation outranks protocol purity (Arbitration outcomes);
 # this literal is the reviewed declaration those inline lines implement.
-# Literal order is stamp order (bank first, then the reserve pool).
-SPLICE_CARRIERS: tuple[SpliceCarrier, ...] = (BANK_CARRIER, RESERVE_CARRIER)
+# Literal order is stamp order (bank first, then the reserve pool, then the
+# adoption state — ADOPTION_CARRIER LAST).
+SPLICE_CARRIERS: tuple[SpliceCarrier, ...] = (BANK_CARRIER, RESERVE_CARRIER, ADOPTION_CARRIER)
 
 
 def _year_num(label: object) -> float:
@@ -164,6 +175,10 @@ def solve_scenario_with_events(
 
     carried_bank = float(current.get("banking_initial_bank") or 0.0)
     carried_pool = float(current.get("msr_initial_reserve_mt") or 0.0)
+    # Adoption state (ADOPTION_CARRIER): a parsed list of {participant,
+    # technology, adoption_year} mappings, or None until the feature first
+    # runs (user-settable in config to pre-commit adoptions).
+    carried_adoptions = current.get("investment_initial_adoptions")
 
     pending = list(events)
     seg_start = min(_year_num(y["year"]) for y in current["years"])
@@ -175,6 +190,12 @@ def solve_scenario_with_events(
         # previous segment; a decree announced with a pre-funded reserve
         # (msr_initial_reserve_mt in its changes) must keep that funding.
         msr_ran_last_segment = bool(current.get("msr_enabled"))
+        # Same condition for the adoption state (ADOPTION_CARRIER.carry_if):
+        # carried only when the investment feature ran in the finished
+        # segment — an event that ENABLES the feature with its own
+        # pre-committed adoptions in `changes` keeps them (the pre-funded-
+        # decree precedent).
+        investment_ran_last_segment = bool(current.get("investment_feedback_enabled"))
 
         while pending and _year_num(pending[0]["announced"]) <= seg_start:
             event = pending.pop(0)
@@ -194,6 +215,8 @@ def solve_scenario_with_events(
         seg_scenario["banking_initial_bank"] = carried_bank
         if msr_ran_last_segment:
             seg_scenario["msr_initial_reserve_mt"] = carried_pool
+        if investment_ran_last_segment and carried_adoptions is not None:
+            seg_scenario["investment_initial_adoptions"] = carried_adoptions
         seg_scenario["years"] = [
             y for y in seg_scenario["years"] if _year_num(y["year"]) >= seg_start
         ]
@@ -217,6 +240,22 @@ def solve_scenario_with_events(
             carried_bank = float(last["Banking Aggregate Bank"])
         if "MSR Reserve Pool" in keep.columns and pd.notna(last["MSR Reserve Pool"]):
             carried_pool = float(last["MSR Reserve Pool"])
+        if "Investment Adoptions" in keep.columns and pd.notna(
+            last["Investment Adoptions"]
+        ):
+            # The last kept row carries the state effective THROUGH that year
+            # (decision years tau <= year): adoptions dated inside the kept
+            # segment carry as floors; a tau at/after the next announcement
+            # was decided on superseded information and is re-derived by the
+            # next segment's own loop (spec D3.4).
+            carried_adoptions = [
+                {
+                    "participant": event.participant_name,
+                    "technology": event.technology_name,
+                    "adoption_year": event.adoption_year,
+                }
+                for event in parse_adoption_state(str(last["Investment Adoptions"]))
+            ]
         seg_start = seg_end
 
     return (

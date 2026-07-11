@@ -148,6 +148,26 @@ implements.
    interpolation the paper leaves unidentified. See
    `docs/forward-transmission.md`.
 
+   **Status update (Phase 1, endogenous investment feedback): this specific
+   gap — "post-processing on an exogenous price path, not a two-way
+   equilibrium" — is now closed, in reduced form.** `engine/feedback.py`
+   wraps the full path solve (competitive or Rubin/Schennach banking) in an
+   outer loop that irreversibly adopts a flagged technology the iteration it
+   crosses its Dixit–Pindyck trigger on the DELIVERED price path, then
+   re-solves; adoption and price are now a joint fixed point, not a reading
+   taken off a finished path. `examples/k_msr_decree_induces_investment.json`
+   runs the paper's central transition claim as this equilibrium: the
+   credible decree package (hybrid MSR + rising auction reserve,
+   `invest_credibility=0.8`) delivers Steel/H2-DRI adoption in **2029**,
+   while its uncredible twin (`invest_credibility=0.0`, same fundamentals,
+   no reserve) **never adopts** — the pure banking ramp tops out around
+   9,222 KRW, roughly a third of the uncredible trigger (≈31,931 KRW). The
+   math itself is unchanged (`core/investment.py`, the same closed-form β
+   and the σ→0 → r/y correction); what changed is that the trigger now reads
+   a price path that reacts to its own adoption decisions. See
+   `docs/invest-feedback-spec.md` (binding spec) and
+   `docs/algorithm-overview.md`, "Endogenous Investment Feedback (Phase 1)".
+
 ---
 
 ## 4. Theoretical depth vs engineering breadth
@@ -184,10 +204,13 @@ turn on. Both now exist as faithful reduced-form ports —
 
 with the caveats in Section 3 (items 4–5): the λ blend and the trigger make
 the paper's results *runnable* here; they do not replace the paper's
-derivations (the λ-invariance propositions, the credibility treatment), and
-the deeper extensions — a floor-aware expectations path, λ microfoundation,
-optimal stopping against a partially credible barrier — remain the paper's
-open problems, not repo features.
+derivations (the λ-invariance propositions, the credibility treatment). One
+of the deeper extensions — optimal stopping against a partially credible
+barrier — is now also a repo feature *in reduced form* (Phase 1, endogenous
+investment feedback, Section 3 item 5 status update above); the interior
+credibility mapping σ_eff(q) remains the modelling choice the paper itself
+leaves unidentified, not a derivation. A floor-aware expectations path and λ
+microfoundation remain the paper's open problems, not repo features.
 
 Symmetrically, the repo models mechanisms the paper does not: strategic market
 power (Nash–Cournot), border adjustment (CBAM), benchmarked free allocation

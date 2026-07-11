@@ -959,6 +959,22 @@ export function Editor({
     peMode,
     showAdvanced,
   };
+  // Technology-scoped sibling of participantCtx — for feature modules whose
+  // editor UI is per-(participant, technology) rather than per-participant
+  // (today: endogenous_investment's investment_trigger sub-form). Rendered
+  // at the technology editor, not the participant "Allocation" grid.
+  const technologyCtx = {
+    workingScenario,
+    workingYear,
+    participant,
+    selectedParticipantIndex,
+    technology: selectedTechnology,
+    selectedTechnologyIndex,
+    updateTechnologyOption,
+    activeFeatures,
+    peMode,
+    showAdvanced,
+  };
 
   return (
     <div className="editor builder">
@@ -1427,6 +1443,12 @@ export function Editor({
               <Section key={`calibration-editor-${index}`} ctx={scenarioCtx} />
             ))}
 
+          {/* ── Investment feedback panel ───────────────────────────────── */}
+          {isFeatureActive("endogenous_investment") &&
+            collectSlot(enabledFeatures, "editorSections", ["endogenous_investment"]).map((Section, index) => (
+              <Section key={`endogenous-investment-editor-${index}`} ctx={scenarioCtx} />
+            ))}
+
         </section>
       )}
 
@@ -1773,6 +1795,11 @@ export function Editor({
                             "Technology ",
                           )}
                           </CollapsibleGroup>
+                          {/* ── Investment trigger (per technology option) ── */}
+                          {isFeatureActive("endogenous_investment") &&
+                            FEATURES.endogenous_investment.participantEditorSections?.map((Section, index) => (
+                              <Section key={`endogenous-investment-technology-${index}`} ctx={technologyCtx} />
+                            ))}
                         </div>
                       ) : null}
                     </div>
