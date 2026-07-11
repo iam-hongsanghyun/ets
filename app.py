@@ -18,4 +18,4 @@ warnings.warn(
     stacklevel=2,
 )
 
-from pe.web.server import app  # noqa: E402
+from pe.web.server import app  # noqa: E402,F401  (re-exported as the ASGI/WSGI entry)

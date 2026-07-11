@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from ..core.expectations import ALLOWED_EXPECTATION_RULES, validate_expectation_rule
+from ..core.expectations import validate_expectation_rule
 from ..features.endogenous_investment.plugin import (
     normalize_investment_trigger as _normalize_investment_trigger,
 )

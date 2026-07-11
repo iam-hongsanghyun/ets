@@ -1,4 +1,8 @@
-from .normalize import normalize_year
+from .normalize import (
+    normalize_participant,
+    normalize_technology_option,
+    normalize_year,
+)
 from .builder import (
     build_market_from_year,
     build_markets_from_config,
@@ -8,8 +12,6 @@ from .builder import (
     normalize_config,
     normalize_scenario,
     normalize_joint_solver,
-    normalize_participant,
-    normalize_technology_option,
     build_participant,
     build_technology_option,
     _interp_value,

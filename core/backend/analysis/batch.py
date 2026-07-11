@@ -106,8 +106,8 @@ def run_batch(
             runs.append({"params": params, "results": [], "error": str(exc)})
 
     return {
-        "sweep_axes": [{"path": p, "label": l, "values": v}
-                       for p, l, v in zip(paths, labels, value_lists)],
+        "sweep_axes": [{"path": p, "label": lbl, "values": v}
+                       for p, lbl, v in zip(paths, labels, value_lists)],
         "runs": runs,
         "n_runs": len(runs),
         "n_errors": sum(1 for r in runs if r["error"]),

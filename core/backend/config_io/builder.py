@@ -32,8 +32,6 @@ from ..features.sectors.plugin import (
 )
 from .normalize import (
     ALLOWED_MODEL_APPROACHES,
-    normalize_participant,
-    normalize_technology_option,
     normalize_year,
 )
 from .templates import blank_scenario, blank_year_config

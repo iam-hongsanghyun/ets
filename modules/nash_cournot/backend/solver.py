@@ -133,7 +133,6 @@ def _solve_nash_year(
 
     for iteration in range(max_iters):
         new_abatements = dict(abatements)
-        price_changed = False
 
         for strat_p in strategic:
             # Current market demand excluding this participant
