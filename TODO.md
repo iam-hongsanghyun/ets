@@ -116,3 +116,7 @@ Items are grouped by theme. Checked items are complete. Unchecked items are pend
 ## Phase 1 follow-ups (economist sign-off findings, non-blocking)
 
 - [ ] F-INV-1: flip ADOPTION_CARRIER.carry_if to always-true (BANK_CARRIER style) — the feature-enabled predicate leaves a disable-then-re-enable corner across two policy events that drops the irreversibility floor (currently unreachable silently; builder guard forces loud stripping; escape via investment_initial_adoptions). One-line fix + a splice test.
+
+## Pre-main-merge blocker (restructure introduced)
+
+- [ ] **Vercel/wheel path resolution**: WO-0 switched Vercel to a wheel install, so `pe.core.paths.PROJECT_DIR = parents[3]` computes from site-packages, NOT the repo checkout — FRONTEND_DIST_DIR / EXAMPLES_DIR / DOCS_DIR would be wrong in prod. Local editable install works (parents[3] = repo). FIX before any main merge that deploys: have the deployment entry points (api/index.py, the .command launchers) set PE_PROJECT_DIR = their own repo-relative anchor; paths.py honors the env var, falling back to parents[3] (bit-identical locally, env unset). Then run a Vercel PREVIEW to confirm the served dist/examples resolve.
