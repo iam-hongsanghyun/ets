@@ -20,6 +20,7 @@ from dataclasses import dataclass, field
 import pandas as pd
 
 from ..config_io import normalize_config
+from ..core.relaxation import max_pathmap_change, relax_pathmap
 from ..engine import run_simulation_from_config
 from .adapters import ExternalModel, PriceMap
 
@@ -46,24 +47,6 @@ def _extract_prices(summary: pd.DataFrame) -> PriceMap:
         year = str(row.get("Year", ""))
         prices[(scenario, year)] = float(row["Equilibrium Carbon Price"])
     return prices
-
-
-def _max_price_change(previous: PriceMap, current: PriceMap) -> float:
-    keys = set(previous) | set(current)
-    return max(
-        (abs(current.get(k, 0.0) - previous.get(k, 0.0)) for k in keys),
-        default=0.0,
-    )
-
-
-def _relax(previous: PriceMap, current: PriceMap, weight: float) -> PriceMap:
-    """Under-relax the price signal: (1-w)·previous + w·current, key by key."""
-    keys = set(previous) | set(current)
-    return {
-        k: (1.0 - weight) * previous.get(k, current.get(k, 0.0))
-        + weight * current.get(k, previous.get(k, 0.0))
-        for k in keys
-    }
 
 
 def run_coupled_simulation(
@@ -125,7 +108,7 @@ def run_coupled_simulation(
         history.append(realised)
 
         # Self-consistency: did the clearing reproduce the price we assumed?
-        max_change = _max_price_change(signal, realised)
+        max_change = max_pathmap_change(signal, realised)
         completed = iteration
         logger.info(
             "Coupling iteration %d: max |Δprice| = %.4f (tol %.4f)",
@@ -137,7 +120,7 @@ def run_coupled_simulation(
             converged = True
             break
         # Under-relax the signal toward the realised price for the next pass.
-        signal = _relax(signal, realised, relaxation)
+        signal = relax_pathmap(signal, realised, relaxation)
 
     if not converged:
         logger.warning(
