@@ -156,6 +156,44 @@ run against the CONVERGED joint price vector, never an intermediate
 sweep.** Ex-post regret of an entrant depressing the joint price is
 permitted; ex-ante violation is not.
 
+### 4a. D2-5 implementation SIGNED OFF (2026-07-12)
+
+The V-D2-4 nesting is implemented (dispatch `_solve_scc_member` runs the
+Phase-1 MIDDLE loop against each sweep's neighbor prices; adoption carries
+across sweeps as a monotone floor via `investment_initial_adoptions`).
+Economist CONFIRMED both judgment calls:
+- **Per-sweep one-flip cap DROPPED across sweeps — correct, and a cap
+  would be WRONG.** One-flip is a MIDDLE-loop (within-sweep) property and
+  stays there unchanged; lifting it to the outer sweep would artificially
+  DEFER legitimate simultaneous trigger crossings to later sweeps — a
+  solver artifact that makes the result depend on sweep count. Termination
+  is secured by IRREVERSIBILITY, not the per-sweep rate: the floor is
+  non-decreasing and bounded by N_total = Σ_m N_m options, so it stabilizes
+  in ≤ N_total discrete-changing sweeps, after which the outer loop is a
+  pure continuous GS price contraction (V-D2-6, ρ(J)<1). A price that falls
+  back below an adopted option's trigger does NOT un-adopt — the monotone
+  floor converts what would be a discrete oscillation into the ex-post-
+  below-trigger case §4(iii) permits. Determinism holds via the D1.4 middle
+  tie-break composed with the V-D2-2 sweep order.
+- **Ex-post pin against the converged vector — correct BY CONSTRUCTION.**
+  "Re-solve reproduces the price because no new crossing at the fixed
+  point" IS the fixed-point criterion (iii), not an approximation. The
+  degenerate exact-on-boundary case needs no v1 guard: it resolves by
+  adoption DURING the loop (same ≥ test at prices within tol of P*); any
+  residual ε-band flip fires the EXISTING loud ex-post missed-adoption
+  `ValueError` (raise-on-converged), which is the guard, not a mask.
+
+**D3 config-quality note (documentation, not a code guard):** set the joint
+`tolerance` TIGHTER than the smallest trigger margin in the config, else a
+near-boundary option can trip the (correct, loud) ex-post check. Tests use
+1e-12.
+
+**No economic sign-off is outstanding on the D2 core** — floor-cancellation
+V1 green, single-market banking self-converges, the engine reproduces J1/J2,
+the cycle-detection folding predicate is ratified, and the V-D2-4 nesting
+computes the trigger-consistent adoption equilibrium inside the joint price
+equilibrium as specified. The joint-equilibrium model's CODE is COMPLETE.
+
 ## 5. Convergence norm across mixed-unit markets (V-D2-3)
 
 **Per-market RELATIVE dimensionless change, then max across markets:**
