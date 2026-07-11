@@ -130,25 +130,34 @@ def _market_block() -> BlockSpec:
             ),
             # D1 graph disentanglement (docs/platform-plan-d0-d1.md D1 "GRAPH
             # DISENTANGLEMENT"; spec §6). price_unit is REQUIRED iff this
-            # market participates in a link (compile.py's own passthrough,
-            # NOT the generic scenario merge — see compile.py
-            # _compile_market_fields); absent = "today's carbon labels"
+            # market participates in a link; absent = "today's carbon labels"
             # (D1 COMPAT RULE, no injected default, byte-identical for every
             # existing example).
             ParamSpec(
                 "price_unit", "price_unit", "scenario", "str", None,
                 label="Price unit (REQUIRED iff this market is linked)",
             ),
-            # scope="edge": never lands in a config_io scenario/market body
-            # directly — it is compile.py-only bookkeeping (like the
-            # existing unregistered "order" param) that selects the wrapping
-            # scenario's "name" for a >1-market linked component. Must agree
-            # across a linked component; defaults to the order-first
-            # market's own "name" (compile.py:_compile_linked_scenario).
+            # scope="edge": compile.py-only bookkeeping that selects the
+            # wrapping scenario's "name" for a >1-market linked component.
+            # Must agree across a linked component; defaults to the
+            # order-first market's "name" (compile.py:_compile_linked_scenario).
             ParamSpec(
                 "scenario_name", "scenario_name", "edge", "str", None,
                 label="Linked-scenario display name (multi-market only; "
                 "must agree across the component)",
+            ),
+            # D0-R2 flow vocabulary (spec §5, display only — the kernel never
+            # branches on either key). Default None (absent), NOT
+            # "carbon"/"tCO2e": config_io writes these only when the raw
+            # config carries them (D1 COMPAT RULE, byte-identical to today).
+            # Display callers fall back to "carbon"/"tCO2e" when absent.
+            ParamSpec(
+                "flow_label", "flow_label", "scenario", "str", None,
+                label="Flow label (display only; falls back to 'carbon' when absent)",
+            ),
+            ParamSpec(
+                "flow_unit", "flow_unit", "scenario", "str", None,
+                label="Flow unit (display only; falls back to 'tCO2e' when absent)",
             ),
         ),
         ports=(

@@ -436,9 +436,10 @@ def run_model(graph: dict[str, Any], scenario: str | None = None) -> dict[str, A
 
     Returns:
         ``{"ok": True, "scenarios": {name: {"years": [...], "total_years",
-        "truncated"}}}`` — see ``ets.mcp.compact.compact_run_summary`` for
-        exactly which columns each year row carries. Never a raw DataFrame,
-        and never more than 12 years per scenario (older years are dropped,
+        "truncated"}}}`` (plus a top-level ``"flow"`` key when non-default,
+        D0-R2) — see ``ets.mcp.compact.compact_run_summary`` for exactly
+        which columns each year row carries. Never a raw DataFrame, and
+        never more than 12 years per scenario (older years are dropped,
         with ``"truncated": true`` marking it).
 
     Raises:
@@ -449,7 +450,7 @@ def run_model(graph: dict[str, Any], scenario: str | None = None) -> dict[str, A
     g = Graph.from_dict(graph)
     config = model_store.compile_graph_or_raise(g)
     summary_df, _participant_df = run_simulation_from_config(config)
-    return {"ok": True, **compact_run_summary(summary_df, scenario=scenario)}
+    return {"ok": True, **compact_run_summary(summary_df, scenario=scenario, config=config)}
 
 
 # ── 8. save_model ─────────────────────────────────────────────────────────

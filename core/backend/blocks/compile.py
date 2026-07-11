@@ -364,7 +364,7 @@ def _compile_market_fields(
         raise CompileError(f"Market '{market_node.id}' has no years in its 'years' grid.")
 
     owners.set_scenario(scenario_fields, identity_key, identity_value, f"node:{market_node.id}")
-    for passthrough_key in ("sectors", "policy_events", "price_unit"):
+    for passthrough_key in ("sectors", "policy_events", "price_unit", "flow_label", "flow_unit"):
         raw = market_node.params.get(passthrough_key)
         if not raw:
             continue

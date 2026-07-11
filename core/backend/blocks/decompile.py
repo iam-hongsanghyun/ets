@@ -235,6 +235,10 @@ def _decompile_market_body(
         market_params["policy_events"] = body["policy_events"]
     if body.get("price_unit"):
         market_params["price_unit"] = body["price_unit"]
+    if body.get("flow_label"):
+        market_params["flow_label"] = body["flow_label"]
+    if body.get("flow_unit"):
+        market_params["flow_unit"] = body["flow_unit"]
 
     scenario_extra = {k: v for k, v in body.items() if k not in KNOWN_SCENARIO_KEYS and k != "years"}
     if scenario_extra:

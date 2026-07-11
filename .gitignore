@@ -16,3 +16,4 @@ examples/k_msr_price_paths.png
 user-scenarios/
 database/
 .env
+.worktrees/
