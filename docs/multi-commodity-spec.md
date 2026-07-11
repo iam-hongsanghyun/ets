@@ -256,3 +256,54 @@ markets), and *one* price-active CBAM channel, on top of the unchanged D2 joint
 engine — the steel↔carbon SCC becoming the first real mixed-unit joint equilibrium,
 with the leakage/OBA/CBAM/investment levers composing into the anti-leakage policy
 narrative.
+
+---
+
+## 7. V-D3 verdicts closed (2026-07-12) + the finite-β cyclic anchor
+
+**V-D3-1 (existence/uniqueness): CONFIRMED, δ>0 sufficient.** The program is not
+jointly concave, but solves sequentially: a\*(q)=P_c/β is independent of q, so the
+reduced profit π̃(q)=(P_s−γ−B)q−½δq² is strictly concave iff δ>0. q\*, a\*
+single-valued + continuous ⇒ Brouwer joint-FP existence, no bang-bang/Kakutani.
+Reject δ=0 at validation; discrete investment is the only discontinuity (handled by
+adoption-as-outer-floor).
+
+**V-D3-2 (FOCs): CONFIRMED — code the a_max-clipped GENERAL form, not the interior
+shortcut:** a\* = clip(P_c/β, 0, a_max); B = ½·β·a\*² + P_c(σ−a\*) − P_c·φ_OBA;
+q\* = max(0, (P_s−γ−B)/δ); e\* = (σ−a\*)q\*. The §2 ½P_c²/β is the unclipped (a_max
+non-binding) special case; a firm past P_c>β·a_max sits at a\*=a_max and can only
+shed output. Both clips are continuous kinks (V-D3-1 holds).
+
+**V-D3-3 (coupling): CONFIRMED price-driven; [STRAIN5] DISSOLVED.** Each market
+re-derives q\*, e\* from BOTH prices; no quantity threaded ⇒ `engine/joint.py`
+verbatim, price norm suffices. Producer authored once in the steel body; the carbon
+market gets a build-time emitter VIEW that computes e\* on demand from the current
+price pair each sweep (a reference, never a cached copy, never solve-time injection).
+Because q\* is a pure function of prices, OBA free-alloc φ·q\* is too ⇒ NO
+build-time→solve-time migration hazard ([STRAIN5] dissolved). The multi-commodity
+carbon market has NO free-alloc supply bucket — OBA enters only as the marginal FOC
+subsidy P_c·φ; clearing is purely Σe\*=Cap.
+
+**V-D3-4 (levers): CONFIRMED.** Guards: floor imports at zero, M=max(0, m(P_s −
+c·P_c·σ_foreign)) (continuous kink); the leakage rate must NAME its counterfactual
+(no-policy vs cap-only) or it is ambiguous.
+
+**V-D3-5b — the genuine finite-β cyclic anchor (the flagship D3-6 golden):**
+Parameters: 2 identical producers γ=5, δ=2, σ=5, β=10, a_max=5; linear demand
+A_d=40, b_d=0.3; carbon-free imports m=0.2, σ_foreign=5; fixed cap=40.
+Converged (exact, hand-verified): **P_s\*=60, P_c\*=10, a_i\*=1, q_i\*=5** (agg 10),
+Σe\*=(σ−a\*)q\*=40=Cap, M\*=12, D=22, **leakage L=0.353**. Loop gain
+**g = s_c·s_s = 0.235·2.667 = 0.627 ∈ (0,1)**; damped GS at w=0.5 has eigenvalue
+0.813 → converges (undamped also, |g|<1). The emission cut 85 = intensity margin 25
++ output margin 60 (both active — the cycle is BORN because finite β makes output
+endogenous at a fixed cap: q=Cap/(σ−P_c/β)). No-policy counterfactual: P_s⁰=30,
+q⁰=25, e⁰=125, M⁰=6. CBAM variant (numerically pinned, not closed-form): full c=1
+over-corrects (P_c↑≈17.9, q↑≈12.5, imports collapse, leakage negative); partial
+coverage tunes leakage toward zero — the didactic payoff.
+
+**R37 ADAPTATION (required for D3):** R37's conservative ĝ=Π|φ| with s_m←1 is a
+D1/D2 EXTERNAL-link device — it does NOT apply to the shared-agent STRUCTURAL
+coupling (there is no external φ; the structural s_s=2.667 is not bounded by 1). For
+D3, **R37 must evaluate the ACTUAL loop gain g=s_c·s_s from the linearized 2×2
+clearing Jacobian at the one-way seed** (a cheap evaluation), warning iff |g|≥1. For
+this anchor g=0.627 ⇒ no false-fire.
