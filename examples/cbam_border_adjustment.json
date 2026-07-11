@@ -1,0 +1,62 @@
+{
+  "description": {
+    "title": "Carbon Border Adjustment Mechanism (CBAM) liability on trade-exposed exporters",
+    "economic_framing": "A domestic (KAU) carbon market whose exporters face a border charge when they ship into a jurisdiction (EUA) with a higher carbon price. Under the EU CBAM an importer must surrender certificates for the embedded carbon of covered goods, priced at the destination carbon price NET of any carbon price already paid at origin -- so a KAU exporter's exposure is the KAU-EUA gap, not the full EUA price. Two otherwise-identical scenarios isolate the mechanism: 'No CBAM' (no EUA reference, no export shares) and 'With CBAM' (EUA reference 90->100 USD and per-firm export shares). The declining cap (100->80 Mt) lifts the KAU price 21.8 -> 43.6 USD; the shrinking KAU-EUA gap is the border liability an exporter carries on top of domestic compliance.",
+    "citation": "Regulation (EU) 2023/956 (CBAM). Mechanism: pe.features.cbam (modules/cbam/backend/plugin.py) -- a POST-CLEARING reporting overlay (feature verdict F6): gap = max(0, P_EUA - P_KAU); CBAM Liability = gap * residual_emissions * export_share * coverage_ratio. It never feeds back into price formation.",
+    "mechanism": "CBAM is reporting-only: it reads the already-solved KAU price and the external EUA reference and adds diagnostic columns, so it CANNOT change a single cleared price. The two scenarios' Equilibrium Carbon Price paths are bit-identical (21.818, 32.727, 43.636) -- proof of the F6 price-immunity. The border liability is layered on top: Total Cost incl. CBAM = Total Compliance Cost + Total CBAM Liability. That is where the outcome shifts.",
+    "participants": "Steel E0=50 Mt (max abate 20, slope 4, export share 0.30), Cement E0=30 Mt (max abate 12, slope 6, export share 0.20), Power E0=40 Mt (max abate 25, slope 2, export share 0.0 -- domestic only, zero CBAM). Free allocation 0.5/0.5/0.3; BAU 120 Mt.",
+    "expected_output": {
+      "Equilibrium Carbon Price both scenarios 2026-2028 [USD/tCO2]": [21.8181818181818, 32.72727272727271, 43.63636363636364],
+      "CBAM Gap With CBAM 2026-2028 [USD/tCO2]": [68.1818181818182, 62.27272727272729, 56.36363636363636],
+      "Total CBAM Liability With CBAM 2026-2028": [1270.6611570247935, 1086.9421487603308, 917.1900826446279],
+      "Total Cost incl. CBAM: No CBAM 2026-2028": [1265.4545454545444, 1734.5454545454538, 2094.545454545455],
+      "Total Cost incl. CBAM: With CBAM 2026-2028": [2536.115702479338, 2821.4876033057844, 3011.7355371900826],
+      "hand_anchor": "Steel 2026 liability = gap 68.1818 * residual emissions 44.5455 * export share 0.30 * coverage 1.0 = 911.157, matching the per-participant column; Cement adds 359.504; Power (export share 0) contributes 0, so Total CBAM Liability = 1270.661.",
+      "reading": "The cap tightens the KAU price from 21.8 to 43.6 USD, which SHRINKS the CBAM gap (68.2 -> 56.4) as the domestic price closes on the EUA -- the classic 'domestic price convergence lowers border exposure' result. Yet because the gap is large, the CBAM liability roughly DOUBLES total cost in 2026 (2536 vs 1265) and remains a ~44% add-on by 2028. Enabling CBAM leaves every cleared price untouched (reporting-only) while materially shifting the exporters' all-in cost."
+    }
+  },
+  "scenarios": [
+    {
+      "name": "No CBAM",
+      "model_approach": "competitive",
+      "years": [
+        {"year": "2026", "total_cap": 100.0, "auction_mode": "derive_from_cap", "banking_allowed": false, "price_lower_bound": 0.0, "price_upper_bound": 100000.0, "participants": [
+          {"name": "Steel", "initial_emissions": 50.0, "free_allocation_ratio": 0.5, "penalty_price": 100000.0, "abatement_type": "linear", "max_abatement": 20.0, "cost_slope": 4.0},
+          {"name": "Cement", "initial_emissions": 30.0, "free_allocation_ratio": 0.5, "penalty_price": 100000.0, "abatement_type": "linear", "max_abatement": 12.0, "cost_slope": 6.0},
+          {"name": "Power", "initial_emissions": 40.0, "free_allocation_ratio": 0.3, "penalty_price": 100000.0, "abatement_type": "linear", "max_abatement": 25.0, "cost_slope": 2.0}
+        ]},
+        {"year": "2027", "total_cap": 90.0, "auction_mode": "derive_from_cap", "banking_allowed": false, "price_lower_bound": 0.0, "price_upper_bound": 100000.0, "participants": [
+          {"name": "Steel", "initial_emissions": 50.0, "free_allocation_ratio": 0.5, "penalty_price": 100000.0, "abatement_type": "linear", "max_abatement": 20.0, "cost_slope": 4.0},
+          {"name": "Cement", "initial_emissions": 30.0, "free_allocation_ratio": 0.5, "penalty_price": 100000.0, "abatement_type": "linear", "max_abatement": 12.0, "cost_slope": 6.0},
+          {"name": "Power", "initial_emissions": 40.0, "free_allocation_ratio": 0.3, "penalty_price": 100000.0, "abatement_type": "linear", "max_abatement": 25.0, "cost_slope": 2.0}
+        ]},
+        {"year": "2028", "total_cap": 80.0, "auction_mode": "derive_from_cap", "banking_allowed": false, "price_lower_bound": 0.0, "price_upper_bound": 100000.0, "participants": [
+          {"name": "Steel", "initial_emissions": 50.0, "free_allocation_ratio": 0.5, "penalty_price": 100000.0, "abatement_type": "linear", "max_abatement": 20.0, "cost_slope": 4.0},
+          {"name": "Cement", "initial_emissions": 30.0, "free_allocation_ratio": 0.5, "penalty_price": 100000.0, "abatement_type": "linear", "max_abatement": 12.0, "cost_slope": 6.0},
+          {"name": "Power", "initial_emissions": 40.0, "free_allocation_ratio": 0.3, "penalty_price": 100000.0, "abatement_type": "linear", "max_abatement": 25.0, "cost_slope": 2.0}
+        ]}
+      ]
+    },
+    {
+      "name": "With CBAM",
+      "model_approach": "competitive",
+      "years": [
+        {"year": "2026", "total_cap": 100.0, "auction_mode": "derive_from_cap", "banking_allowed": false, "price_lower_bound": 0.0, "price_upper_bound": 100000.0, "eua_price": 90.0, "participants": [
+          {"name": "Steel", "initial_emissions": 50.0, "free_allocation_ratio": 0.5, "penalty_price": 100000.0, "abatement_type": "linear", "max_abatement": 20.0, "cost_slope": 4.0, "cbam_export_share": 0.30, "cbam_coverage_ratio": 1.0},
+          {"name": "Cement", "initial_emissions": 30.0, "free_allocation_ratio": 0.5, "penalty_price": 100000.0, "abatement_type": "linear", "max_abatement": 12.0, "cost_slope": 6.0, "cbam_export_share": 0.20, "cbam_coverage_ratio": 1.0},
+          {"name": "Power", "initial_emissions": 40.0, "free_allocation_ratio": 0.3, "penalty_price": 100000.0, "abatement_type": "linear", "max_abatement": 25.0, "cost_slope": 2.0, "cbam_export_share": 0.0, "cbam_coverage_ratio": 1.0}
+        ]},
+        {"year": "2027", "total_cap": 90.0, "auction_mode": "derive_from_cap", "banking_allowed": false, "price_lower_bound": 0.0, "price_upper_bound": 100000.0, "eua_price": 95.0, "participants": [
+          {"name": "Steel", "initial_emissions": 50.0, "free_allocation_ratio": 0.5, "penalty_price": 100000.0, "abatement_type": "linear", "max_abatement": 20.0, "cost_slope": 4.0, "cbam_export_share": 0.30, "cbam_coverage_ratio": 1.0},
+          {"name": "Cement", "initial_emissions": 30.0, "free_allocation_ratio": 0.5, "penalty_price": 100000.0, "abatement_type": "linear", "max_abatement": 12.0, "cost_slope": 6.0, "cbam_export_share": 0.20, "cbam_coverage_ratio": 1.0},
+          {"name": "Power", "initial_emissions": 40.0, "free_allocation_ratio": 0.3, "penalty_price": 100000.0, "abatement_type": "linear", "max_abatement": 25.0, "cost_slope": 2.0, "cbam_export_share": 0.0, "cbam_coverage_ratio": 1.0}
+        ]},
+        {"year": "2028", "total_cap": 80.0, "auction_mode": "derive_from_cap", "banking_allowed": false, "price_lower_bound": 0.0, "price_upper_bound": 100000.0, "eua_price": 100.0, "participants": [
+          {"name": "Steel", "initial_emissions": 50.0, "free_allocation_ratio": 0.5, "penalty_price": 100000.0, "abatement_type": "linear", "max_abatement": 20.0, "cost_slope": 4.0, "cbam_export_share": 0.30, "cbam_coverage_ratio": 1.0},
+          {"name": "Cement", "initial_emissions": 30.0, "free_allocation_ratio": 0.5, "penalty_price": 100000.0, "abatement_type": "linear", "max_abatement": 12.0, "cost_slope": 6.0, "cbam_export_share": 0.20, "cbam_coverage_ratio": 1.0},
+          {"name": "Power", "initial_emissions": 40.0, "free_allocation_ratio": 0.3, "penalty_price": 100000.0, "abatement_type": "linear", "max_abatement": 25.0, "cost_slope": 2.0, "cbam_export_share": 0.0, "cbam_coverage_ratio": 1.0}
+        ]}
+      ]
+    }
+  ]
+}

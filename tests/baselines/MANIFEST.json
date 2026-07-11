@@ -1,8 +1,8 @@
 {
- "git_sha": "2b0af9b4f28169391f702597dbe8f550bbef8d61",
+ "git_sha": "7b94c2d88f868c6de5aa6b4435b94ba5091e1ee9",
  "git_dirty": true,
  "captured": "2026-07-12",
- "command": "uv run python tests/baselines/_capture.py",
+ "command": "uv run python tests/baselines/_capture.py --only cbam_border_adjustment,ccr_cost_containment,hotelling_budget,oba_output_allocation,transmission_lambda",
  "environment": {
   "python": "3.12.10",
   "numpy": "2.5.1",
@@ -106,9 +106,75 @@
     6,
     36
    ]
+  },
+  "cbam_border_adjustment": {
+   "status": "CAPTURED",
+   "reused": false,
+   "entry_point": "ets.run_simulation_from_file",
+   "summary_shape": [
+    6,
+    50
+   ],
+   "participants_shape": [
+    18,
+    36
+   ]
+  },
+  "ccr_cost_containment": {
+   "status": "CAPTURED",
+   "reused": false,
+   "entry_point": "ets.run_simulation_from_file",
+   "summary_shape": [
+    10,
+    46
+   ],
+   "participants_shape": [
+    20,
+    36
+   ]
+  },
+  "hotelling_budget": {
+   "status": "CAPTURED",
+   "reused": false,
+   "entry_point": "ets.run_simulation_from_file",
+   "summary_shape": [
+    5,
+    46
+   ],
+   "participants_shape": [
+    10,
+    36
+   ]
+  },
+  "oba_output_allocation": {
+   "status": "CAPTURED",
+   "reused": false,
+   "entry_point": "ets.run_simulation_from_file",
+   "summary_shape": [
+    3,
+    50
+   ],
+   "participants_shape": [
+    9,
+    36
+   ]
+  },
+  "transmission_lambda": {
+   "status": "CAPTURED",
+   "reused": false,
+   "entry_point": "ets.run_simulation_from_file",
+   "summary_shape": [
+    12,
+    50
+   ],
+   "participants_shape": [
+    24,
+    36
+   ]
   }
  },
  "audit_log": [
-  "2026-07-12: capture at 2b0af9b (dirty tree) under python 3.12.10 / numpy 2.5.1 / scipy 1.18.0 / pandas 3.0.3"
+  "2026-07-12: capture at 2b0af9b (dirty tree) under python 3.12.10 / numpy 2.5.1 / scipy 1.18.0 / pandas 3.0.3",
+  "2026-07-12: capture at 7b94c2d [only: cbam_border_adjustment, ccr_cost_containment, hotelling_budget, oba_output_allocation, transmission_lambda] (dirty tree) under python 3.12.10 / numpy 2.5.1 / scipy 1.18.0 / pandas 3.0.3"
  ]
 }

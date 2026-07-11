@@ -153,9 +153,12 @@ def test_baseline_coverage() -> None:
     assert not orphaned_baselines, (
         f"Baselines without a matching example file: {orphaned_baselines}"
     )
-    # The curated library is exactly seven examples <-> seven baselines.
-    assert len(example_stems) == 7, f"expected 7 curated examples, found {sorted(example_stems)}"
-    assert len(baseline_stems) == 7, f"expected 7 baselines, found {sorted(baseline_stems)}"
+    # The curated library is exactly twelve examples <-> twelve baselines
+    # (seven price-formation/link/joint examples plus five approach/mechanism
+    # examples: hotelling_budget, ccr_cost_containment, cbam_border_adjustment,
+    # oba_output_allocation, transmission_lambda).
+    assert len(example_stems) == 12, f"expected 12 curated examples, found {sorted(example_stems)}"
+    assert len(baseline_stems) == 12, f"expected 12 baselines, found {sorted(baseline_stems)}"
 
 
 @pytest.mark.parametrize("scenario_name", SCENARIO_PARAMS)

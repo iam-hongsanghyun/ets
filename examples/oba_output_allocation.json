@@ -1,0 +1,42 @@
+{
+  "description": {
+    "title": "Output-Based Allocation: free allowances tied to output x a tightening benchmark",
+    "economic_framing": "Under Output-Based Allocation (the dominant method in the Korean ETS 4th Allocation Plan for trade-exposed sectors), a firm's free allowances are tied to its CURRENT production output times a sector benchmark emission intensity, not to a fixed ratio of historical emissions. This removes the carbon-leakage incentive (a firm cannot cut its compliance bill by offshoring output) while preserving the marginal carbon-price signal. Here two steel firms hold output constant while the sector benchmark RATCHETS DOWN (2.0 -> 1.8 -> 1.6 tCO2/unit): a laggard that does not beat the tightening benchmark sees its free allocation shrink and must buy more allowances. A conventional Power participant on a fixed 0.30 ratio is the control.",
+    "citation": "Korean ETS 4th National Allocation Plan (2026-2030), output-based allocation for trade-exposed sectors. Mechanism: pe.features.oba (modules/oba/backend; builder OBA override in config_io/builder.py) -- free_allocation_ratio_i = min(1, beta_i * Y_i / E0_i).",
+    "mechanism": "For each firm with production_output Y_i > 0 and benchmark_emission_intensity beta_i > 0, the builder OVERRIDES free_allocation_ratio with min(1, beta_i*Y_i/E0_i) before clearing (highest-priority allocation path). Free allocation in Mt is beta_i*Y_i. OBA is a DISTRIBUTIONAL rule: against a fixed cap it reallocates permits between free grants and the auction but does not move the clearing price (total abatement = BAU - cap is unchanged). Cap 100 Mt and BAU 130 Mt are held constant, so the price is a flat 34.615 USD every year -- isolating the pure allocation channel.",
+    "participants": "Steel_Large E0=60 Mt, output 25, benchmark 2.0->1.8->1.6 (free alloc 50->45->40 Mt), slope 5. Steel_Small E0=30 Mt, output 12, same benchmark path (free alloc 24->21.6->19.2 Mt), slope 6. Power E0=40 Mt, fixed free_allocation_ratio 0.30 (free alloc constant 12 Mt), slope 2.",
+    "expected_output": {
+      "Equilibrium Carbon Price 2026-2028 [USD/tCO2]": [34.61538461538462, 34.61538461538462, 34.615384615384606],
+      "Steel_Large Free Allocation 2026-2028 [Mt]": [50.0, 45.0, 40.0],
+      "Steel_Small Free Allocation 2026-2028 [Mt]": [24.0, 21.6, 19.200000000000003],
+      "Power Free Allocation 2026-2028 [Mt]": [12.0, 12.0, 12.0],
+      "Steel_Large Allowance Buys 2026-2028 [Mt]": [3.076923076923073, 8.076923076923094, 13.07692307692308],
+      "Steel_Small Allowance Buys 2026-2028 [Mt]": [0.23076923076922995, 2.6307692307692285, 5.030769230769231],
+      "hand_anchor": "Free allocation = benchmark x output: Steel_Large 2.0*25 = 50, 1.8*25 = 45, 1.6*25 = 40 Mt; Steel_Small 2.0*12 = 24, 1.8*12 = 21.6, 1.6*12 = 19.2 Mt. With residual emissions constant (price flat), allowance buys = residual - free allocation: Steel_Large 53.077 - {50,45,40} = {3.08, 8.08, 13.08} Mt.",
+      "reading": "The two OBA steel firms' free-allocation streams tighten monotonically as the benchmark ratchets down, while the conventional Power firm's free allocation is flat. Because output and BAU are held constant, the tightening benchmark forces the compliance obligation upward: Steel_Large's allowance purchases quadruple (3.08 -> 13.08 Mt) and Steel_Small's rise 22-fold from a low base, even though the carbon price never moves. OBA is a distributional tightening, not a price mechanism."
+    }
+  },
+  "scenarios": [
+    {
+      "name": "Output-Based Allocation with a tightening benchmark",
+      "model_approach": "competitive",
+      "years": [
+        {"year": "2026", "total_cap": 100.0, "auction_mode": "derive_from_cap", "banking_allowed": false, "price_lower_bound": 0.0, "price_upper_bound": 100000.0, "participants": [
+          {"name": "Steel_Large", "initial_emissions": 60.0, "free_allocation_ratio": 0.0, "production_output": 25.0, "benchmark_emission_intensity": 2.0, "penalty_price": 100000.0, "abatement_type": "linear", "max_abatement": 25.0, "cost_slope": 5.0},
+          {"name": "Steel_Small", "initial_emissions": 30.0, "free_allocation_ratio": 0.0, "production_output": 12.0, "benchmark_emission_intensity": 2.0, "penalty_price": 100000.0, "abatement_type": "linear", "max_abatement": 12.0, "cost_slope": 6.0},
+          {"name": "Power", "initial_emissions": 40.0, "free_allocation_ratio": 0.3, "penalty_price": 100000.0, "abatement_type": "linear", "max_abatement": 25.0, "cost_slope": 2.0}
+        ]},
+        {"year": "2027", "total_cap": 100.0, "auction_mode": "derive_from_cap", "banking_allowed": false, "price_lower_bound": 0.0, "price_upper_bound": 100000.0, "participants": [
+          {"name": "Steel_Large", "initial_emissions": 60.0, "free_allocation_ratio": 0.0, "production_output": 25.0, "benchmark_emission_intensity": 1.8, "penalty_price": 100000.0, "abatement_type": "linear", "max_abatement": 25.0, "cost_slope": 5.0},
+          {"name": "Steel_Small", "initial_emissions": 30.0, "free_allocation_ratio": 0.0, "production_output": 12.0, "benchmark_emission_intensity": 1.8, "penalty_price": 100000.0, "abatement_type": "linear", "max_abatement": 12.0, "cost_slope": 6.0},
+          {"name": "Power", "initial_emissions": 40.0, "free_allocation_ratio": 0.3, "penalty_price": 100000.0, "abatement_type": "linear", "max_abatement": 25.0, "cost_slope": 2.0}
+        ]},
+        {"year": "2028", "total_cap": 100.0, "auction_mode": "derive_from_cap", "banking_allowed": false, "price_lower_bound": 0.0, "price_upper_bound": 100000.0, "participants": [
+          {"name": "Steel_Large", "initial_emissions": 60.0, "free_allocation_ratio": 0.0, "production_output": 25.0, "benchmark_emission_intensity": 1.6, "penalty_price": 100000.0, "abatement_type": "linear", "max_abatement": 25.0, "cost_slope": 5.0},
+          {"name": "Steel_Small", "initial_emissions": 30.0, "free_allocation_ratio": 0.0, "production_output": 12.0, "benchmark_emission_intensity": 1.6, "penalty_price": 100000.0, "abatement_type": "linear", "max_abatement": 12.0, "cost_slope": 6.0},
+          {"name": "Power", "initial_emissions": 40.0, "free_allocation_ratio": 0.3, "penalty_price": 100000.0, "abatement_type": "linear", "max_abatement": 25.0, "cost_slope": 2.0}
+        ]}
+      ]
+    }
+  ]
+}

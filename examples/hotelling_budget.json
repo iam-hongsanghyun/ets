@@ -1,0 +1,103 @@
+{
+  "description": {
+    "title": "Hotelling intertemporal path against a fixed cumulative carbon budget",
+    "economic_framing": "One carbon market with a single, fixed CUMULATIVE emissions budget (600 Mt over 2025-2029) rather than a year-by-year cap. Under the Hotelling (1931) rule the budget is an exhaustible stock: the regulator (or a competitive intertemporal market) spreads it optimally across years, and the no-arbitrage condition forces the allowance price to rise at the discount rate. Holding an allowance for a year must earn exactly the risk-free return, so P_t = P_0 * (1+r)^t. This is the APPROACH centrepiece: the price path is set by an intertemporal arbitrage argument, NOT by year-by-year auction clearing.",
+    "citation": "Hotelling, H. (1931), 'The Economics of Exhaustible Resources', Journal of Political Economy 39(2), 137-175. Solver: pe.features.hotelling.solve_hotelling_path (modules/hotelling/backend/solver.py) -- bisection on the base-year shadow price lambda so cumulative residual emissions exhaust the cumulative budget.",
+    "mechanism": "The solver pins each year's price to P*(t) = lambda * (1 + r + rho)^(t - t0) and bisects on the base-year shadow price lambda until cumulative residual emissions equal the cumulative carbon budget (sum of per-year carbon_budget = 600 Mt). Here r = discount_rate = 0.05, rho = risk_premium = 0, so the effective growth rate is exactly 5%/yr. Each firm abates a_i(P) = min(max_abatement_i, P / cost_slope_i) at that pinned price; residual emissions E0_i - a_i(P) accumulate across years and must sum to the budget.",
+    "participants": "Power E0=100 Mt/yr (max abate 80, slope 2) and Industry E0=50 Mt/yr (max abate 40, slope 5). BAU total 150 Mt/yr = 750 Mt over five years; the 600 Mt budget forces 150 Mt of cumulative abatement. In the interior (linear) region residual/yr = 150 - 0.7*P.",
+    "expected_output": {
+      "Equilibrium Carbon Price 2025-2029 [USD/tCO2]": [
+        38.789416015625,
+        40.72888681640625,
+        42.76533115722656,
+        44.9035977150879,
+        47.148777600842294
+      ],
+      "Total Abatement 2025-2029 [Mt]": [
+        27.1525912109375,
+        28.510220771484363,
+        29.935731810058627,
+        31.43251840056157,
+        33.00414432058962
+      ],
+      "hand_anchor": "P_t / P_0 = (1+r)^t = 1.05^t to machine precision: 40.72888681640625 / 38.789416015625 = 1.05 exactly, and 47.148777600842294 / 38.789416015625 = 1.21550625 = 1.05^4 exactly. The price path is monotone-rising at precisely the 5% discount rate.",
+      "budget_binds": "Cumulative residual emissions over 2025-2029 sum to 599.965 Mt, exhausting the 600 Mt budget within the solver's 1e-4 relative bisection tolerance (cumulative BAU 750 Mt minus cumulative abatement 150 Mt). The lambda bisection converged (no competitive fallback), so the budget is the binding constraint that sets the level of the price path.",
+      "reading": "A textbook Hotelling path: the shadow price lambda = P_0 = 38.79 USD is the scarcity value of the cumulative budget at the base year, and it compounds at the discount rate to 47.15 USD by 2029. Abatement rises each year as the price climbs, and the five annual residuals exhaust the 600 Mt budget."
+    }
+  },
+  "scenarios": [
+    {
+      "name": "Hotelling cumulative budget",
+      "model_approach": "hotelling",
+      "discount_rate": 0.05,
+      "risk_premium": 0.0,
+      "years": [
+        {
+          "year": "2025",
+          "total_cap": 120.0,
+          "carbon_budget": 120.0,
+          "auction_mode": "derive_from_cap",
+          "banking_allowed": false,
+          "price_lower_bound": 0.0,
+          "price_upper_bound": 100000.0,
+          "participants": [
+            {"name": "Power", "initial_emissions": 100.0, "free_allocation_ratio": 0.0, "penalty_price": 100000.0, "abatement_type": "linear", "max_abatement": 80.0, "cost_slope": 2.0},
+            {"name": "Industry", "initial_emissions": 50.0, "free_allocation_ratio": 0.0, "penalty_price": 100000.0, "abatement_type": "linear", "max_abatement": 40.0, "cost_slope": 5.0}
+          ]
+        },
+        {
+          "year": "2026",
+          "total_cap": 120.0,
+          "carbon_budget": 120.0,
+          "auction_mode": "derive_from_cap",
+          "banking_allowed": false,
+          "price_lower_bound": 0.0,
+          "price_upper_bound": 100000.0,
+          "participants": [
+            {"name": "Power", "initial_emissions": 100.0, "free_allocation_ratio": 0.0, "penalty_price": 100000.0, "abatement_type": "linear", "max_abatement": 80.0, "cost_slope": 2.0},
+            {"name": "Industry", "initial_emissions": 50.0, "free_allocation_ratio": 0.0, "penalty_price": 100000.0, "abatement_type": "linear", "max_abatement": 40.0, "cost_slope": 5.0}
+          ]
+        },
+        {
+          "year": "2027",
+          "total_cap": 120.0,
+          "carbon_budget": 120.0,
+          "auction_mode": "derive_from_cap",
+          "banking_allowed": false,
+          "price_lower_bound": 0.0,
+          "price_upper_bound": 100000.0,
+          "participants": [
+            {"name": "Power", "initial_emissions": 100.0, "free_allocation_ratio": 0.0, "penalty_price": 100000.0, "abatement_type": "linear", "max_abatement": 80.0, "cost_slope": 2.0},
+            {"name": "Industry", "initial_emissions": 50.0, "free_allocation_ratio": 0.0, "penalty_price": 100000.0, "abatement_type": "linear", "max_abatement": 40.0, "cost_slope": 5.0}
+          ]
+        },
+        {
+          "year": "2028",
+          "total_cap": 120.0,
+          "carbon_budget": 120.0,
+          "auction_mode": "derive_from_cap",
+          "banking_allowed": false,
+          "price_lower_bound": 0.0,
+          "price_upper_bound": 100000.0,
+          "participants": [
+            {"name": "Power", "initial_emissions": 100.0, "free_allocation_ratio": 0.0, "penalty_price": 100000.0, "abatement_type": "linear", "max_abatement": 80.0, "cost_slope": 2.0},
+            {"name": "Industry", "initial_emissions": 50.0, "free_allocation_ratio": 0.0, "penalty_price": 100000.0, "abatement_type": "linear", "max_abatement": 40.0, "cost_slope": 5.0}
+          ]
+        },
+        {
+          "year": "2029",
+          "total_cap": 120.0,
+          "carbon_budget": 120.0,
+          "auction_mode": "derive_from_cap",
+          "banking_allowed": false,
+          "price_lower_bound": 0.0,
+          "price_upper_bound": 100000.0,
+          "participants": [
+            {"name": "Power", "initial_emissions": 100.0, "free_allocation_ratio": 0.0, "penalty_price": 100000.0, "abatement_type": "linear", "max_abatement": 80.0, "cost_slope": 2.0},
+            {"name": "Industry", "initial_emissions": 50.0, "free_allocation_ratio": 0.0, "penalty_price": 100000.0, "abatement_type": "linear", "max_abatement": 40.0, "cost_slope": 5.0}
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,77 @@
+{
+  "description": {
+    "title": "Carbon Cap Rule as an automatic cost-containment stabiliser under a persistent cost shock",
+    "economic_framing": "One carbon market hit by a PERSISTENT emissions/cost shock from 2027 onward (BAU jumps from 160 to 198 Mt/yr as both sectors' output rises), which spikes the allowance price. Two otherwise-identical scenarios isolate the mechanism. 'Fixed cap' holds a static 120 Mt cap and lets the shock drive a sustained price spike to 104 USD. 'Carbon Cap Rule' adapts each year's issued permit quantity to the LAGGED deviation of realised aggregate abatement cost (and emissions) from their pre-shock steady-state reference: when abatement costs run hot the regulator issues extra allowances, a soft cost-containment ceiling that damps the sustained spike. NOTE FOR THE ECONOMIST: this is the Benmir-Roman-Taschini Carbon Cap Rule (an adaptive Taylor-rule cap keyed to a one-period-lagged COST deviation), not a spot-price-triggered Cost Containment Reserve (RGGI-style). Its cost-containment behaviour is real but is triggered by the previous year's realised cost crossing its reference, not by the current price crossing a threshold; framing to be validated.",
+    "citation": "Benmir, G., Roman, J. and Taschini, L. (2025), 'Weitzman meets Taylor: EU allowance price drivers and carbon cap rules', Grantham Research Institute Working Paper No. 421, LSE. Mechanism: pe.features.ccr.CCRCapRule (modules/ccr/backend/rules.py, state.py) -- a CapRule on the competitive per-year pipeline reading the previous period's realised aggregates.",
+    "mechanism": "Before clearing, the rule adjusts issued permits by dQ_t = phi_e*(e_{t-1}-ebar)/ebar + phi_z*(z_{t-1}-zbar)/zbar, reading only the PREVIOUS year's realised aggregate emissions e_{t-1} and abatement cost z_{t-1} (never same-year outcomes). Here phi_z = +3.0 Mt (loosen when costs run hot), phi_e = -5.0 Mt (tighten when emissions overshoot), with references set to the 2025-2026 pre-shock steady state: ebar = 120 Mt residual emissions, zbar = 1066.667 aggregate abatement cost (Power 711.11 + Industry 355.56). The extra permits dQ_t are injected as auction supply before competitive clearing, exactly as the MSR withhold/release is.",
+    "participants": "Power E0=100->120 Mt (max abate 60, slope 2) and Industry E0=60->78 Mt (max abate 30, slope 4). Steady BAU 160 Mt/yr (2025-2026); shocked BAU 198 Mt/yr (2027-2029). Against the 120 Mt cap, required abatement jumps from 40 to 78 Mt, lifting the fixed-cap price from 53.33 to 104 USD.",
+    "expected_output": {
+      "Equilibrium Carbon Price Fixed cap 2025-2029 [USD/tCO2]": [53.33333333333332, 53.33333333333332, 103.99999999999999, 103.99999999999999, 103.99999999999999],
+      "Equilibrium Carbon Price Carbon Cap Rule 2025-2029 [USD/tCO2]": [53.33333333333332, 53.33333333333332, 103.99999999999999, 92.7899999999997, 96.35929319270831],
+      "CCR Cap Adjustment 2025-2029 [Mt]": [0.0, 0.0, 0.0, 8.40749999999999, 5.730530105468681],
+      "CCR Cost Deviation 2025-2029": [0.0, 0.0, 0.0, 2.8024999999999967, 2.02694753515623],
+      "CCR Emissions Deviation 2025-2029": [0.0, 0.0, 0.0, 0.0, 0.07006250000000165],
+      "reading": "The rule is provably neutral before the shock (2025-2027 dQ = 0, references equal the steady state). The shock lands in 2027 and BOTH scenarios spike to 104 USD that year -- the rule cannot react to the impulse year (it only sees 2026's steady cost). From 2028 the lagged cost deviation of +2.80 triggers dQ = +8.41 Mt of extra permits, damping the price to 92.79 USD (11% below the 104 counterfactual); in 2029 the still-elevated cost drives dQ = +5.73 Mt (cost term +6.08 Mt net of a -0.35 Mt emissions-overshoot pullback via phi_e), holding the price at 96.36 USD. The Carbon Cap Rule caps the SUSTAINED phase of the spike below the fixed-cap path, exactly as the paper describes."
+    }
+  },
+  "scenarios": [
+    {
+      "name": "Fixed cap",
+      "model_approach": "competitive",
+      "ccr_enabled": false,
+      "years": [
+        {"year": "2025", "total_cap": 120.0, "auction_mode": "derive_from_cap", "banking_allowed": false, "price_lower_bound": 0.0, "price_upper_bound": 100000.0, "participants": [
+          {"name": "Power", "initial_emissions": 100.0, "free_allocation_ratio": 0.0, "penalty_price": 100000.0, "abatement_type": "linear", "max_abatement": 60.0, "cost_slope": 2.0},
+          {"name": "Industry", "initial_emissions": 60.0, "free_allocation_ratio": 0.0, "penalty_price": 100000.0, "abatement_type": "linear", "max_abatement": 30.0, "cost_slope": 4.0}
+        ]},
+        {"year": "2026", "total_cap": 120.0, "auction_mode": "derive_from_cap", "banking_allowed": false, "price_lower_bound": 0.0, "price_upper_bound": 100000.0, "participants": [
+          {"name": "Power", "initial_emissions": 100.0, "free_allocation_ratio": 0.0, "penalty_price": 100000.0, "abatement_type": "linear", "max_abatement": 60.0, "cost_slope": 2.0},
+          {"name": "Industry", "initial_emissions": 60.0, "free_allocation_ratio": 0.0, "penalty_price": 100000.0, "abatement_type": "linear", "max_abatement": 30.0, "cost_slope": 4.0}
+        ]},
+        {"year": "2027", "total_cap": 120.0, "auction_mode": "derive_from_cap", "banking_allowed": false, "price_lower_bound": 0.0, "price_upper_bound": 100000.0, "participants": [
+          {"name": "Power", "initial_emissions": 120.0, "free_allocation_ratio": 0.0, "penalty_price": 100000.0, "abatement_type": "linear", "max_abatement": 60.0, "cost_slope": 2.0},
+          {"name": "Industry", "initial_emissions": 78.0, "free_allocation_ratio": 0.0, "penalty_price": 100000.0, "abatement_type": "linear", "max_abatement": 30.0, "cost_slope": 4.0}
+        ]},
+        {"year": "2028", "total_cap": 120.0, "auction_mode": "derive_from_cap", "banking_allowed": false, "price_lower_bound": 0.0, "price_upper_bound": 100000.0, "participants": [
+          {"name": "Power", "initial_emissions": 120.0, "free_allocation_ratio": 0.0, "penalty_price": 100000.0, "abatement_type": "linear", "max_abatement": 60.0, "cost_slope": 2.0},
+          {"name": "Industry", "initial_emissions": 78.0, "free_allocation_ratio": 0.0, "penalty_price": 100000.0, "abatement_type": "linear", "max_abatement": 30.0, "cost_slope": 4.0}
+        ]},
+        {"year": "2029", "total_cap": 120.0, "auction_mode": "derive_from_cap", "banking_allowed": false, "price_lower_bound": 0.0, "price_upper_bound": 100000.0, "participants": [
+          {"name": "Power", "initial_emissions": 120.0, "free_allocation_ratio": 0.0, "penalty_price": 100000.0, "abatement_type": "linear", "max_abatement": 60.0, "cost_slope": 2.0},
+          {"name": "Industry", "initial_emissions": 78.0, "free_allocation_ratio": 0.0, "penalty_price": 100000.0, "abatement_type": "linear", "max_abatement": 30.0, "cost_slope": 4.0}
+        ]}
+      ]
+    },
+    {
+      "name": "Carbon Cap Rule",
+      "model_approach": "competitive",
+      "ccr_enabled": true,
+      "ccr_phi_emissions": -5.0,
+      "ccr_phi_abatement_cost": 3.0,
+      "ccr_reference_emissions": 120.0,
+      "ccr_reference_abatement_cost": 1066.6666666666672,
+      "years": [
+        {"year": "2025", "total_cap": 120.0, "auction_mode": "derive_from_cap", "banking_allowed": false, "price_lower_bound": 0.0, "price_upper_bound": 100000.0, "participants": [
+          {"name": "Power", "initial_emissions": 100.0, "free_allocation_ratio": 0.0, "penalty_price": 100000.0, "abatement_type": "linear", "max_abatement": 60.0, "cost_slope": 2.0},
+          {"name": "Industry", "initial_emissions": 60.0, "free_allocation_ratio": 0.0, "penalty_price": 100000.0, "abatement_type": "linear", "max_abatement": 30.0, "cost_slope": 4.0}
+        ]},
+        {"year": "2026", "total_cap": 120.0, "auction_mode": "derive_from_cap", "banking_allowed": false, "price_lower_bound": 0.0, "price_upper_bound": 100000.0, "participants": [
+          {"name": "Power", "initial_emissions": 100.0, "free_allocation_ratio": 0.0, "penalty_price": 100000.0, "abatement_type": "linear", "max_abatement": 60.0, "cost_slope": 2.0},
+          {"name": "Industry", "initial_emissions": 60.0, "free_allocation_ratio": 0.0, "penalty_price": 100000.0, "abatement_type": "linear", "max_abatement": 30.0, "cost_slope": 4.0}
+        ]},
+        {"year": "2027", "total_cap": 120.0, "auction_mode": "derive_from_cap", "banking_allowed": false, "price_lower_bound": 0.0, "price_upper_bound": 100000.0, "participants": [
+          {"name": "Power", "initial_emissions": 120.0, "free_allocation_ratio": 0.0, "penalty_price": 100000.0, "abatement_type": "linear", "max_abatement": 60.0, "cost_slope": 2.0},
+          {"name": "Industry", "initial_emissions": 78.0, "free_allocation_ratio": 0.0, "penalty_price": 100000.0, "abatement_type": "linear", "max_abatement": 30.0, "cost_slope": 4.0}
+        ]},
+        {"year": "2028", "total_cap": 120.0, "auction_mode": "derive_from_cap", "banking_allowed": false, "price_lower_bound": 0.0, "price_upper_bound": 100000.0, "participants": [
+          {"name": "Power", "initial_emissions": 120.0, "free_allocation_ratio": 0.0, "penalty_price": 100000.0, "abatement_type": "linear", "max_abatement": 60.0, "cost_slope": 2.0},
+          {"name": "Industry", "initial_emissions": 78.0, "free_allocation_ratio": 0.0, "penalty_price": 100000.0, "abatement_type": "linear", "max_abatement": 30.0, "cost_slope": 4.0}
+        ]},
+        {"year": "2029", "total_cap": 120.0, "auction_mode": "derive_from_cap", "banking_allowed": false, "price_lower_bound": 0.0, "price_upper_bound": 100000.0, "participants": [
+          {"name": "Power", "initial_emissions": 120.0, "free_allocation_ratio": 0.0, "penalty_price": 100000.0, "abatement_type": "linear", "max_abatement": 60.0, "cost_slope": 2.0},
+          {"name": "Industry", "initial_emissions": 78.0, "free_allocation_ratio": 0.0, "penalty_price": 100000.0, "abatement_type": "linear", "max_abatement": 30.0, "cost_slope": 4.0}
+        ]}
+      ]
+    }
+  ]
+}

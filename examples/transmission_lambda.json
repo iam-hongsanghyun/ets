@@ -1,0 +1,96 @@
+{
+  "description": {
+    "title": "Forward-transmission (lambda) blending of spot and Hotelling prices, and the floor's transmission-immunity",
+    "economic_framing": "The K-MSR working paper models a market's capacity to price future scarcity as a forward-transmission coefficient lambda in [0,1]: the delivered allowance price is a convex blend of the static year-by-year spot (competitive) price and the inter-temporal Hotelling price. lambda = 0 is a market that prices no cross-vintage carry (the paper's empirical reading of KAU); lambda = 1 is full Hotelling pricing. Three scenarios run the paper's regimes -- relapse (lambda=0), hold (lambda=0.5), consolidate (lambda=1.0) -- on an identical market with a declining cap (140->110 Mt) and an auction reserve-price floor of 46. The tightening cap makes the spot path steepen (26.7->66.7) while the Hotelling path smooths the same cumulative budget into a gentle 5%/yr ramp (43.3->50.1), so the two components diverge and lambda genuinely moves the delivered price.",
+    "citation": "PLANiT, 'Leading Carbon Prices to an Irreversible Industrial Transition' (working paper, July 2026), Sections 3 and 5. Mechanism: pe.features.transmission.solve_transmission_path (modules/transmission/backend/solver.py).",
+    "mechanism": "P_delivered(t) = max((1-lambda)*P_comp(t) + lambda*P_hot(t), F_t). Both components are solved with the reserve floor REMOVED; the floor F_t = auction_reserve_price clips the blend LAST (blend-first, clip-last). This order is load-bearing: it makes the floor lambda-independent (enforced at the primary auction, outside the forward channel) while the price ABOVE the floor varies with lambda. P_hot(t) = shadow_price*(1+r)^t with r = discount_rate = 0.05.",
+    "participants": "Power E0=100 Mt (max abate 60, slope 2) and Industry E0=60 Mt (max abate 30, slope 4). BAU 160 Mt; carbon_budget = total_cap each year (cumulative 500 Mt drives the Hotelling shadow price).",
+    "expected_output": {
+      "Static (spot) component price 2026-2029 [USD/tCO2]": [26.66666666666667, 39.99999999999998, 53.33333333333332, 66.66666666666667],
+      "Hotelling component price 2026-2029 [USD/tCO2]": [43.3010595703125, 45.46611254882813, 47.73941817626954, 50.12638908508302],
+      "Delivered lambda=0.0 (relapse) 2026-2029": [46.0, 46.0, 53.33333333333332, 66.66666666666667],
+      "Delivered lambda=0.5 (hold) 2026-2029": [46.0, 46.0, 50.536375754801426, 58.396527875874845],
+      "Delivered lambda=1.0 (consolidate) 2026-2029": [46.0, 46.0, 47.73941817626954, 50.12638908508302],
+      "hotelling_component_anchor": "The Hotelling component itself rises at the discount rate: 45.46611254882813 / 43.3010595703125 = 1.05 exactly, 50.12638908508302 / 43.3010595703125 = 1.157625 = 1.05^3.",
+      "blend_anchor": "lambda=0.5, 2028: (1-0.5)*53.33333 + 0.5*47.73942 = 50.53638, matching the delivered value. lambda endpoints differ where the blend clears above the floor: 2029 delivers 66.667 (lambda=0) vs 50.126 (lambda=1), a 16.5 USD spread.",
+      "reading": "Transmission-immunity is visible in 2026-2027: both components sit below the 46 floor, so ALL THREE regimes deliver exactly 46.0 -- the floor is lambda-independent. From 2028 the blend clears above the floor and the delivered price fans out with lambda: the pure-spot path (66.7 by 2029) reflects the raw tightening, while the pure-Hotelling path (50.1) smooths it; lambda=0.5 sits halfway. This is the paper's Result 2 -- a floor that binds is transmission-immune, while the price above it carries the forward signal at strength lambda."
+    }
+  },
+  "scenarios": [
+    {
+      "name": "lambda 0.0 (relapse / pure spot)",
+      "model_approach": "competitive",
+      "discount_rate": 0.05,
+      "risk_premium": 0.0,
+      "forward_transmission_lambda": 0.0,
+      "years": [
+        {"year": "2026", "total_cap": 140.0, "carbon_budget": 140.0, "auction_mode": "derive_from_cap", "banking_allowed": false, "auction_reserve_price": 46.0, "price_lower_bound": 0.0, "price_upper_bound": 100000.0, "participants": [
+          {"name": "Power", "initial_emissions": 100.0, "free_allocation_ratio": 0.0, "penalty_price": 100000.0, "abatement_type": "linear", "max_abatement": 60.0, "cost_slope": 2.0},
+          {"name": "Industry", "initial_emissions": 60.0, "free_allocation_ratio": 0.0, "penalty_price": 100000.0, "abatement_type": "linear", "max_abatement": 30.0, "cost_slope": 4.0}
+        ]},
+        {"year": "2027", "total_cap": 130.0, "carbon_budget": 130.0, "auction_mode": "derive_from_cap", "banking_allowed": false, "auction_reserve_price": 46.0, "price_lower_bound": 0.0, "price_upper_bound": 100000.0, "participants": [
+          {"name": "Power", "initial_emissions": 100.0, "free_allocation_ratio": 0.0, "penalty_price": 100000.0, "abatement_type": "linear", "max_abatement": 60.0, "cost_slope": 2.0},
+          {"name": "Industry", "initial_emissions": 60.0, "free_allocation_ratio": 0.0, "penalty_price": 100000.0, "abatement_type": "linear", "max_abatement": 30.0, "cost_slope": 4.0}
+        ]},
+        {"year": "2028", "total_cap": 120.0, "carbon_budget": 120.0, "auction_mode": "derive_from_cap", "banking_allowed": false, "auction_reserve_price": 46.0, "price_lower_bound": 0.0, "price_upper_bound": 100000.0, "participants": [
+          {"name": "Power", "initial_emissions": 100.0, "free_allocation_ratio": 0.0, "penalty_price": 100000.0, "abatement_type": "linear", "max_abatement": 60.0, "cost_slope": 2.0},
+          {"name": "Industry", "initial_emissions": 60.0, "free_allocation_ratio": 0.0, "penalty_price": 100000.0, "abatement_type": "linear", "max_abatement": 30.0, "cost_slope": 4.0}
+        ]},
+        {"year": "2029", "total_cap": 110.0, "carbon_budget": 110.0, "auction_mode": "derive_from_cap", "banking_allowed": false, "auction_reserve_price": 46.0, "price_lower_bound": 0.0, "price_upper_bound": 100000.0, "participants": [
+          {"name": "Power", "initial_emissions": 100.0, "free_allocation_ratio": 0.0, "penalty_price": 100000.0, "abatement_type": "linear", "max_abatement": 60.0, "cost_slope": 2.0},
+          {"name": "Industry", "initial_emissions": 60.0, "free_allocation_ratio": 0.0, "penalty_price": 100000.0, "abatement_type": "linear", "max_abatement": 30.0, "cost_slope": 4.0}
+        ]}
+      ]
+    },
+    {
+      "name": "lambda 0.5 (hold / partial transmission)",
+      "model_approach": "competitive",
+      "discount_rate": 0.05,
+      "risk_premium": 0.0,
+      "forward_transmission_lambda": 0.5,
+      "years": [
+        {"year": "2026", "total_cap": 140.0, "carbon_budget": 140.0, "auction_mode": "derive_from_cap", "banking_allowed": false, "auction_reserve_price": 46.0, "price_lower_bound": 0.0, "price_upper_bound": 100000.0, "participants": [
+          {"name": "Power", "initial_emissions": 100.0, "free_allocation_ratio": 0.0, "penalty_price": 100000.0, "abatement_type": "linear", "max_abatement": 60.0, "cost_slope": 2.0},
+          {"name": "Industry", "initial_emissions": 60.0, "free_allocation_ratio": 0.0, "penalty_price": 100000.0, "abatement_type": "linear", "max_abatement": 30.0, "cost_slope": 4.0}
+        ]},
+        {"year": "2027", "total_cap": 130.0, "carbon_budget": 130.0, "auction_mode": "derive_from_cap", "banking_allowed": false, "auction_reserve_price": 46.0, "price_lower_bound": 0.0, "price_upper_bound": 100000.0, "participants": [
+          {"name": "Power", "initial_emissions": 100.0, "free_allocation_ratio": 0.0, "penalty_price": 100000.0, "abatement_type": "linear", "max_abatement": 60.0, "cost_slope": 2.0},
+          {"name": "Industry", "initial_emissions": 60.0, "free_allocation_ratio": 0.0, "penalty_price": 100000.0, "abatement_type": "linear", "max_abatement": 30.0, "cost_slope": 4.0}
+        ]},
+        {"year": "2028", "total_cap": 120.0, "carbon_budget": 120.0, "auction_mode": "derive_from_cap", "banking_allowed": false, "auction_reserve_price": 46.0, "price_lower_bound": 0.0, "price_upper_bound": 100000.0, "participants": [
+          {"name": "Power", "initial_emissions": 100.0, "free_allocation_ratio": 0.0, "penalty_price": 100000.0, "abatement_type": "linear", "max_abatement": 60.0, "cost_slope": 2.0},
+          {"name": "Industry", "initial_emissions": 60.0, "free_allocation_ratio": 0.0, "penalty_price": 100000.0, "abatement_type": "linear", "max_abatement": 30.0, "cost_slope": 4.0}
+        ]},
+        {"year": "2029", "total_cap": 110.0, "carbon_budget": 110.0, "auction_mode": "derive_from_cap", "banking_allowed": false, "auction_reserve_price": 46.0, "price_lower_bound": 0.0, "price_upper_bound": 100000.0, "participants": [
+          {"name": "Power", "initial_emissions": 100.0, "free_allocation_ratio": 0.0, "penalty_price": 100000.0, "abatement_type": "linear", "max_abatement": 60.0, "cost_slope": 2.0},
+          {"name": "Industry", "initial_emissions": 60.0, "free_allocation_ratio": 0.0, "penalty_price": 100000.0, "abatement_type": "linear", "max_abatement": 30.0, "cost_slope": 4.0}
+        ]}
+      ]
+    },
+    {
+      "name": "lambda 1.0 (consolidate / pure Hotelling)",
+      "model_approach": "competitive",
+      "discount_rate": 0.05,
+      "risk_premium": 0.0,
+      "forward_transmission_lambda": 1.0,
+      "years": [
+        {"year": "2026", "total_cap": 140.0, "carbon_budget": 140.0, "auction_mode": "derive_from_cap", "banking_allowed": false, "auction_reserve_price": 46.0, "price_lower_bound": 0.0, "price_upper_bound": 100000.0, "participants": [
+          {"name": "Power", "initial_emissions": 100.0, "free_allocation_ratio": 0.0, "penalty_price": 100000.0, "abatement_type": "linear", "max_abatement": 60.0, "cost_slope": 2.0},
+          {"name": "Industry", "initial_emissions": 60.0, "free_allocation_ratio": 0.0, "penalty_price": 100000.0, "abatement_type": "linear", "max_abatement": 30.0, "cost_slope": 4.0}
+        ]},
+        {"year": "2027", "total_cap": 130.0, "carbon_budget": 130.0, "auction_mode": "derive_from_cap", "banking_allowed": false, "auction_reserve_price": 46.0, "price_lower_bound": 0.0, "price_upper_bound": 100000.0, "participants": [
+          {"name": "Power", "initial_emissions": 100.0, "free_allocation_ratio": 0.0, "penalty_price": 100000.0, "abatement_type": "linear", "max_abatement": 60.0, "cost_slope": 2.0},
+          {"name": "Industry", "initial_emissions": 60.0, "free_allocation_ratio": 0.0, "penalty_price": 100000.0, "abatement_type": "linear", "max_abatement": 30.0, "cost_slope": 4.0}
+        ]},
+        {"year": "2028", "total_cap": 120.0, "carbon_budget": 120.0, "auction_mode": "derive_from_cap", "banking_allowed": false, "auction_reserve_price": 46.0, "price_lower_bound": 0.0, "price_upper_bound": 100000.0, "participants": [
+          {"name": "Power", "initial_emissions": 100.0, "free_allocation_ratio": 0.0, "penalty_price": 100000.0, "abatement_type": "linear", "max_abatement": 60.0, "cost_slope": 2.0},
+          {"name": "Industry", "initial_emissions": 60.0, "free_allocation_ratio": 0.0, "penalty_price": 100000.0, "abatement_type": "linear", "max_abatement": 30.0, "cost_slope": 4.0}
+        ]},
+        {"year": "2029", "total_cap": 110.0, "carbon_budget": 110.0, "auction_mode": "derive_from_cap", "banking_allowed": false, "auction_reserve_price": 46.0, "price_lower_bound": 0.0, "price_upper_bound": 100000.0, "participants": [
+          {"name": "Power", "initial_emissions": 100.0, "free_allocation_ratio": 0.0, "penalty_price": 100000.0, "abatement_type": "linear", "max_abatement": 60.0, "cost_slope": 2.0},
+          {"name": "Industry", "initial_emissions": 60.0, "free_allocation_ratio": 0.0, "penalty_price": 100000.0, "abatement_type": "linear", "max_abatement": 30.0, "cost_slope": 4.0}
+        ]}
+      ]
+    }
+  ]
+}
