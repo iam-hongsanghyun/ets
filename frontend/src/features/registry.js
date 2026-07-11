@@ -39,6 +39,7 @@ import nash_cournot from "./nash_cournot/index.jsx";
 import transmission from "./transmission/index.jsx";
 import elastic_baseline from "./elastic_baseline/index.jsx";
 import calibration from "./calibration/index.jsx";
+import endogenous_investment from "./endogenous_investment/index.jsx";
 
 export const FEATURES = Object.freeze({
   msr,
@@ -53,6 +54,7 @@ export const FEATURES = Object.freeze({
   transmission,
   elastic_baseline,
   calibration,
+  endogenous_investment,
 });
 
 // enabledFeatures === null means "all features" (today's default shell).
