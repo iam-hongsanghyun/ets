@@ -112,3 +112,7 @@ Items are grouped by theme. Checked items are complete. Unchecked items are pend
 |---|---|---|---|
 | Expected price dynamic module | Medium | Low — theoretical improvement | Adaptive/learning expectations as alternative to `next_year_baseline` |
 | Spreadsheet conveniences | Medium | Low — UX polish | CSV import/export, duplicate row, clipboard paste |
+
+## Phase 1 follow-ups (economist sign-off findings, non-blocking)
+
+- [ ] F-INV-1: flip ADOPTION_CARRIER.carry_if to always-true (BANK_CARRIER style) — the feature-enabled predicate leaves a disable-then-re-enable corner across two policy events that drops the irreversibility floor (currently unreachable silently; builder guard forces loud stripping; escape via investment_initial_adoptions). One-line fix + a splice test.
