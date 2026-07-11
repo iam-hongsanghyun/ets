@@ -155,7 +155,7 @@ def test_baseline_coverage() -> None:
     )
     # The curated library is exactly twelve examples <-> twelve baselines
     # (seven price-formation/link/joint examples plus five approach/mechanism
-    # examples: hotelling_budget, ccr_cost_containment, cbam_border_adjustment,
+    # examples: hotelling_budget, carbon_cap_rule, cbam_border_adjustment,
     # oba_output_allocation, transmission_lambda).
     assert len(example_stems) == 12, f"expected 12 curated examples, found {sorted(example_stems)}"
     assert len(baseline_stems) == 12, f"expected 12 baselines, found {sorted(baseline_stems)}"

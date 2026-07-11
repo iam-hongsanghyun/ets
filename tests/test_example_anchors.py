@@ -98,7 +98,7 @@ def test_oba_free_allocation_tracks_benchmark_times_output() -> None:
 
 def test_ccr_neutral_before_shock_and_caps_the_spike() -> None:
     """CCR anchor: dQ = 0 before the shock; loosens and caps price after."""
-    summary, _ = run_simulation_from_file(EXAMPLES_DIR / "ccr_cost_containment.json")
+    summary, _ = run_simulation_from_file(EXAMPLES_DIR / "carbon_cap_rule.json")
     fixed = _by_scenario(summary, "Fixed cap")
     ccr = _by_scenario(summary, "Carbon Cap Rule").reset_index(drop=True)
     # References equal the pre-shock steady state, so the rule is neutral through

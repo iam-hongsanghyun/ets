@@ -1,5 +1,5 @@
 {
- "scenario_file": "examples/ccr_cost_containment.json",
+ "scenario_file": "examples/carbon_cap_rule.json",
  "git_sha": "7b94c2d88f868c6de5aa6b4435b94ba5091e1ee9",
  "git_dirty": true,
  "captured": "2026-07-12",

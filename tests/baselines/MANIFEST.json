@@ -120,7 +120,7 @@
     36
    ]
   },
-  "ccr_cost_containment": {
+  "carbon_cap_rule": {
    "status": "CAPTURED",
    "reused": false,
    "entry_point": "ets.run_simulation_from_file",
