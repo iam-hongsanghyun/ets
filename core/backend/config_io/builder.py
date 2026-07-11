@@ -215,31 +215,88 @@ def normalize_config(config: dict[str, Any]) -> dict[str, Any]:
 
 _ALLOWED_MSR_MODES = {"bank_threshold", "price_band", "surplus_rule", "hybrid"}
 
+# D1 interim safety rail (docs/platform-plan-d0-d1.md D1 COMPAT RULE;
+# docs/platform-spec-d0-d1.md §6): a `markets`-shaped scenario is NOT yet
+# solvable — the engine/blocks wiring lands in D1-3/D1-4. Swallowing it
+# through `_scenario_extra`'s opaque unknown-key passthrough (blocks/
+# compile.py, blocks/decompile.py) would silently accept a config nothing
+# actually solves per its declared multi-market semantics, so both
+# `normalize_scenario` (and therefore `normalize_config`/`load_config`/
+# `save_config`/`build_markets_from_config`, and the decompile path via
+# `blocks.decompile.graph_from_config`, which calls `normalize_config`
+# first) reject it loudly. `config_io.markets.iter_market_bodies` is the one
+# sanctioned reader of a `markets`-shaped scenario until then.
+_MARKETS_KEY_GUARD_MESSAGE = (
+    "Scenario carries a 'markets' key: multi-market scenarios are schema-"
+    "only in this build (docs/platform-plan-d0-d1.md D1-1) — engine/blocks "
+    "wiring lands in D1-3/D1-4, so this scenario cannot be solved yet. Use "
+    "pe.config_io.iter_market_bodies() to inspect its market bodies "
+    "directly, or keep this scenario single-market (no 'markets' key) "
+    "until D1-4 ships."
+)
 
-def _validated_msr_mode(scenario: dict[str, Any]) -> str:
+
+def _validated_msr_mode(scenario: dict[str, Any], label: str) -> str:
     mode = str(scenario.get("msr_mode") or "bank_threshold").strip()
     if mode not in _ALLOWED_MSR_MODES:
         raise ValueError(
-            f"Scenario '{scenario.get('name')}': msr_mode must be one of "
+            f"{label}: msr_mode must be one of "
             f"{sorted(_ALLOWED_MSR_MODES)}, got '{mode}'."
         )
     return mode
 
 
-def normalize_scenario(raw_scenario: dict[str, Any]) -> dict[str, Any]:
+# D1 flow-vocabulary / link-unit pass-through keys (docs/platform-spec-d0-d1.md
+# §5/§6): OPTIONAL on a market body, "default absent" — an absent key means
+# "today's carbon labels", never an injected default value, so an example
+# that never sets them normalizes to a dict with the key MISSING, exactly as
+# it does today (byte-identical, D1 COMPAT RULE). Presence is validated
+# (non-empty string) and preserved so a `markets:[...]` body — and any
+# single-market scenario that already sets one of these ahead of D0-R2 —
+# round-trips unchanged.
+_OPTIONAL_MARKET_BODY_KEYS = ("flow_label", "flow_unit", "price_unit")
+
+
+def _normalize_market_body(raw_body: Mapping[str, Any], *, label: str) -> dict[str, Any]:
+    """Normalize a market body — the scenario shape minus ``name``/``policy_events``.
+
+    REUSED verbatim by both :func:`normalize_scenario` (legacy single-market
+    path, byte-identical output) and ``config_io.markets.iter_market_bodies``
+    (D1-1 multi-market accessor) — the ONE place market-body semantics
+    (years/participants/model-approach/solver knobs/trajectories/...) are
+    defined, per ``docs/platform-plan-d0-d1.md`` D1's COMPAT RULE ("A market
+    body = today's scenario body minus name/policy_events... normalize_scenario
+    internals reused per market").
+
+    Args:
+        raw_body: The market body's raw config dict (a whole raw scenario
+            dict for the single-market caller; one ``markets[i]`` entry for
+            the multi-market caller).
+        label: Error-message prefix, e.g. ``"Scenario 'S'"`` or
+            ``"Market 'steel'"`` — every ``ValueError`` this function raises
+            is prefixed with it, so the single-market caller's wording stays
+            byte-identical to before this function existed.
+
+    Returns:
+        The normalized body dict — every field ``normalize_scenario``
+        returned before D1-1, minus ``name``/``policy_events``, plus any of
+        ``flow_label``/``flow_unit``/``price_unit`` actually present in
+        ``raw_body`` (D1 vocabulary, optional, no injected default).
+
+    Raises:
+        ValueError: Malformed/out-of-bound ``years``, ``sectors``,
+            ``forward_transmission_lambda``, ``investment_max_iterations``,
+            ``invest_credibility``, ``msr_mode``, or an empty-string
+            ``flow_label``/``flow_unit``/``price_unit``.
+    """
     scenario = blank_scenario()
-    scenario.update(raw_scenario)
-    scenario["name"] = str(scenario["name"]).strip()
-    if not scenario["name"]:
-        raise ValueError("Each scenario must have a non-empty name.")
+    scenario.update(raw_body)
 
     years = scenario.get("years")
     if years is None:
-        years = [_legacy_scenario_to_year(raw_scenario)]
+        years = [_legacy_scenario_to_year(raw_body)]
     if not isinstance(years, list) or not years:
-        raise ValueError(
-            f"Scenario '{scenario['name']}' must contain a non-empty 'years' list."
-        )
+        raise ValueError(f"{label} must contain a non-empty 'years' list.")
 
     scenario["years"] = [normalize_year(item) for item in years]
 
@@ -271,7 +328,7 @@ def normalize_scenario(raw_scenario: dict[str, Any]) -> dict[str, Any]:
         transmission_lambda = float(transmission_lambda)
         if not 0.0 <= transmission_lambda <= 1.0:
             raise ValueError(
-                f"Scenario '{scenario['name']}': forward_transmission_lambda must "
+                f"{label}: forward_transmission_lambda must "
                 f"be in [0, 1], got {transmission_lambda}."
             )
 
@@ -284,7 +341,7 @@ def normalize_scenario(raw_scenario: dict[str, Any]) -> dict[str, Any]:
         investment_max_iterations = int(investment_max_iterations)
         if investment_max_iterations < 1:
             raise ValueError(
-                f"Scenario '{scenario['name']}': investment_max_iterations must "
+                f"{label}: investment_max_iterations must "
                 f"be a positive integer safety rail, got {investment_max_iterations} "
                 "(leave it unset for the engine's N_flagged + 1 default; spec D6)."
             )
@@ -294,12 +351,11 @@ def normalize_scenario(raw_scenario: dict[str, Any]) -> dict[str, Any]:
         invest_credibility = float(invest_credibility)
         if not 0.0 <= invest_credibility <= 1.0:
             raise ValueError(
-                f"Scenario '{scenario['name']}': invest_credibility must be in "
+                f"{label}: invest_credibility must be in "
                 f"[0, 1], got {invest_credibility} (spec D2.2)."
             )
 
-    return {
-        "name": scenario["name"],
+    body: dict[str, Any] = {
         "model_approach": model_approach,
         "discount_rate": _fval("discount_rate", 0.04),
         "risk_premium": _fval("risk_premium", 0.0),
@@ -330,7 +386,7 @@ def normalize_scenario(raw_scenario: dict[str, Any]) -> dict[str, Any]:
         "msr_cancel_excess": bool(scenario.get("msr_cancel_excess", False)),
         "msr_cancel_threshold": _fval("msr_cancel_threshold", 400.0),
         # K-MSR decree modes (banking solver; kets-outlook msr.ts parameters)
-        "msr_mode": _validated_msr_mode(scenario),
+        "msr_mode": _validated_msr_mode(scenario, label),
         "msr_price_band_high": _fval("msr_price_band_high", 25000.0),
         "msr_price_band_low": _fval("msr_price_band_low", 15000.0),
         "msr_surplus_upper_ratio": _fval("msr_surplus_upper_ratio", 0.18),
@@ -340,7 +396,6 @@ def normalize_scenario(raw_scenario: dict[str, Any]) -> dict[str, Any]:
         "msr_initial_reserve_mt": _fval("msr_initial_reserve_mt", 0.0),
         "msr_start_year": _fval("msr_start_year", 0.0),
         "ccr_start_year": _fval("ccr_start_year", 0.0),
-        "policy_events": list(scenario.get("policy_events") or []),
         # CCR (Carbon Cap Rule)
         "ccr_enabled": bool(scenario.get("ccr_enabled", False)),
         "ccr_phi_emissions": _fval("ccr_phi_emissions", 0.0),
@@ -373,9 +428,31 @@ def normalize_scenario(raw_scenario: dict[str, Any]) -> dict[str, Any]:
         "sectors": _normalize_sectors(scenario.get("sectors") or []),
         "years": scenario["years"],
     }
+    for optional_key in _OPTIONAL_MARKET_BODY_KEYS:
+        if optional_key in raw_body and raw_body[optional_key] is not None:
+            value = str(raw_body[optional_key]).strip()
+            if not value:
+                raise ValueError(f"{label}: {optional_key}, if present, must be non-empty.")
+            body[optional_key] = value
+    return body
 
 
-def _legacy_scenario_to_year(raw_scenario: dict[str, Any]) -> dict[str, Any]:
+def normalize_scenario(raw_scenario: dict[str, Any]) -> dict[str, Any]:
+    if "markets" in raw_scenario:
+        raise ValueError(_MARKETS_KEY_GUARD_MESSAGE)
+    name = str(raw_scenario.get("name", "New Scenario")).strip()
+    if not name:
+        raise ValueError("Each scenario must have a non-empty name.")
+
+    body = _normalize_market_body(raw_scenario, label=f"Scenario '{name}'")
+    return {
+        "name": name,
+        **body,
+        "policy_events": list(raw_scenario.get("policy_events") or []),
+    }
+
+
+def _legacy_scenario_to_year(raw_scenario: Mapping[str, Any]) -> dict[str, Any]:
     legacy_year = blank_year_config()
     for field in legacy_year:
         if field in raw_scenario:

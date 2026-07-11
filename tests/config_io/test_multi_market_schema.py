@@ -1,0 +1,318 @@
+"""D1-1 gate: multi-market schema layer (docs/platform-plan-d0-d1.md D1-1).
+
+Covers ``docs/platform-spec-d0-d1.md`` §2 (PriceLink semantics), §6
+(parameters, all defaults inert) and the plan's D1 COMPAT RULE:
+
+* (a) A single-market scenario (no ``markets`` key) normalizes BYTE-
+  IDENTICALLY to the pre-D1-1 output — a captured-baseline regression over
+  several diverse ``examples/*.json`` files (CLAUDE.md "captured baseline"
+  discipline), proving the refactor that extracted
+  ``config_io.builder._normalize_market_body`` changed nothing observable
+  for the degenerate case.
+* (b) ``config_io.iter_market_bodies`` returns ``[(None, scenario)]`` for a
+  flat scenario and ``[(market_id, body), ...]`` for a hand-built
+  multi-market config, in declaration order.
+* (c) Link field validation: missing channel/phi/phi_unit, the
+  implicit-"all" target rejection, the mac_cost/cost_slope dimensional
+  exclusion (spec §2b), and the price_unit-touching requirement (spec
+  §2e/§6).
+* (d) A ``markets``-shaped scenario hits the D1-1 interim safety rail (a
+  loud ``ValueError``, never a silent ``_scenario_extra`` passthrough) on
+  every legacy entry point, including the blocks decompile path.
+"""
+
+from __future__ import annotations
+
+import copy
+import json
+from pathlib import Path
+from typing import Any
+
+import pytest
+
+from pe.blocks import graph_from_config
+from pe.config_io import iter_market_bodies, normalize_config, normalize_scenario
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+EXAMPLES_DIR = REPO_ROOT / "examples"
+SNAPSHOT_DIR = Path(__file__).resolve().parent / "snapshots"
+
+SNAPSHOT_STEMS = sorted(
+    p.stem.removesuffix(".normalized") for p in SNAPSHOT_DIR.glob("*.normalized.json")
+)
+
+
+# ── (a) single-market normalize output is byte-identical to the captured baseline ──
+
+
+@pytest.mark.parametrize("stem", SNAPSHOT_STEMS)
+def test_single_market_normalize_is_byte_identical_to_baseline(stem: str) -> None:
+    raw = json.loads((EXAMPLES_DIR / f"{stem}.json").read_text())
+    expected = json.loads((SNAPSHOT_DIR / f"{stem}.normalized.json").read_text())
+    # Round-trip through JSON so float repr matches the captured side exactly
+    # (same discipline as tests/test_golden_baselines.py).
+    actual = json.loads(json.dumps(normalize_config(raw)))
+    assert actual == expected, (
+        f"normalize_config('{stem}') drifted from the pre-D1-1 captured baseline — "
+        "the market-body extraction (_normalize_market_body) must be a pure refactor "
+        "for scenarios without a 'markets' key."
+    )
+
+
+def test_snapshot_fixtures_are_not_empty() -> None:
+    """Guard against an accidentally-empty parametrization silently passing."""
+    assert len(SNAPSHOT_STEMS) >= 5
+
+
+# ── (b) iter_market_bodies: degenerate vs multi-market ──────────────────────
+
+
+def test_iter_market_bodies_degenerate_case_yields_none_keyed_scenario() -> None:
+    raw = json.loads((EXAMPLES_DIR / "climate_solutions_basic_linear.json").read_text())
+    scenario = raw["scenarios"][0]
+
+    result = iter_market_bodies(scenario)
+
+    assert [market_id for market_id, _ in result] == [None]
+    assert result[0][1] == normalize_scenario(scenario)
+
+
+def _market_body(
+    participants: list[dict[str, Any]], *, price_unit: str | None = None
+) -> dict[str, Any]:
+    body: dict[str, Any] = {
+        "years": [
+            {
+                "year": "2030",
+                "total_cap": 100.0,
+                "auction_mode": "explicit",
+                "auction_offered": 50.0,
+                "price_lower_bound": 0.0,
+                "price_upper_bound": 200.0,
+                "participants": participants,
+            }
+        ],
+    }
+    if price_unit is not None:
+        body["price_unit"] = price_unit
+    return body
+
+
+def _two_market_scenario(
+    *,
+    to_market_abatement_type: str = "threshold",
+    from_price_unit: str | None = "USD/kgH2",
+    to_price_unit: str | None = "USD/tCO2",
+    link_overrides: dict[str, Any] | None = None,
+    omit_link_keys: tuple[str, ...] = (),
+) -> dict[str, Any]:
+    """A 2-market ``{hydrogen -> steel}`` mac_cost link scenario (spec A4-style).
+
+    ``hydrogen`` is the source market (``from_market``); ``steel`` is the
+    target (``to_market``), carrying one participant ("SteelCo") with one
+    flagged technology option ("H2-DRI") whose ``abatement_type`` is
+    configurable — ``"threshold"`` (a valid mac_cost target, the threshold
+    MAC level) by default, or ``"linear"`` to exercise the cost_slope
+    dimensional exclusion (spec §2b).
+    """
+    hydrogen_market = _market_body(
+        [{"name": "H2Producer", "initial_emissions": 50.0, "penalty_price": 100.0}],
+        price_unit=from_price_unit,
+    )
+    hydrogen_market["market_id"] = "hydrogen"
+
+    steel_participant = {
+        "name": "SteelCo",
+        "initial_emissions": 80.0,
+        "penalty_price": 200.0,
+        "technology_options": [
+            {
+                "name": "H2-DRI",
+                "abatement_type": to_market_abatement_type,
+                "threshold_cost": 40.0,
+            }
+        ],
+    }
+    steel_market = _market_body([steel_participant], price_unit=to_price_unit)
+    steel_market["market_id"] = "steel"
+
+    link: dict[str, Any] = {
+        "from_market": "hydrogen",
+        "to_market": "steel",
+        "channel": "mac_cost",
+        "phi": 30.0,
+        "phi_unit": "kgH2/tCO2",
+        "target_participants": ["SteelCo"],
+        "target_technologies": ["H2-DRI"],
+    }
+    for key in omit_link_keys:
+        link.pop(key, None)
+    if link_overrides:
+        link.update(link_overrides)
+
+    return {
+        "name": "Two-Market",
+        "markets": [hydrogen_market, steel_market],
+        "links": [link],
+    }
+
+
+def test_iter_market_bodies_multi_market_case_yields_ordered_ids_and_bodies() -> None:
+    scenario = _two_market_scenario()
+
+    result = iter_market_bodies(scenario)
+
+    assert [market_id for market_id, _ in result] == ["hydrogen", "steel"]
+    bodies = dict(result)
+    assert bodies["hydrogen"]["years"][0]["participants"][0]["name"] == "H2Producer"
+    assert bodies["hydrogen"]["price_unit"] == "USD/kgH2"
+    assert bodies["steel"]["years"][0]["participants"][0]["name"] == "SteelCo"
+    assert bodies["steel"]["price_unit"] == "USD/tCO2"
+    # Market bodies never carry "name"/"policy_events" (scenario-only fields)
+    # nor the accessor's own "market_id" bookkeeping key.
+    assert "name" not in bodies["hydrogen"]
+    assert "policy_events" not in bodies["hydrogen"]
+    assert "market_id" not in bodies["hydrogen"]
+
+
+def test_iter_market_bodies_market_body_matches_shared_single_market_internals() -> None:
+    """A market body normalizes identically whether it arrives flat (today's
+    single-market path) or inside 'markets' — the D1 COMPAT RULE's "reuse,
+    don't duplicate" half."""
+    participants = [{"name": "H2Producer", "initial_emissions": 50.0, "penalty_price": 100.0}]
+    flat_scenario = {"name": "Flat", **_market_body(participants)}
+    flat_body = normalize_scenario(flat_scenario)
+    del flat_body["name"]
+    del flat_body["policy_events"]
+
+    multi_market_scenario = {
+        "name": "Multi",
+        "markets": [{"market_id": "only", **_market_body(participants)}],
+    }
+    multi_body = dict(iter_market_bodies(multi_market_scenario))["only"]
+
+    assert multi_body == flat_body
+
+
+def test_iter_market_bodies_rejects_duplicate_market_id() -> None:
+    scenario = _two_market_scenario()
+    scenario["markets"][1]["market_id"] = "hydrogen"
+    with pytest.raises(ValueError, match="duplicate market_id"):
+        iter_market_bodies(scenario)
+
+
+def test_iter_market_bodies_rejects_empty_markets_list() -> None:
+    with pytest.raises(ValueError, match="non-empty list"):
+        iter_market_bodies({"name": "Empty", "markets": []})
+
+
+# ── (c) link field validation ────────────────────────────────────────────────
+
+
+def test_link_missing_channel_raises() -> None:
+    scenario = _two_market_scenario(omit_link_keys=("channel",))
+    with pytest.raises(ValueError, match="channel"):
+        iter_market_bodies(scenario)
+
+
+def test_link_missing_phi_raises() -> None:
+    scenario = _two_market_scenario(omit_link_keys=("phi",))
+    with pytest.raises(ValueError, match="phi"):
+        iter_market_bodies(scenario)
+
+
+def test_link_missing_phi_unit_raises() -> None:
+    scenario = _two_market_scenario(omit_link_keys=("phi_unit",))
+    with pytest.raises(ValueError, match="phi_unit"):
+        iter_market_bodies(scenario)
+
+
+def test_link_invalid_channel_raises() -> None:
+    scenario = _two_market_scenario(link_overrides={"channel": "capped_pass_through"})
+    with pytest.raises(ValueError, match="channel must be one of"):
+        iter_market_bodies(scenario)
+
+
+def test_link_implicit_all_target_participants_rejected() -> None:
+    scenario = _two_market_scenario(link_overrides={"target_participants": []})
+    with pytest.raises(ValueError, match="implicit 'all'"):
+        iter_market_bodies(scenario)
+
+
+def test_link_mac_cost_requires_target_technologies() -> None:
+    scenario = _two_market_scenario(omit_link_keys=("target_technologies",))
+    with pytest.raises(ValueError, match="target_technologies is REQUIRED"):
+        iter_market_bodies(scenario)
+
+
+def test_link_mac_cost_rejects_linear_cost_slope_target() -> None:
+    """spec §2b: cost_slope [currency/t per Mt] is a SLOPE, dimensionally
+    excluded from mac_cost's additive price-LEVEL shift."""
+    scenario = _two_market_scenario(to_market_abatement_type="linear")
+    with pytest.raises(ValueError, match="cost_slope"):
+        iter_market_bodies(scenario)
+
+
+def test_link_missing_price_unit_on_linked_market_raises() -> None:
+    scenario = _two_market_scenario(to_price_unit=None)
+    with pytest.raises(ValueError, match="price_unit"):
+        iter_market_bodies(scenario)
+
+
+def test_link_unknown_endpoint_market_raises() -> None:
+    scenario = _two_market_scenario(link_overrides={"to_market": "no-such-market"})
+    with pytest.raises(ValueError, match="unknown market"):
+        iter_market_bodies(scenario)
+
+
+def test_link_self_link_rejected() -> None:
+    scenario = _two_market_scenario(link_overrides={"to_market": "hydrogen"})
+    with pytest.raises(ValueError, match="self-links are forbidden"):
+        iter_market_bodies(scenario)
+
+
+def test_valid_two_market_link_normalizes_cleanly() -> None:
+    """The base fixture itself must be valid — every negative test above
+    mutates exactly one field away from this baseline."""
+    result = iter_market_bodies(_two_market_scenario())
+    assert [market_id for market_id, _ in result] == ["hydrogen", "steel"]
+
+
+# ── (d) interim safety rail: a 'markets' key is never silently swallowed ────
+
+
+def test_normalize_scenario_rejects_markets_key() -> None:
+    scenario = _two_market_scenario()
+    with pytest.raises(ValueError, match="markets"):
+        normalize_scenario(scenario)
+
+
+def test_normalize_config_rejects_markets_key() -> None:
+    config = {"scenarios": [_two_market_scenario()]}
+    with pytest.raises(ValueError, match="markets"):
+        normalize_config(config)
+
+
+def test_decompile_path_rejects_markets_key() -> None:
+    """blocks.decompile.graph_from_config normalizes first — the interim
+    guard fires before any graph is ever built, never falling through to
+    the opaque `_scenario_extra` passthrough."""
+    config = {"scenarios": [_two_market_scenario()]}
+    with pytest.raises(ValueError, match="markets"):
+        graph_from_config(config)
+
+
+def test_markets_key_guard_message_names_the_escape_hatch() -> None:
+    """The guard must be actionable, not just loud: it names
+    iter_market_bodies as the sanctioned reader."""
+    scenario = _two_market_scenario()
+    with pytest.raises(ValueError, match="iter_market_bodies"):
+        normalize_scenario(scenario)
+
+
+def test_markets_key_guard_does_not_mutate_input() -> None:
+    scenario = _two_market_scenario()
+    before = copy.deepcopy(scenario)
+    with pytest.raises(ValueError):
+        normalize_scenario(scenario)
+    assert scenario == before

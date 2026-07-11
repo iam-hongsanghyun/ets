@@ -15,6 +15,7 @@ from .builder import (
     _interp_ratio,
     _normalize_trajectory,
 )
+from .markets import iter_market_bodies
 from .templates import (
     blank_config,
     blank_scenario,
@@ -41,6 +42,7 @@ __all__ = [
     "_interp_value",
     "_interp_ratio",
     "_normalize_trajectory",
+    "iter_market_bodies",
     "blank_config",
     "blank_scenario",
     "blank_year_config",

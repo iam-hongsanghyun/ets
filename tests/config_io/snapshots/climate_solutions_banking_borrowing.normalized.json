@@ -1,0 +1,905 @@
+{
+  "scenarios": [
+    {
+      "banking_bank_tolerance": 1e-06,
+      "banking_initial_bank": 0.0,
+      "banking_strict_no_arbitrage": true,
+      "banking_supply_rule_max_iters": 25,
+      "banking_supply_rule_tolerance": 0.001,
+      "cap_trajectory": {},
+      "ccr_enabled": false,
+      "ccr_phi_abatement_cost": 0.0,
+      "ccr_phi_emissions": 0.0,
+      "ccr_reference_abatement_cost": 0.0,
+      "ccr_reference_emissions": 0.0,
+      "ccr_start_year": 0.0,
+      "discount_rate": 0.04,
+      "forward_transmission_lambda": null,
+      "free_allocation_trajectories": [],
+      "invest_credibility": null,
+      "investment_feedback_enabled": false,
+      "investment_initial_adoptions": [],
+      "investment_max_iterations": null,
+      "model_approach": "competitive",
+      "msr_cancel_excess": false,
+      "msr_cancel_threshold": 400.0,
+      "msr_enabled": false,
+      "msr_initial_reserve_mt": 0.0,
+      "msr_lower_threshold": 50.0,
+      "msr_max_intake_mt": 20.0,
+      "msr_max_release_mt": 20.0,
+      "msr_mode": "bank_threshold",
+      "msr_price_band_high": 25000.0,
+      "msr_price_band_low": 15000.0,
+      "msr_release_rate": 50.0,
+      "msr_start_year": 0.0,
+      "msr_surplus_lower_ratio": 0.05,
+      "msr_surplus_upper_ratio": 0.18,
+      "msr_upper_threshold": 200.0,
+      "msr_withhold_rate": 0.12,
+      "name": "Climate Solutions Banking And Borrowing",
+      "nash_strategic_participants": [],
+      "policy_events": [],
+      "price_ceiling_trajectory": {},
+      "price_floor_trajectory": {},
+      "reference_carbon_price": 0.0,
+      "risk_premium": 0.0,
+      "sectors": [],
+      "solver_calibration_fatol": 0.01,
+      "solver_calibration_xatol": 0.1,
+      "solver_competitive_max_iters": 25,
+      "solver_competitive_tolerance": 0.001,
+      "solver_hotelling_convergence_tol": 0.0001,
+      "solver_hotelling_lambda_expand_factor": 3.0,
+      "solver_hotelling_lambda_initial_high": 20.0,
+      "solver_hotelling_lambda_initial_low": 0.001,
+      "solver_hotelling_max_bisection_iters": 80,
+      "solver_hotelling_max_lambda_expansions": 20,
+      "solver_nash_convergence_tol": 0.001,
+      "solver_nash_inner_xatol": 0.0001,
+      "solver_nash_max_iters": 120,
+      "solver_nash_price_step": 0.5,
+      "solver_penalty_price_multiplier": 1.25,
+      "solver_price_bracket_expand_factor": 2.0,
+      "solver_price_bracket_max_expansions": 10,
+      "solver_slsqp_ftol": 1e-09,
+      "solver_slsqp_max_iters": 400,
+      "years": [
+        {
+          "auction_mode": "explicit",
+          "auction_offered": 70.0,
+          "auction_reserve_price": 0.0,
+          "banking_allowed": true,
+          "borrowing_allowed": false,
+          "borrowing_limit": 0.0,
+          "cancelled_allowances": 0.0,
+          "carbon_budget": 0.0,
+          "eua_price": 0.0,
+          "eua_price_ensemble": {},
+          "eua_prices": {},
+          "expectation_rule": "perfect_foresight",
+          "hoarding_inflow": 0.0,
+          "manual_expected_price": 0.0,
+          "minimum_bid_coverage": 0.0,
+          "participants": [
+            {
+              "abatement_type": "piecewise",
+              "benchmark_emission_intensity": 0.0,
+              "cbam_coverage_ratio": 1.0,
+              "cbam_export_share": 0.0,
+              "cbam_jurisdictions": [],
+              "cost_slope": 1.0,
+              "electricity_consumption": 0.0,
+              "free_allocation_ratio": 0.95,
+              "grid_emission_factor": 0.0,
+              "grid_emission_factor_trajectory": {},
+              "initial_emissions": 85.0,
+              "initial_emissions_trajectory": {},
+              "mac_blocks": [
+                {
+                  "amount": 6.0,
+                  "marginal_cost": 18.0
+                },
+                {
+                  "amount": 6.0,
+                  "marginal_cost": 42.0
+                },
+                {
+                  "amount": 6.0,
+                  "marginal_cost": 78.0
+                }
+              ],
+              "max_abatement": 18.0,
+              "name": "Steel_Compliance",
+              "output_price_elasticity": 0.0,
+              "penalty_price": 220.0,
+              "production_output": 0.0,
+              "scope2_cbam_coverage": 0.0,
+              "sector_allocation_share": 0.0,
+              "sector_group": "",
+              "technology_options": [],
+              "threshold_cost": 0.0
+            },
+            {
+              "abatement_type": "piecewise",
+              "benchmark_emission_intensity": 0.0,
+              "cbam_coverage_ratio": 1.0,
+              "cbam_export_share": 0.0,
+              "cbam_jurisdictions": [],
+              "cost_slope": 1.0,
+              "electricity_consumption": 0.0,
+              "free_allocation_ratio": 0.5,
+              "grid_emission_factor": 0.0,
+              "grid_emission_factor_trajectory": {},
+              "initial_emissions": 120.0,
+              "initial_emissions_trajectory": {},
+              "mac_blocks": [
+                {
+                  "amount": 8.0,
+                  "marginal_cost": 22.0
+                },
+                {
+                  "amount": 12.0,
+                  "marginal_cost": 48.0
+                },
+                {
+                  "amount": 16.0,
+                  "marginal_cost": 86.0
+                }
+              ],
+              "max_abatement": 36.0,
+              "name": "Power_Compliance",
+              "output_price_elasticity": 0.0,
+              "penalty_price": 220.0,
+              "production_output": 0.0,
+              "scope2_cbam_coverage": 0.0,
+              "sector_allocation_share": 0.0,
+              "sector_group": "",
+              "technology_options": [],
+              "threshold_cost": 0.0
+            },
+            {
+              "abatement_type": "piecewise",
+              "benchmark_emission_intensity": 0.0,
+              "cbam_coverage_ratio": 1.0,
+              "cbam_export_share": 0.0,
+              "cbam_jurisdictions": [],
+              "cost_slope": 1.0,
+              "electricity_consumption": 0.0,
+              "free_allocation_ratio": 0.0,
+              "grid_emission_factor": 0.0,
+              "grid_emission_factor_trajectory": {},
+              "initial_emissions": 35.0,
+              "initial_emissions_trajectory": {},
+              "mac_blocks": [
+                {
+                  "amount": 4.0,
+                  "marginal_cost": 26.0
+                },
+                {
+                  "amount": 3.0,
+                  "marginal_cost": 60.0
+                },
+                {
+                  "amount": 3.0,
+                  "marginal_cost": 96.0
+                }
+              ],
+              "max_abatement": 10.0,
+              "name": "Cement_Compliance",
+              "output_price_elasticity": 0.0,
+              "penalty_price": 220.0,
+              "production_output": 0.0,
+              "scope2_cbam_coverage": 0.0,
+              "sector_allocation_share": 0.0,
+              "sector_group": "",
+              "technology_options": [],
+              "threshold_cost": 0.0
+            }
+          ],
+          "price_lower_bound": 0.0,
+          "price_upper_bound": 220.0,
+          "reserved_allowances": 0.0,
+          "total_cap": 210.75,
+          "unsold_treatment": "reserve",
+          "year": "2025"
+        },
+        {
+          "auction_mode": "explicit",
+          "auction_offered": 60.0,
+          "auction_reserve_price": 0.0,
+          "banking_allowed": true,
+          "borrowing_allowed": true,
+          "borrowing_limit": 12.0,
+          "cancelled_allowances": 0.0,
+          "carbon_budget": 0.0,
+          "eua_price": 0.0,
+          "eua_price_ensemble": {},
+          "eua_prices": {},
+          "expectation_rule": "manual",
+          "hoarding_inflow": 0.0,
+          "manual_expected_price": 78.0,
+          "minimum_bid_coverage": 0.0,
+          "participants": [
+            {
+              "abatement_type": "piecewise",
+              "benchmark_emission_intensity": 0.0,
+              "cbam_coverage_ratio": 1.0,
+              "cbam_export_share": 0.0,
+              "cbam_jurisdictions": [],
+              "cost_slope": 1.0,
+              "electricity_consumption": 0.0,
+              "free_allocation_ratio": 0.9,
+              "grid_emission_factor": 0.0,
+              "grid_emission_factor_trajectory": {},
+              "initial_emissions": 88.0,
+              "initial_emissions_trajectory": {},
+              "mac_blocks": [
+                {
+                  "amount": 6.0,
+                  "marginal_cost": 25.0
+                },
+                {
+                  "amount": 6.0,
+                  "marginal_cost": 54.0
+                },
+                {
+                  "amount": 8.0,
+                  "marginal_cost": 92.0
+                }
+              ],
+              "max_abatement": 20.0,
+              "name": "Steel_Compliance",
+              "output_price_elasticity": 0.0,
+              "penalty_price": 240.0,
+              "production_output": 0.0,
+              "scope2_cbam_coverage": 0.0,
+              "sector_allocation_share": 0.0,
+              "sector_group": "",
+              "technology_options": [],
+              "threshold_cost": 0.0
+            },
+            {
+              "abatement_type": "piecewise",
+              "benchmark_emission_intensity": 0.0,
+              "cbam_coverage_ratio": 1.0,
+              "cbam_export_share": 0.0,
+              "cbam_jurisdictions": [],
+              "cost_slope": 1.0,
+              "electricity_consumption": 0.0,
+              "free_allocation_ratio": 0.45,
+              "grid_emission_factor": 0.0,
+              "grid_emission_factor_trajectory": {},
+              "initial_emissions": 125.0,
+              "initial_emissions_trajectory": {},
+              "mac_blocks": [
+                {
+                  "amount": 8.0,
+                  "marginal_cost": 28.0
+                },
+                {
+                  "amount": 12.0,
+                  "marginal_cost": 62.0
+                },
+                {
+                  "amount": 20.0,
+                  "marginal_cost": 102.0
+                }
+              ],
+              "max_abatement": 40.0,
+              "name": "Power_Compliance",
+              "output_price_elasticity": 0.0,
+              "penalty_price": 240.0,
+              "production_output": 0.0,
+              "scope2_cbam_coverage": 0.0,
+              "sector_allocation_share": 0.0,
+              "sector_group": "",
+              "technology_options": [],
+              "threshold_cost": 0.0
+            },
+            {
+              "abatement_type": "piecewise",
+              "benchmark_emission_intensity": 0.0,
+              "cbam_coverage_ratio": 1.0,
+              "cbam_export_share": 0.0,
+              "cbam_jurisdictions": [],
+              "cost_slope": 1.0,
+              "electricity_consumption": 0.0,
+              "free_allocation_ratio": 0.0,
+              "grid_emission_factor": 0.0,
+              "grid_emission_factor_trajectory": {},
+              "initial_emissions": 35.0,
+              "initial_emissions_trajectory": {},
+              "mac_blocks": [
+                {
+                  "amount": 4.0,
+                  "marginal_cost": 30.0
+                },
+                {
+                  "amount": 3.0,
+                  "marginal_cost": 72.0
+                },
+                {
+                  "amount": 3.0,
+                  "marginal_cost": 108.0
+                }
+              ],
+              "max_abatement": 10.0,
+              "name": "Cement_Compliance",
+              "output_price_elasticity": 0.0,
+              "penalty_price": 240.0,
+              "production_output": 0.0,
+              "scope2_cbam_coverage": 0.0,
+              "sector_allocation_share": 0.0,
+              "sector_group": "",
+              "technology_options": [],
+              "threshold_cost": 0.0
+            }
+          ],
+          "price_lower_bound": 0.0,
+          "price_upper_bound": 240.0,
+          "reserved_allowances": 0.0,
+          "total_cap": 195.45,
+          "unsold_treatment": "reserve",
+          "year": "2030"
+        },
+        {
+          "auction_mode": "explicit",
+          "auction_offered": 60.0,
+          "auction_reserve_price": 0.0,
+          "banking_allowed": true,
+          "borrowing_allowed": true,
+          "borrowing_limit": 12.0,
+          "cancelled_allowances": 0.0,
+          "carbon_budget": 0.0,
+          "eua_price": 0.0,
+          "eua_price_ensemble": {},
+          "eua_prices": {},
+          "expectation_rule": "manual",
+          "hoarding_inflow": 0.0,
+          "manual_expected_price": 78.0,
+          "minimum_bid_coverage": 0.0,
+          "participants": [
+            {
+              "abatement_type": "piecewise",
+              "benchmark_emission_intensity": 0.0,
+              "cbam_coverage_ratio": 1.0,
+              "cbam_export_share": 0.0,
+              "cbam_jurisdictions": [],
+              "cost_slope": 1.0,
+              "electricity_consumption": 0.0,
+              "free_allocation_ratio": 0.9,
+              "grid_emission_factor": 0.0,
+              "grid_emission_factor_trajectory": {},
+              "initial_emissions": 88.0,
+              "initial_emissions_trajectory": {},
+              "mac_blocks": [
+                {
+                  "amount": 6.0,
+                  "marginal_cost": 25.0
+                },
+                {
+                  "amount": 6.0,
+                  "marginal_cost": 54.0
+                },
+                {
+                  "amount": 8.0,
+                  "marginal_cost": 92.0
+                }
+              ],
+              "max_abatement": 20.0,
+              "name": "Steel_Compliance",
+              "output_price_elasticity": 0.0,
+              "penalty_price": 240.0,
+              "production_output": 0.0,
+              "scope2_cbam_coverage": 0.0,
+              "sector_allocation_share": 0.0,
+              "sector_group": "",
+              "technology_options": [],
+              "threshold_cost": 0.0
+            },
+            {
+              "abatement_type": "piecewise",
+              "benchmark_emission_intensity": 0.0,
+              "cbam_coverage_ratio": 1.0,
+              "cbam_export_share": 0.0,
+              "cbam_jurisdictions": [],
+              "cost_slope": 1.0,
+              "electricity_consumption": 0.0,
+              "free_allocation_ratio": 0.45,
+              "grid_emission_factor": 0.0,
+              "grid_emission_factor_trajectory": {},
+              "initial_emissions": 125.0,
+              "initial_emissions_trajectory": {},
+              "mac_blocks": [
+                {
+                  "amount": 8.0,
+                  "marginal_cost": 28.0
+                },
+                {
+                  "amount": 12.0,
+                  "marginal_cost": 62.0
+                },
+                {
+                  "amount": 20.0,
+                  "marginal_cost": 102.0
+                }
+              ],
+              "max_abatement": 40.0,
+              "name": "Power_Compliance",
+              "output_price_elasticity": 0.0,
+              "penalty_price": 240.0,
+              "production_output": 0.0,
+              "scope2_cbam_coverage": 0.0,
+              "sector_allocation_share": 0.0,
+              "sector_group": "",
+              "technology_options": [],
+              "threshold_cost": 0.0
+            },
+            {
+              "abatement_type": "piecewise",
+              "benchmark_emission_intensity": 0.0,
+              "cbam_coverage_ratio": 1.0,
+              "cbam_export_share": 0.0,
+              "cbam_jurisdictions": [],
+              "cost_slope": 1.0,
+              "electricity_consumption": 0.0,
+              "free_allocation_ratio": 0.0,
+              "grid_emission_factor": 0.0,
+              "grid_emission_factor_trajectory": {},
+              "initial_emissions": 35.0,
+              "initial_emissions_trajectory": {},
+              "mac_blocks": [
+                {
+                  "amount": 4.0,
+                  "marginal_cost": 30.0
+                },
+                {
+                  "amount": 3.0,
+                  "marginal_cost": 72.0
+                },
+                {
+                  "amount": 3.0,
+                  "marginal_cost": 108.0
+                }
+              ],
+              "max_abatement": 10.0,
+              "name": "Cement_Compliance",
+              "output_price_elasticity": 0.0,
+              "penalty_price": 240.0,
+              "production_output": 0.0,
+              "scope2_cbam_coverage": 0.0,
+              "sector_allocation_share": 0.0,
+              "sector_group": "",
+              "technology_options": [],
+              "threshold_cost": 0.0
+            }
+          ],
+          "price_lower_bound": 0.0,
+          "price_upper_bound": 240.0,
+          "reserved_allowances": 0.0,
+          "total_cap": 195.45,
+          "unsold_treatment": "reserve",
+          "year": "2035"
+        },
+        {
+          "auction_mode": "explicit",
+          "auction_offered": 80.0,
+          "auction_reserve_price": 0.0,
+          "banking_allowed": true,
+          "borrowing_allowed": false,
+          "borrowing_limit": 0.0,
+          "cancelled_allowances": 0.0,
+          "carbon_budget": 0.0,
+          "eua_price": 0.0,
+          "eua_price_ensemble": {},
+          "eua_prices": {},
+          "expectation_rule": "myopic",
+          "hoarding_inflow": 0.0,
+          "manual_expected_price": 0.0,
+          "minimum_bid_coverage": 0.0,
+          "participants": [
+            {
+              "abatement_type": "piecewise",
+              "benchmark_emission_intensity": 0.0,
+              "cbam_coverage_ratio": 1.0,
+              "cbam_export_share": 0.0,
+              "cbam_jurisdictions": [],
+              "cost_slope": 1.0,
+              "electricity_consumption": 0.0,
+              "free_allocation_ratio": 0.9,
+              "grid_emission_factor": 0.0,
+              "grid_emission_factor_trajectory": {},
+              "initial_emissions": 78.0,
+              "initial_emissions_trajectory": {},
+              "mac_blocks": [
+                {
+                  "amount": 8.0,
+                  "marginal_cost": 14.0
+                },
+                {
+                  "amount": 6.0,
+                  "marginal_cost": 28.0
+                },
+                {
+                  "amount": 8.0,
+                  "marginal_cost": 55.0
+                }
+              ],
+              "max_abatement": 22.0,
+              "name": "Steel_Compliance",
+              "output_price_elasticity": 0.0,
+              "penalty_price": 200.0,
+              "production_output": 0.0,
+              "scope2_cbam_coverage": 0.0,
+              "sector_allocation_share": 0.0,
+              "sector_group": "",
+              "technology_options": [],
+              "threshold_cost": 0.0
+            },
+            {
+              "abatement_type": "piecewise",
+              "benchmark_emission_intensity": 0.0,
+              "cbam_coverage_ratio": 1.0,
+              "cbam_export_share": 0.0,
+              "cbam_jurisdictions": [],
+              "cost_slope": 1.0,
+              "electricity_consumption": 0.0,
+              "free_allocation_ratio": 0.45,
+              "grid_emission_factor": 0.0,
+              "grid_emission_factor_trajectory": {},
+              "initial_emissions": 105.0,
+              "initial_emissions_trajectory": {},
+              "mac_blocks": [
+                {
+                  "amount": 10.0,
+                  "marginal_cost": 18.0
+                },
+                {
+                  "amount": 12.0,
+                  "marginal_cost": 36.0
+                },
+                {
+                  "amount": 20.0,
+                  "marginal_cost": 64.0
+                }
+              ],
+              "max_abatement": 42.0,
+              "name": "Power_Compliance",
+              "output_price_elasticity": 0.0,
+              "penalty_price": 200.0,
+              "production_output": 0.0,
+              "scope2_cbam_coverage": 0.0,
+              "sector_allocation_share": 0.0,
+              "sector_group": "",
+              "technology_options": [],
+              "threshold_cost": 0.0
+            },
+            {
+              "abatement_type": "piecewise",
+              "benchmark_emission_intensity": 0.0,
+              "cbam_coverage_ratio": 1.0,
+              "cbam_export_share": 0.0,
+              "cbam_jurisdictions": [],
+              "cost_slope": 1.0,
+              "electricity_consumption": 0.0,
+              "free_allocation_ratio": 0.0,
+              "grid_emission_factor": 0.0,
+              "grid_emission_factor_trajectory": {},
+              "initial_emissions": 37.0,
+              "initial_emissions_trajectory": {},
+              "mac_blocks": [
+                {
+                  "amount": 4.0,
+                  "marginal_cost": 22.0
+                },
+                {
+                  "amount": 3.0,
+                  "marginal_cost": 48.0
+                },
+                {
+                  "amount": 3.0,
+                  "marginal_cost": 76.0
+                }
+              ],
+              "max_abatement": 10.0,
+              "name": "Cement_Compliance",
+              "output_price_elasticity": 0.0,
+              "penalty_price": 200.0,
+              "production_output": 0.0,
+              "scope2_cbam_coverage": 0.0,
+              "sector_allocation_share": 0.0,
+              "sector_group": "",
+              "technology_options": [],
+              "threshold_cost": 0.0
+            }
+          ],
+          "price_lower_bound": 0.0,
+          "price_upper_bound": 200.0,
+          "reserved_allowances": 0.0,
+          "total_cap": 197.45,
+          "unsold_treatment": "reserve",
+          "year": "2040"
+        },
+        {
+          "auction_mode": "explicit",
+          "auction_offered": 80.0,
+          "auction_reserve_price": 0.0,
+          "banking_allowed": true,
+          "borrowing_allowed": false,
+          "borrowing_limit": 0.0,
+          "cancelled_allowances": 0.0,
+          "carbon_budget": 0.0,
+          "eua_price": 0.0,
+          "eua_price_ensemble": {},
+          "eua_prices": {},
+          "expectation_rule": "myopic",
+          "hoarding_inflow": 0.0,
+          "manual_expected_price": 0.0,
+          "minimum_bid_coverage": 0.0,
+          "participants": [
+            {
+              "abatement_type": "piecewise",
+              "benchmark_emission_intensity": 0.0,
+              "cbam_coverage_ratio": 1.0,
+              "cbam_export_share": 0.0,
+              "cbam_jurisdictions": [],
+              "cost_slope": 1.0,
+              "electricity_consumption": 0.0,
+              "free_allocation_ratio": 0.9,
+              "grid_emission_factor": 0.0,
+              "grid_emission_factor_trajectory": {},
+              "initial_emissions": 78.0,
+              "initial_emissions_trajectory": {},
+              "mac_blocks": [
+                {
+                  "amount": 8.0,
+                  "marginal_cost": 14.0
+                },
+                {
+                  "amount": 6.0,
+                  "marginal_cost": 28.0
+                },
+                {
+                  "amount": 8.0,
+                  "marginal_cost": 55.0
+                }
+              ],
+              "max_abatement": 22.0,
+              "name": "Steel_Compliance",
+              "output_price_elasticity": 0.0,
+              "penalty_price": 200.0,
+              "production_output": 0.0,
+              "scope2_cbam_coverage": 0.0,
+              "sector_allocation_share": 0.0,
+              "sector_group": "",
+              "technology_options": [],
+              "threshold_cost": 0.0
+            },
+            {
+              "abatement_type": "piecewise",
+              "benchmark_emission_intensity": 0.0,
+              "cbam_coverage_ratio": 1.0,
+              "cbam_export_share": 0.0,
+              "cbam_jurisdictions": [],
+              "cost_slope": 1.0,
+              "electricity_consumption": 0.0,
+              "free_allocation_ratio": 0.45,
+              "grid_emission_factor": 0.0,
+              "grid_emission_factor_trajectory": {},
+              "initial_emissions": 105.0,
+              "initial_emissions_trajectory": {},
+              "mac_blocks": [
+                {
+                  "amount": 10.0,
+                  "marginal_cost": 18.0
+                },
+                {
+                  "amount": 12.0,
+                  "marginal_cost": 36.0
+                },
+                {
+                  "amount": 20.0,
+                  "marginal_cost": 64.0
+                }
+              ],
+              "max_abatement": 42.0,
+              "name": "Power_Compliance",
+              "output_price_elasticity": 0.0,
+              "penalty_price": 200.0,
+              "production_output": 0.0,
+              "scope2_cbam_coverage": 0.0,
+              "sector_allocation_share": 0.0,
+              "sector_group": "",
+              "technology_options": [],
+              "threshold_cost": 0.0
+            },
+            {
+              "abatement_type": "piecewise",
+              "benchmark_emission_intensity": 0.0,
+              "cbam_coverage_ratio": 1.0,
+              "cbam_export_share": 0.0,
+              "cbam_jurisdictions": [],
+              "cost_slope": 1.0,
+              "electricity_consumption": 0.0,
+              "free_allocation_ratio": 0.0,
+              "grid_emission_factor": 0.0,
+              "grid_emission_factor_trajectory": {},
+              "initial_emissions": 37.0,
+              "initial_emissions_trajectory": {},
+              "mac_blocks": [
+                {
+                  "amount": 4.0,
+                  "marginal_cost": 22.0
+                },
+                {
+                  "amount": 3.0,
+                  "marginal_cost": 48.0
+                },
+                {
+                  "amount": 3.0,
+                  "marginal_cost": 76.0
+                }
+              ],
+              "max_abatement": 10.0,
+              "name": "Cement_Compliance",
+              "output_price_elasticity": 0.0,
+              "penalty_price": 200.0,
+              "production_output": 0.0,
+              "scope2_cbam_coverage": 0.0,
+              "sector_allocation_share": 0.0,
+              "sector_group": "",
+              "technology_options": [],
+              "threshold_cost": 0.0
+            }
+          ],
+          "price_lower_bound": 0.0,
+          "price_upper_bound": 200.0,
+          "reserved_allowances": 0.0,
+          "total_cap": 197.45,
+          "unsold_treatment": "reserve",
+          "year": "2045"
+        },
+        {
+          "auction_mode": "explicit",
+          "auction_offered": 80.0,
+          "auction_reserve_price": 0.0,
+          "banking_allowed": true,
+          "borrowing_allowed": false,
+          "borrowing_limit": 0.0,
+          "cancelled_allowances": 0.0,
+          "carbon_budget": 0.0,
+          "eua_price": 0.0,
+          "eua_price_ensemble": {},
+          "eua_prices": {},
+          "expectation_rule": "myopic",
+          "hoarding_inflow": 0.0,
+          "manual_expected_price": 0.0,
+          "minimum_bid_coverage": 0.0,
+          "participants": [
+            {
+              "abatement_type": "piecewise",
+              "benchmark_emission_intensity": 0.0,
+              "cbam_coverage_ratio": 1.0,
+              "cbam_export_share": 0.0,
+              "cbam_jurisdictions": [],
+              "cost_slope": 1.0,
+              "electricity_consumption": 0.0,
+              "free_allocation_ratio": 0.9,
+              "grid_emission_factor": 0.0,
+              "grid_emission_factor_trajectory": {},
+              "initial_emissions": 78.0,
+              "initial_emissions_trajectory": {},
+              "mac_blocks": [
+                {
+                  "amount": 8.0,
+                  "marginal_cost": 14.0
+                },
+                {
+                  "amount": 6.0,
+                  "marginal_cost": 28.0
+                },
+                {
+                  "amount": 8.0,
+                  "marginal_cost": 55.0
+                }
+              ],
+              "max_abatement": 22.0,
+              "name": "Steel_Compliance",
+              "output_price_elasticity": 0.0,
+              "penalty_price": 200.0,
+              "production_output": 0.0,
+              "scope2_cbam_coverage": 0.0,
+              "sector_allocation_share": 0.0,
+              "sector_group": "",
+              "technology_options": [],
+              "threshold_cost": 0.0
+            },
+            {
+              "abatement_type": "piecewise",
+              "benchmark_emission_intensity": 0.0,
+              "cbam_coverage_ratio": 1.0,
+              "cbam_export_share": 0.0,
+              "cbam_jurisdictions": [],
+              "cost_slope": 1.0,
+              "electricity_consumption": 0.0,
+              "free_allocation_ratio": 0.45,
+              "grid_emission_factor": 0.0,
+              "grid_emission_factor_trajectory": {},
+              "initial_emissions": 105.0,
+              "initial_emissions_trajectory": {},
+              "mac_blocks": [
+                {
+                  "amount": 10.0,
+                  "marginal_cost": 18.0
+                },
+                {
+                  "amount": 12.0,
+                  "marginal_cost": 36.0
+                },
+                {
+                  "amount": 20.0,
+                  "marginal_cost": 64.0
+                }
+              ],
+              "max_abatement": 42.0,
+              "name": "Power_Compliance",
+              "output_price_elasticity": 0.0,
+              "penalty_price": 200.0,
+              "production_output": 0.0,
+              "scope2_cbam_coverage": 0.0,
+              "sector_allocation_share": 0.0,
+              "sector_group": "",
+              "technology_options": [],
+              "threshold_cost": 0.0
+            },
+            {
+              "abatement_type": "piecewise",
+              "benchmark_emission_intensity": 0.0,
+              "cbam_coverage_ratio": 1.0,
+              "cbam_export_share": 0.0,
+              "cbam_jurisdictions": [],
+              "cost_slope": 1.0,
+              "electricity_consumption": 0.0,
+              "free_allocation_ratio": 0.0,
+              "grid_emission_factor": 0.0,
+              "grid_emission_factor_trajectory": {},
+              "initial_emissions": 37.0,
+              "initial_emissions_trajectory": {},
+              "mac_blocks": [
+                {
+                  "amount": 4.0,
+                  "marginal_cost": 22.0
+                },
+                {
+                  "amount": 3.0,
+                  "marginal_cost": 48.0
+                },
+                {
+                  "amount": 3.0,
+                  "marginal_cost": 76.0
+                }
+              ],
+              "max_abatement": 10.0,
+              "name": "Cement_Compliance",
+              "output_price_elasticity": 0.0,
+              "penalty_price": 200.0,
+              "production_output": 0.0,
+              "scope2_cbam_coverage": 0.0,
+              "sector_allocation_share": 0.0,
+              "sector_group": "",
+              "technology_options": [],
+              "threshold_cost": 0.0
+            }
+          ],
+          "price_lower_bound": 0.0,
+          "price_upper_bound": 200.0,
+          "reserved_allowances": 0.0,
+          "total_cap": 197.45,
+          "unsold_treatment": "reserve",
+          "year": "2050"
+        }
+      ]
+    }
+  ]
+}

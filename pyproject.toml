@@ -46,9 +46,9 @@ packages = [
     "pe.features.banking", "pe.features.cbam", "pe.features.ccr",
     "pe.features.competitive", "pe.features.elastic_baseline",
     "pe.features.endogenous_investment", "pe.features.hoarding",
-    "pe.features.hotelling", "pe.features.msr", "pe.features.nash_cournot",
-    "pe.features.oba", "pe.features.price_controls", "pe.features.sectors",
-    "pe.features.transmission",
+    "pe.features.hotelling", "pe.features.market_links", "pe.features.msr",
+    "pe.features.nash_cournot", "pe.features.oba", "pe.features.price_controls",
+    "pe.features.sectors", "pe.features.transmission",
     # deprecated ets compat mirror (physically under compat/ets/, removed 0.4.0).
     # Full list mechanically generated: `find compat/ets -name __init__.py`.
     "ets", "ets.core", "ets.core.market", "ets.core.participant",
@@ -75,6 +75,7 @@ packages = [
 "pe.features.endogenous_investment"  = "modules/endogenous_investment/backend"
 "pe.features.hoarding"               = "modules/hoarding/backend"
 "pe.features.hotelling"              = "modules/hotelling/backend"
+"pe.features.market_links"           = "modules/market_links/backend"
 "pe.features.msr"                    = "modules/msr/backend"
 "pe.features.nash_cournot"           = "modules/nash_cournot/backend"
 "pe.features.oba"                    = "modules/oba/backend"
