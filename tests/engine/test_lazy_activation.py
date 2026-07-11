@@ -64,13 +64,18 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[2]
 EXAMPLES_DIR = REPO_ROOT / "examples"
 
-# The complete universe of feature RUNTIME modules this suite polices: the
-# five approach solvers, the MSR/CCR rule runtimes (split by file, since
-# `msr.decree` and `msr.state`/`ccr.state` are independently reachable), and
+# The complete universe of RUNTIME modules this suite polices: the five
+# approach solvers, the MSR/CCR rule runtimes (split by file, since
+# `msr.decree` and `msr.state`/`ccr.state` are independently reachable),
 # banking's two attach-always injected siblings (hoarding's reader, the
-# floor-cancellation rule) — none of these is a `plugin` config door, so
-# none of them may load except when a scenario actually exercises the
-# approach/flag that wires it in.
+# floor-cancellation rule), and the endogenous-investment runtime (the
+# feature's `rule`/`vintage` modules PLUS the engine-side outer-loop host
+# `ets.engine.feedback` — dispatch imports all three lazily inside its
+# `_investment_configured` branch, EI-5). None of these is a `plugin`
+# config door (`endogenous_investment.plugin` is eagerly imported by
+# `ets.engine.events` for its ADOPTION_CARRIER literal, like the banking
+# and MSR carriers — correctly eager), so none of them may load except
+# when a scenario actually exercises the approach/flag that wires it in.
 _ALL_RUNTIME_MODULES: frozenset[str] = frozenset(
     {
         "ets.features.banking.solver",
@@ -86,12 +91,15 @@ _ALL_RUNTIME_MODULES: frozenset[str] = frozenset(
         "ets.features.ccr.state",
         "ets.features.hoarding.plugin",
         "ets.features.price_controls.rules",
+        "ets.features.endogenous_investment.rule",
+        "ets.features.endogenous_investment.vintage",
+        "ets.engine.feedback",
     }
 )
 
 
 def _feature_modules_loaded(code: str) -> frozenset[str]:
-    """Run ``code`` in a fresh interpreter; return the ``ets.features.*`` it loaded.
+    """Run ``code`` in a fresh interpreter; return the runtime modules it loaded.
 
     Spawns a subprocess (``sys.executable``, the current venv's interpreter
     — ``ets`` is installed editable so no ``PYTHONPATH`` massaging is
@@ -104,15 +112,16 @@ def _feature_modules_loaded(code: str) -> frozenset[str]:
             own — this helper appends the ``sys.modules`` dump statement.
 
     Returns:
-        Every ``ets.features.*`` dotted module name present in
-        ``sys.modules`` after ``code`` runs, one per line of the child's
-        stdout.
+        Every ``ets.features.*`` dotted module name — plus
+        ``ets.engine.feedback``, the engine-side investment outer-loop host
+        this suite also polices — present in ``sys.modules`` after ``code``
+        runs, one per line of the child's stdout.
     """
     program = (
         f"{code}\n"
         "import sys\n"
         "print('\\n'.join(sorted(m for m in sys.modules "
-        "if m.startswith('ets.features'))))\n"
+        "if m.startswith('ets.features') or m == 'ets.engine.feedback')))\n"
     )
     result = subprocess.run(
         [sys.executable, "-c", program],

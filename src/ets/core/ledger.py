@@ -196,5 +196,21 @@ def collect_path_results(
                 item["hotelling_component_price"]
             )
             summary["Reserve Floor Price"] = float(item["reserve_floor_price"])
+        # Patch in endogenous-investment feedback diagnostics when present
+        # (engine/feedback.py stamps these; the key-presence guard is the
+        # banking-columns precedent — plan D3, docs/invest-feedback-plan.md:
+        # the summary column set stays a deterministic function of config,
+        # so unflagged scenarios and every committed golden keep their
+        # column sets byte-identical). "Investment Adoptions" is the splice
+        # carrier's read column (spec D3.4) — do not rename.
+        if "investment_adoptions" in item:
+            summary["Investment Adoptions"] = str(item["investment_adoptions"])
+            summary["Investment Newly Effective"] = float(
+                item["investment_newly_effective"]
+            )
+            summary["Investment Feedback Iterations"] = float(
+                item["investment_feedback_iterations"]
+            )
+            summary["Investment Converged"] = float(item["investment_converged"])
         scenario_summaries.append(summary)
         participant_frames.append(participant_df)

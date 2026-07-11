@@ -196,6 +196,47 @@ def _path_solver_for(
     return _solve_competitive
 
 
+def _investment_configured(m0: CarbonMarket) -> bool:
+    """Gate of the endogenous-investment feedback branch (spec D6 loud guard).
+
+    The feature is ON iff BOTH halves of its configuration are present on
+    the scenario's first market: the master flag
+    (``investment_feedback_enabled``, scenario-level, default absent/False)
+    AND at least one participant carrying ``adoption_specs``. A mismatch is
+    a config error and raises — flagged options with the gate off must
+    never be a silent ignore (spec D3.2/D6; the config door's builder-level
+    guard, EI-6, mirrors this belt-and-braces).
+
+    Args:
+        m0: First market of the scenario's chronologically sorted path.
+
+    Returns:
+        True iff the flag is set AND specs are attached; False when neither
+        is present (the byte-identical legacy path).
+
+    Raises:
+        ValueError: Flag true with zero specs, or specs attached with the
+            flag false/absent.
+    """
+    enabled = bool(getattr(m0, "investment_feedback_enabled", False))
+    has_specs = any(getattr(participant, "adoption_specs", ()) for participant in m0.participants)
+    if enabled and not has_specs:
+        raise ValueError(
+            f"Scenario '{m0.scenario_name}': investment_feedback_enabled is true "
+            "but no participant carries an adoption spec — flag one or more "
+            "technology options with an investment_trigger block, or disable "
+            "the feature (spec D6)."
+        )
+    if has_specs and not enabled:
+        raise ValueError(
+            f"Scenario '{m0.scenario_name}': adoption spec(s) are attached but "
+            "investment_feedback_enabled is not set — enable the master gate "
+            "or remove the investment_trigger flags; flagged options with the "
+            "gate off are a loud error, never a silent ignore (spec D3.2/D6)."
+        )
+    return enabled and has_specs
+
+
 def run_simulation(markets: list[CarbonMarket]) -> tuple[pd.DataFrame, pd.DataFrame]:
     if not markets:
         raise ValueError("At least one market scenario must be provided.")
@@ -225,26 +266,79 @@ def run_simulation(markets: list[CarbonMarket]) -> tuple[pd.DataFrame, pd.DataFr
             )
             transmission_lambda = None
 
+        # Endogenous-investment gate (EI-5, docs/invest-feedback-plan.md D2):
+        # False on every scenario without BOTH the master flag and attached
+        # adoption specs — the guard raises loudly on a half-configured
+        # scenario and leaves fully unconfigured ones on the byte-identical
+        # legacy path below.
+        investment_on = _investment_configured(m0)
+
         if approach == "all":
+            if investment_on:
+                raise ValueError(
+                    f"Scenario '{scenario_name}': endogenous investment feedback "
+                    "is not supported under model_approach='all' — the "
+                    "comparison fan-out solves three renamed market lists, not "
+                    "one path the adoption loop could wrap. Pick a single "
+                    "approach (competitive or banking, spec v1 coverage)."
+                )
             # Not routed through _path_solver_for: fans one scenario out over
             # three differently-renamed market lists, not one ordered_markets
             # thread (transmission_lambda is always None here — "all" != the
             # competitive-only gate above always clears it — matching the
             # pre-extraction elif ladder's effective behaviour exactly).
             comp_markets = _rename_markets(ordered_markets, "Competitive")
-            hot_markets  = _rename_markets(ordered_markets, "Hotelling")
+            hot_markets = _rename_markets(ordered_markets, "Hotelling")
             nash_markets = _rename_markets(ordered_markets, "Nash-Cournot")
 
             comp_path = solve_scenario_path(comp_markets)
-            hot_path  = solve_hotelling_path(hot_markets, **_hot_kwargs(m0))
+            hot_path = solve_hotelling_path(hot_markets, **_hot_kwargs(m0))
             nash_path = solve_nash_path(nash_markets, **_nash_kwargs(m0))
 
-            for path, mkt_list in [(comp_path, comp_markets), (hot_path, hot_markets), (nash_path, nash_markets)]:
+            for path, mkt_list in [
+                (comp_path, comp_markets),
+                (hot_path, hot_markets),
+                (nash_path, nash_markets),
+            ]:
                 _collect_path_results(mkt_list, path, scenario_summaries, participant_frames)
 
         else:
             solver = _path_solver_for(approach, m0, transmission_lambda=transmission_lambda)
-            path = solver(ordered_markets)
+            if investment_on:
+                # Lazy imports (activation scoping): only an investment-
+                # configured scenario loads the feedback host and the
+                # endogenous_investment runtime (tests/engine/
+                # test_lazy_activation.py).
+                from ..features.endogenous_investment.rule import InvestmentRule
+                from .feedback import solve_with_investment_feedback
+
+                # Declared config order for the spec D1.4 tie-break:
+                # participant order, then per-participant spec (option)
+                # order — the InvestmentRule default over this tuple.
+                specs = tuple(
+                    spec
+                    for participant in m0.participants
+                    for spec in getattr(participant, "adoption_specs", ())
+                )
+                r = float(getattr(m0, "discount_rate", 0.04) or 0.04)
+                max_iters_raw = getattr(m0, "investment_max_iterations", None)
+
+                def _fresh_rule(specs: tuple = specs, r: float = r) -> InvestmentRule:
+                    # Early-bound defaults: a plain closure factory (one
+                    # fresh rule per use — the PathFeedback lifecycle
+                    # doctrine), immune to loop-variable rebinding.
+                    return InvestmentRule(specs, r)
+
+                path = solve_with_investment_feedback(
+                    ordered_markets,
+                    solver,
+                    _fresh_rule,
+                    specs,
+                    scenario_discount_rate=r,
+                    max_iterations=None if max_iters_raw is None else int(max_iters_raw),
+                )
+            else:
+                path = solver(ordered_markets)
             _collect_path_results(ordered_markets, path, scenario_summaries, participant_frames)
 
     summary_df = pd.DataFrame.from_records(scenario_summaries)
