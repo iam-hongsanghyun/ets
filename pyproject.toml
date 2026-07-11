@@ -26,8 +26,47 @@ mcp = [
 requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
-[tool.setuptools.packages.find]
-where = ["src"]
+# --- vertical-slice remap (WO-1): find() cannot span core/backend + the eventual
+# modules/*/backend under one `pe` namespace, so packages are enumerated and each
+# physical root is remapped to its import name. At WO-1 the feature packages still
+# ride under core/backend/features/*, so they resolve as pe.features.* through the
+# `pe` -> core/backend map with NO per-feature package-dir line yet (those arrive
+# one-per-peel in WO-2+). Only the two block roots are remapped below. ---
+[tool.setuptools]
+packages = [
+    # pe root + non-feature backend  (physically under core/backend/)
+    "pe",
+    "pe.core", "pe.core.market", "pe.core.participant",
+    "pe.config_io", "pe.engine", "pe.blocks",
+    "pe.analysis", "pe.coupling", "pe.web",
+    "pe.mcp", "pe.mcp.models", "pe.registry",
+    "pe.features",                              # namespace __init__ only
+    # feature modules  (still under core/backend/features/ at WO-1; each peels to
+    # modules/<name>/backend + its own package-dir line in WO-2..WO-15)
+    "pe.features.banking", "pe.features.cbam", "pe.features.ccr",
+    "pe.features.competitive", "pe.features.elastic_baseline",
+    "pe.features.endogenous_investment", "pe.features.hoarding",
+    "pe.features.hotelling", "pe.features.msr", "pe.features.nash_cournot",
+    "pe.features.oba", "pe.features.price_controls", "pe.features.sectors",
+    "pe.features.transmission",
+    # deprecated ets compat mirror (physically under compat/ets/, removed 0.4.0).
+    # Full list mechanically generated: `find compat/ets -name __init__.py`.
+    "ets", "ets.core", "ets.core.market", "ets.core.participant",
+    "ets.config_io", "ets.engine", "ets.blocks", "ets.analysis",
+    "ets.coupling", "ets.web", "ets.mcp", "ets.mcp.models", "ets.registry",
+    "ets.features",
+    "ets.features.banking", "ets.features.cbam", "ets.features.ccr",
+    "ets.features.competitive", "ets.features.elastic_baseline",
+    "ets.features.endogenous_investment", "ets.features.hoarding",
+    "ets.features.hotelling", "ets.features.msr", "ets.features.nash_cournot",
+    "ets.features.oba", "ets.features.price_controls", "ets.features.sectors",
+    "ets.features.transmission",
+    "ets.solvers", "ets.market", "ets.participant",
+]
+
+[tool.setuptools.package-dir]
+"pe"  = "core/backend"
+"ets" = "compat/ets"
 
 [tool.pytest.ini_options]
 # pythonpath=["src"] DROPPED (WO-0): tests import the editable-installed `pe`

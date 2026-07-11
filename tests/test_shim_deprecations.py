@@ -30,9 +30,13 @@ from pathlib import Path
 
 import pytest
 
-_SRC = Path(__file__).resolve().parent.parent / "src"
-_PE_ROOT = _SRC / "pe"
-_ETS_ROOT = _SRC / "ets"
+# Physical package roots after the vertical-slice relocation (WO-1): the pe
+# backend block lives at core/backend/, the ets compat mirror at compat/ets/.
+# (A split package is not sys.path-reconstructable, but these AST/mirror sweeps
+# walk the tree by PATH, so they follow the physical move by name.)
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+_PE_ROOT = _REPO_ROOT / "core" / "backend"
+_ETS_ROOT = _REPO_ROOT / "compat" / "ets"
 
 # Flat shim module (lives at ets.*) -> a phrase its warning must contain (its
 # canonical pe home). Regenerated for the ets->pe rename: the shim's own name

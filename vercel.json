@@ -9,8 +9,8 @@
         "includeFiles": [
           "frontend/dist/**",
           "examples/**",
-          "src/pe/**",
-          "src/ets/**",
+          "core/backend/**",
+          "compat/ets/**",
           "docs/**"
         ]
       }

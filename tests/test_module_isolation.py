@@ -85,13 +85,20 @@ from dataclasses import dataclass
 from pathlib import Path
 
 # --------------------------------------------------------------------------
-# Discovery: locate src/pe relative to this test file (repo layout is
-# tests/ + src/<pkg>/ per CLAUDE.md; never hardcode an absolute path).
+# Discovery: map each physical package root to its import-name prefix (mirrors
+# [tool.setuptools.package-dir]). The `pe` backend block lives at core/backend/;
+# each peeled feature lives at modules/<name>/backend/ and is auto-discovered by
+# the glob below, so a new module needs no edit here. `compat/ets` is never
+# walked (this ratchet never walked `ets`). Never hardcode an absolute path —
+# resolve relative to this test file (tests/ at repo root per CLAUDE.md).
 # --------------------------------------------------------------------------
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
-_SRC_ROOT = _REPO_ROOT / "src"
-_PKG_ROOT = _SRC_ROOT / "pe"
+
+# physical root -> import-name prefix (mirrors package-dir)
+_ROOTS: dict[Path, str] = {_REPO_ROOT / "core" / "backend": "pe"}
+for _b in sorted((_REPO_ROOT / "modules").glob("*/backend")):
+    _ROOTS[_b] = f"pe.features.{_b.parent.name}"
 
 _STDLIB_MODULES = frozenset(sys.stdlib_module_names)
 
@@ -232,26 +239,30 @@ class RawImport:
 
 
 def _iter_py_files() -> Iterator[Path]:
-    """Yield every `.py` file under `src/pe`, deterministically ordered."""
-    yield from sorted(_PKG_ROOT.rglob("*.py"))
+    """Yield every `.py` file under each walked package root, ordered."""
+    for root in _ROOTS:
+        yield from sorted(root.rglob("*.py"))
 
 
 def _module_name_for(path: Path) -> str:
     """Return the dotted module name a source file defines.
 
     Args:
-        path: Absolute path to a `.py` file under `src/`.
+        path: Absolute path to a `.py` file under one of `_ROOTS`.
 
     Returns:
-        Dotted module name, e.g. `src/pe/config_io/builder.py` ->
+        Dotted module name, e.g. `core/backend/config_io/builder.py` ->
         `"pe.config_io.builder"`; `__init__.py` files map to their
-        containing package, e.g. `src/pe/config_io/__init__.py` ->
+        containing package, e.g. `core/backend/config_io/__init__.py` ->
         `"pe.config_io"`.
     """
-    rel_parts = list(path.relative_to(_SRC_ROOT).with_suffix("").parts)
-    if rel_parts[-1] == "__init__":
-        rel_parts = rel_parts[:-1]
-    return ".".join(rel_parts)
+    for root, prefix in _ROOTS.items():
+        if root in path.parents or root == path.parent:
+            rel = list(path.relative_to(root).with_suffix("").parts)
+            if rel and rel[-1] == "__init__":
+                rel = rel[:-1]
+            return ".".join([prefix, *rel]) if rel else prefix
+    raise AssertionError(path)
 
 
 def _package_name_for(path: Path) -> str:
@@ -262,13 +273,17 @@ def _package_name_for(path: Path) -> str:
     against its containing directory.
 
     Args:
-        path: Absolute path to a `.py` file under `src/`.
+        path: Absolute path to a `.py` file under one of `_ROOTS`.
 
     Returns:
         Dotted package name.
     """
-    rel_parts = list(path.relative_to(_SRC_ROOT).with_suffix("").parts)
-    return ".".join(rel_parts[:-1])
+    for root, prefix in _ROOTS.items():
+        if root in path.parents or root == path.parent:
+            rel = list(path.relative_to(root).with_suffix("").parts)
+            full = [*prefix.split("."), *rel]
+            return ".".join(full[:-1])
+    raise AssertionError(path)
 
 
 def _resolve_import_from(node: ast.ImportFrom, package: str) -> str:
@@ -294,7 +309,7 @@ def _is_pe_module(name: str) -> bool:
 
 
 def _collect_raw_imports() -> list[RawImport]:
-    """Walk every file under `src/pe` and collect all import edges.
+    """Walk every file under each `_ROOTS` package root and collect all edges.
 
     Walks the *entire* AST (`ast.walk`), not just module-level statements,
     so function-level (lazy) imports are counted. Only edges targeting

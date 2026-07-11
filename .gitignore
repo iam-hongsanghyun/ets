@@ -12,7 +12,7 @@ _probe.txt
 examples/k_msr_results.csv
 examples/k_msr_summary.md
 examples/k_msr_price_paths.png
-src/*.egg-info/
+*.egg-info/
 user-scenarios/
 database/
 .env
