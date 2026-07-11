@@ -152,3 +152,67 @@ Graph: links: [] default. Inertness obligation: links absent + no aliases
 
 Carried gaps: G-D0-1 banking lifetime/vintages; G-D0-2 trading ratios;
 Rubin-with-borrowing.
+
+## 7. Arbitration outcomes (binding, economist PROCEED 2026-07-11)
+
+- **E2 domain taxonomy — THREE tiers, not two**: `general` (any administered
+  flow) / `carbon` (any carbon market) / `kets` (Korea pack). cbam + scope-2
+  params → `carbon` (used by generic examples; `kets` misclassifies;
+  `trade` rejected — CBAM is F6 post-clearing reporting, no price edge).
+  kmsr_decree BLOCK → `kets` (the feature stays engine-general; the block
+  carries the tag). K-* examples: derived block tags are the DEFAULT, PLUS
+  an optional per-example `domain` override for calibration-defined
+  membership — seed it for k_msr_P0_no_reserve, k_msr_A_reserve_price,
+  k_msr_lambda_regimes, k_ets_hoarding_basic, k_ets_lambda_msr (general
+  blocks, Korean calibration). No filename inference.
+- **E4 investment × links — per-market wrapping CONFIRMED exact** (block-
+  triangular: both v1 channels write downstream only; back_demand_estimate
+  never fed back; sequential per-market trigger-consistent equilibria =
+  the chain equilibrium by induction; D1.4 termination applies verbatim per
+  market at cost Σ(Ni+1)). PINS: (1) a link reads the upstream market's
+  FINAL converged delivered path, never an intermediate iterate; (2) links
+  compile into the target's markets AND its AdoptionSpecs BEFORE spec
+  gathering, so both the InvestmentRule factory and the independent ex-post
+  checker read the link-shifted θ_B(t).
+- **E7 events × multi-market — deferral SIGNED OFF.** Error text names D2 and
+  the natural first relaxation: events permitted only on SINK markets (no
+  outgoing links) — there the existing splice machinery is already correct.
+- **E8 horizon alignment — STRICT SUBSET**: ERROR unless label-set(B) ⊆
+  label-set(A) per link L(A→B) (A may carry extra years; every target year
+  must exist in the source's solved path). Rejected all partial-overlap
+  fillers (hold-last = hidden random walk; zero-shift = spurious boundary
+  cliff at the trigger; interpolation = an unstated intra-gap price
+  process). Precedent: D2.1 missing-year ValueError. Error suggests adding
+  the missing years to the source.
+- **Schema names**: phi/phi_unit govern (φ mirrors the paper — single-letter
+  equation convention); market-level price_unit required iff linked, kept
+  distinct from flow_unit; channel keys mac_cost/invest_break_even;
+  from_market/to_market endpoint spelling is the architect's choice.
+- **E6 diagnostic columns (golden-pinned, ASCII arrows, channel-qualified)**:
+  `Link {from}->{to} Price In` (per (from,to) pair, deduped) ·
+  `Link {from}->{to} {channel} Input Shift` (channel key verbatim — two
+  links on one pair with different channels must not collide) ·
+  `Link {from}->{to} Feedback Ignored` (only when back_demand_estimate
+  declared; source-market quantity units documented in MANUAL, not the
+  column name). All key-presence-guarded, multi-market scenarios only.
+
+## 8. E1b — RPS/REC showcase calibration (stylized, not a jurisdiction repro)
+
+One obligated aggregate retailer; flow_label "REC", flow_unit "TWh",
+price_unit "USD/MWh" (revenue columns read as $M since $1/MWh ≡ $1M/TWh);
+years 2026-2030 (inside REC lifetime; G-D0-1 non-binding). Obligation =
+RPS%×500 TWh = 50/70/90/120/150. auction_offered 0 (OTC clearing at net
+demand 0). Self-supply blocks: B1 60 TWh @ 8, B2 50 @ 22; offshore B3 40 @
+38 as the flagged option, θ=40 flat, trigger_mode break_even, L=0; buyout
+(ACP) 45. Anchors:
+1. ACP-binding: pre-adoption prices [8, 22, 22, 45, 45]; buyout binds 2029
+   (obligation 120 crosses capacity-below-ACP 110); assert P=buyout,
+   settlement 10 TWh (atol 1e-6).
+2. Buyout-triggers-entry: first θ=40 crossing 2029 → τ=2029; final path
+   [8, 22, 22, 38, 38] (2029's 38<40 exercises the D1.1 ex-post-regret INFO
+   path); D-P variant σ=0.3 y=0.03 r=0.055 ⇒ M≈3.86 P*≈154 > path sup ⇒
+   never adopts, == B3-deleted config exactly (V3 semantics).
+3. Banking variant: the 22→45 jump violates no-arbitrage at g=0.055 ⇒ a
+   window forms; assert in-window carry P_{t+1}/P_t = 1.055 (rtol 1e-9),
+   cumulative self-supply identity to 1e-3 TWh, and the discrete-MAC
+   terminal-bank WARNING. Golden ships with the hand-derivation note.
