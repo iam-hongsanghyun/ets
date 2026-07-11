@@ -10,24 +10,24 @@
 #     injects today's default cap rules exactly as this module used to.
 import warnings
 
-from ..core.ledger import (
+from pe.core.ledger import (
     collect_path_results as _collect_path_results,
     market_year_sort_key as _market_year_sort_key,
     simulate_path_details as _simulate_path_details,
 )
-from ..engine.dispatch import (
+from pe.engine.dispatch import (
     _rename_markets,
     run_simulation,
     run_simulation_from_config,
     run_simulation_from_file,
 )
-from ..engine.wiring import solve_scenario_path
-from ..features.competitive.solver import _simulate_realized_prices
+from pe.engine.wiring import solve_scenario_path
+from pe.features.competitive.solver import _simulate_realized_prices
 
 warnings.warn(
     "ets.solvers.simulation is deprecated; import run_simulation* and "
-    "solve_scenario_path from ets.engine (ledger internals: "
-    "ets.core.ledger). Removal milestone: 0.3.0.",
+    "solve_scenario_path from pe.engine (ledger internals: "
+    "pe.core.ledger). Removal milestone: 0.3.0.",
     DeprecationWarning,
     stacklevel=2,
 )

@@ -37,7 +37,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from ets.engine import run_simulation_from_config
+from pe.engine import run_simulation_from_config
 
 HERE = Path(__file__).resolve().parent
 BASE_FILE = HERE / "climate_solutions_k_ets_outlook.json"

@@ -7,12 +7,12 @@
 # the feature, F3).
 import warnings
 
-from ..engine.wiring import solve_transmission_path
-from ..features.transmission.solver import blend_prices
+from pe.engine.wiring import solve_transmission_path
+from pe.features.transmission.solver import blend_prices
 
 warnings.warn(
     "ets.solvers.transmission is deprecated; import solve_transmission_path "
-    "from ets.engine (blend_prices: ets.features.transmission). "
+    "from pe.engine (blend_prices: pe.features.transmission). "
     "Removal milestone: 0.3.0.",
     DeprecationWarning,
     stacklevel=2,

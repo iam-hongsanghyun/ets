@@ -11,14 +11,14 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from ets.config_io import build_markets_from_config, normalize_config
-from ets.solvers import (
+from pe.config_io import build_markets_from_config, normalize_config
+from pe.engine import (
     run_simulation_from_config,
     solve_hotelling_path,
     solve_scenario_path,
     solve_transmission_path,
 )
-from ets.solvers.transmission import blend_prices
+from pe.features.transmission import blend_prices
 
 DISCOUNT_RATE = 0.055
 

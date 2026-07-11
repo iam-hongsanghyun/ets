@@ -1,6 +1,6 @@
 [project]
-name = "ets"
-version = "0.1.0"
+name = "pe"
+version = "0.2.0"
 description = "Emissions Trading System (ETS) modular simulation framework."
 license = { text = "GPL-3.0-or-later" }
 requires-python = ">=3.11"

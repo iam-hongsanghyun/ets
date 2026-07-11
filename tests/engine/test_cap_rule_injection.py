@@ -47,12 +47,12 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from ets.config_io import build_markets_from_config
-from ets.core.protocols import CapRule
-from ets.solvers import run_simulation_from_config, solve_scenario_path
-from ets.solvers.ccr import CCRCapRule, CCRState
-from ets.solvers.msr import MSRCapRule, MSRState
-from ets.core.ledger import simulate_path_details as _simulate_path_details
+from pe.config_io import build_markets_from_config
+from pe.core.protocols import CapRule
+from pe.engine import run_simulation_from_config, solve_scenario_path
+from pe.features.ccr import CCRCapRule, CCRState
+from pe.features.msr import MSRCapRule, MSRState
+from pe.core.ledger import simulate_path_details as _simulate_path_details
 
 # Participant abatement optima come from bounded scalar minimisation
 # (xatol ~1e-5), so hand values are matched to ~1e-4; atol=1e-3 is safely
@@ -267,7 +267,7 @@ def test_default_wiring_matches_explicitly_injected_rules():
     """default_cap_rules(m0, "competitive") and cap_rules=[CCR, MSR] solve
     identical paths (formerly the legacy-kwarg translation test; the
     expected numbers are unchanged)."""
-    from ets.engine import default_cap_rules
+    from pe.engine import default_cap_rules
 
     expected = {"2030": 25.0, "2031": 45.0}
 

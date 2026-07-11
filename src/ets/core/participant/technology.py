@@ -1,20 +1,15 @@
-from __future__ import annotations
+"""Deprecated mirror of ``pe.core.participant.technology`` — import ``pe.core.participant.technology`` instead.
 
-from .models import MarketParticipant, TechnologyOption
+Kept for the ets->pe rename window (D0-R1); removed at 0.4.0.
+"""
 
+import warnings
 
-def _default_technology(participant: MarketParticipant) -> TechnologyOption:
-    return TechnologyOption(
-        name="Base Technology",
-        initial_emissions=participant.initial_emissions,
-        free_allocation_ratio=participant.free_allocation_ratio,
-        penalty_price=participant.penalty_price,
-        marginal_abatement_cost=participant.marginal_abatement_cost,
-        max_abatement_share=participant.max_abatement_share,
-        max_activity_share=1.0,
-        fixed_cost=0.0,
-    )
+from pe.core.participant.technology import *  # noqa
 
-
-def _available_technologies(participant: MarketParticipant) -> list[TechnologyOption]:
-    return participant.technology_options or [_default_technology(participant)]
+warnings.warn(
+    "ets.core.participant.technology is deprecated; import pe.core.participant.technology instead. "
+    "Removal milestone: 0.4.0.",
+    DeprecationWarning,
+    stacklevel=2,
+)

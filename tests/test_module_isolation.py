@@ -1,7 +1,7 @@
 """AST-based import-contract ratchet for the feature-module migration.
 
 Enforces the tier contract of `docs/feature-modules-plan.md` §1 by parsing
-every module under `src/ets` with `ast` (no `ets` code is ever imported —
+every module under `src/pe` with `ast` (no `ets` code is ever imported —
 this must stay fast and side-effect free) and asserting that no forbidden
 import edge exists between tiers.
 
@@ -9,18 +9,18 @@ Algorithm:
     Not a numerical algorithm; this is a static-analysis ratchet. The
     "algorithm" is graph construction + predicate checks:
 
-        1. For every `.py` file under `src/ets`, `ast.parse` it and
+        1. For every `.py` file under `src/pe`, `ast.parse` it and
            `ast.walk` the *entire* tree (module scope AND nested
            function/method bodies, so lazy imports count) collecting every
            `Import`/`ImportFrom` node.
-        2. Resolve each import to an absolute `ets.*` dotted module name.
+        2. Resolve each import to an absolute `pe.*` dotted module name.
            Relative imports (`level > 0`) are resolved with
            `importlib.util.resolve_name` against the *importing* file's own
            package (its containing directory, or itself for `__init__.py`).
         3. Classify every module name into a tier by path prefix (T0..T5,
            SHIM, or LEGACY — see `classify`).
         4. Build the edge set `EDGES = {(src_module, dst_module), ...}`
-           (deduplicated, `ets.*` targets only — stdlib/third-party imports
+           (deduplicated, `pe.*` targets only — stdlib/third-party imports
            are irrelevant to tier isolation and are dropped).
         5. Each contract clause (a)-(h) of the plan is one `test_*`
            function: filter `EDGES` for the clause's forbidden shape, drop
@@ -32,12 +32,12 @@ Algorithm:
            allowlist can only shrink toward empty (O14).
 
     Tier precedence: SHIM (exact module-name match) is checked before the
-    path-prefix tiers, so a bare flat-shim name (e.g. `ets.market`) is never
-    mistaken for its same-named sub-package (`ets.market.core` is LEGACY —
+    path-prefix tiers, so a bare flat-shim name (e.g. `pe.market`) is never
+    mistaken for its same-named sub-package (`pe.market.core` is LEGACY —
     "everything under ets not yet in a target tier or shim").
 
-    Self-tier imports are always implicitly permitted (e.g. `ets.config_io`
-    importing `ets.config_io.builder`) — none of the plan's clauses forbid a
+    Self-tier imports are always implicitly permitted (e.g. `pe.config_io`
+    importing `pe.config_io.builder`) — none of the plan's clauses forbid a
     tier from depending on its own submodules, and clause (g) says so
     explicitly for `blocks`/`coupling` ("+ itself").
 
@@ -54,15 +54,15 @@ Algorithm:
     spellings.)
 
     Door-granular two-door contract (PLAN v2 §"Two-door features", O7):
-    `ets.features` now exists, and PLAN v2 supersedes the v1 reading of
-    clauses (c) and (e) for exactly one edge shape — `ets.config_io` may
-    import `ets.features.<X>.plugin`, and ONLY that module (a feature's
+    `pe.features` now exists, and PLAN v2 supersedes the v1 reading of
+    clauses (c) and (e) for exactly one edge shape — `pe.config_io` may
+    import `pe.features.<X>.plugin`, and ONLY that module (a feature's
     config-facing door: field specs, build-time transforms, attachable
-    reporters/overlays/carriers; imports `ets.core.*` + stdlib only).
+    reporters/overlays/carriers; imports `pe.core.*` + stdlib only).
     `_is_plugin_door` checks this file-exact, not package-exact: a feature's
-    bare package (`ets.features.cbam`, i.e. its `__init__.py`) and its
-    runtime modules (`ets.features.<X>.solver`/`rules`/`state`, none exist
-    yet) are NOT doors — those stay reachable only from `ets.engine` (T3)
+    bare package (`pe.features.cbam`, i.e. its `__init__.py`) and its
+    runtime modules (`pe.features.<X>.solver`/`rules`/`state`, none exist
+    yet) are NOT doors — those stay reachable only from `pe.engine` (T3)
     and same-feature siblings, exactly as clause (c) already required. This
     is the file's edit point for later work orders that add runtime feature
     modules: widen `_is_plugin_door`'s allowed *importers* only if a new
@@ -85,65 +85,23 @@ from dataclasses import dataclass
 from pathlib import Path
 
 # --------------------------------------------------------------------------
-# Discovery: locate src/ets relative to this test file (repo layout is
+# Discovery: locate src/pe relative to this test file (repo layout is
 # tests/ + src/<pkg>/ per CLAUDE.md; never hardcode an absolute path).
 # --------------------------------------------------------------------------
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 _SRC_ROOT = _REPO_ROOT / "src"
-_PKG_ROOT = _SRC_ROOT / "ets"
+_PKG_ROOT = _SRC_ROOT / "pe"
 
 _STDLIB_MODULES = frozenset(sys.stdlib_module_names)
 
-# Flat backward-compatibility shims that already exist today (plan §1
-# "Supplementary" + §3 SHIM tier). Deliberately includes `ets.config` and
-# `ets.costs`, which are still *real* modules today (not yet re-export
-# shims) but are pre-registered here because O1/O2 convert them into shims
-# without changing their dotted name — keeping the constant ahead of the
-# migration avoids a two-line diff later. Append `ets.solvers.*` here once
-# that package itself becomes a shim (O8+). `ets.participant.*` became a
-# shim package in O2; `ets.market.*` in O3; `ets.solvers.expectations` in O4;
-# `ets.solvers.{msr,ccr,events}` became pure re-export shims in the engine
-# order (v1 O8 / v2 O12); `ets.solvers.banking` in the banking feature order
-# (v1 O9 / v2 O13); `ets.solvers.simulation` in the competitive feature
-# order (v1 O10 / v2 O14); `ets.solvers.{hotelling,nash}` in the
-# hotelling/nash feature order (v1 O11 / v2 O15); `ets.solvers.transmission`
-# in the transmission feature order (v1 O12 / v2 O16); the `ets.solvers`
-# package itself in the shim-arming order (v1 O13 / v2 O17 —
-# compute_baseline_prices relocated to core/baseline.py).
-SHIM_MODULES: frozenset[str] = frozenset(
-    {
-        "ets.simulation",
-        "ets.solvers",
-        "ets.solvers.banking",
-        "ets.solvers.ccr",
-        "ets.solvers.events",
-        "ets.solvers.expectations",
-        "ets.solvers.hotelling",
-        "ets.solvers.msr",
-        "ets.solvers.nash",
-        "ets.solvers.simulation",
-        "ets.solvers.transmission",
-        "ets.market",
-        "ets.market.core",
-        "ets.market.equilibrium",
-        "ets.market.results",
-        "ets.msr",
-        "ets.ccr",
-        "ets.hotelling",
-        "ets.nash",
-        "ets.expectations",
-        "ets.participant",
-        "ets.participant.models",
-        "ets.participant.compliance",
-        "ets.participant.technology",
-        "ets.scenarios",
-        "ets.server",
-        "ets.webapp",
-        "ets.config",
-        "ets.costs",
-    }
-)
+# SHIM tier (plan §1 "Supplementary" + §3). RESERVED, intentionally EMPTY after
+# the D0-R1 package rename: src/pe is shim-free — every backward-compatibility
+# shim now lives in the separate `ets/` compat package, which this suite does
+# NOT walk (`_PKG_ROOT` points at src/pe). The SHIM classification/exemption
+# machinery below is kept intact so a future lead-modeller-approved order can
+# re-register a shim module name here without re-plumbing the walker.
+SHIM_MODULES: frozenset[str] = frozenset()
 
 # T4 sub-packages that must never import each other's siblings (clause g).
 _T4_GROUPS: frozenset[str] = frozenset({"analysis", "coupling", "blocks"})
@@ -168,10 +126,10 @@ PENDING_VIOLATIONS: dict[tuple[str, str], str] = {}
 
 @dataclass(frozen=True)
 class ModuleInfo:
-    """Tier classification of a single `ets.*` dotted module name.
+    """Tier classification of a single `pe.*` dotted module name.
 
     Attributes:
-        name: Fully-qualified module name, e.g. `"ets.config_io.builder"`.
+        name: Fully-qualified module name, e.g. `"pe.config_io.builder"`.
         tier: One of `"T0"`..`"T5"`, `"SHIM"`, or `"LEGACY"`.
         feature: Third path component (feature name) when `tier == "T2"`,
             else `None`.
@@ -186,14 +144,14 @@ class ModuleInfo:
 
 
 def classify(module: str) -> ModuleInfo:
-    """Classify an `ets.*` module name into its architectural tier.
+    """Classify an `pe.*` module name into its architectural tier.
 
     Path-prefix classification only — does not require the target
     directory (`core/`, `features/`, `engine/`) to exist yet, so the
     ratchet stays correct as later work orders create them.
 
     Args:
-        module: Fully-qualified dotted module name, e.g. `"ets.solvers.msr"`.
+        module: Fully-qualified dotted module name, e.g. `"pe.solvers.msr"`.
 
     Returns:
         The module's `ModuleInfo`.
@@ -203,28 +161,28 @@ def classify(module: str) -> ModuleInfo:
 
     parts = module.split(".")
 
-    if module == "ets.core" or module.startswith("ets.core."):
+    if module == "pe.core" or module.startswith("pe.core."):
         return ModuleInfo(module, "T0")
-    if module == "ets.config_io" or module.startswith("ets.config_io."):
+    if module == "pe.config_io" or module.startswith("pe.config_io."):
         return ModuleInfo(module, "T1")
-    if module == "ets.features" or module.startswith("ets.features."):
+    if module == "pe.features" or module.startswith("pe.features."):
         feature = parts[2] if len(parts) > 2 else None
         return ModuleInfo(module, "T2", feature=feature)
-    if module == "ets.engine" or module.startswith("ets.engine."):
+    if module == "pe.engine" or module.startswith("pe.engine."):
         return ModuleInfo(module, "T3")
     if len(parts) >= 2 and parts[1] in _T4_GROUPS:
         return ModuleInfo(module, "T4", t4_group=parts[1])
     if (
-        module == "ets.cli"
-        or module == "ets.web"
-        or module.startswith("ets.web.")
-        or module == "ets.mcp"
-        or module.startswith("ets.mcp.")
+        module == "pe.cli"
+        or module == "pe.web"
+        or module.startswith("pe.web.")
+        or module == "pe.mcp"
+        or module.startswith("pe.mcp.")
     ):
         return ModuleInfo(module, "T5")
 
-    # Everything else currently under ets (ets.solvers.*, ets.market.*,
-    # ets.participant.*, and the top-level `ets` package itself) — exempt
+    # Everything else currently under ets (pe.solvers.*, pe.market.*,
+    # pe.participant.*, and the top-level `ets` package itself) — exempt
     # from tier rules but still edge-collected (plan §3).
     return ModuleInfo(module, "LEGACY")
 
@@ -233,21 +191,21 @@ def _is_plugin_door(module: str) -> bool:
     """Return True if `module` is exactly a feature's `plugin` config door.
 
     File-exact, not package-exact (PLAN v2 §"Two-door features"): matches
-    `ets.features.<X>.plugin` only — a feature's bare package
-    (`ets.features.<X>`, i.e. its `__init__.py`) and its runtime modules
-    (`ets.features.<X>.solver`/`rules`/`state`, ...) do NOT match. This is
+    `pe.features.<X>.plugin` only — a feature's bare package
+    (`pe.features.<X>`, i.e. its `__init__.py`) and its runtime modules
+    (`pe.features.<X>.solver`/`rules`/`state`, ...) do NOT match. This is
     the door-granularity check clauses (c) and (e) use to grant
-    `ets.config_io` read access to exactly the config-facing door and
+    `pe.config_io` read access to exactly the config-facing door and
     nothing else in a feature package.
 
     Args:
         module: Fully-qualified dotted module name.
 
     Returns:
-        True iff `module` is `ets.features.<feature>.plugin`.
+        True iff `module` is `pe.features.<feature>.plugin`.
     """
     parts = module.split(".")
-    return len(parts) == 4 and parts[0] == "ets" and parts[1] == "features" and parts[3] == "plugin"
+    return len(parts) == 4 and parts[0] == "pe" and parts[1] == "features" and parts[3] == "plugin"
 
 
 # --------------------------------------------------------------------------
@@ -274,7 +232,7 @@ class RawImport:
 
 
 def _iter_py_files() -> Iterator[Path]:
-    """Yield every `.py` file under `src/ets`, deterministically ordered."""
+    """Yield every `.py` file under `src/pe`, deterministically ordered."""
     yield from sorted(_PKG_ROOT.rglob("*.py"))
 
 
@@ -285,10 +243,10 @@ def _module_name_for(path: Path) -> str:
         path: Absolute path to a `.py` file under `src/`.
 
     Returns:
-        Dotted module name, e.g. `src/ets/config_io/builder.py` ->
-        `"ets.config_io.builder"`; `__init__.py` files map to their
-        containing package, e.g. `src/ets/config_io/__init__.py` ->
-        `"ets.config_io"`.
+        Dotted module name, e.g. `src/pe/config_io/builder.py` ->
+        `"pe.config_io.builder"`; `__init__.py` files map to their
+        containing package, e.g. `src/pe/config_io/__init__.py` ->
+        `"pe.config_io"`.
     """
     rel_parts = list(path.relative_to(_SRC_ROOT).with_suffix("").parts)
     if rel_parts[-1] == "__init__":
@@ -322,7 +280,7 @@ def _resolve_import_from(node: ast.ImportFrom, package: str) -> str:
             `_package_name_for`), used as the anchor for relative imports.
 
     Returns:
-        Absolute dotted module name, e.g. `"ets.config_io.templates"`.
+        Absolute dotted module name, e.g. `"pe.config_io.templates"`.
     """
     if node.level:
         return importlib.util.resolve_name("." * node.level + (node.module or ""), package)
@@ -330,21 +288,21 @@ def _resolve_import_from(node: ast.ImportFrom, package: str) -> str:
     return node.module
 
 
-def _is_ets_module(name: str) -> bool:
+def _is_pe_module(name: str) -> bool:
     """Return True if `name` is `ets` or a dotted sub-module of `ets`."""
-    return name == "ets" or name.startswith("ets.")
+    return name == "pe" or name.startswith("pe.")
 
 
 def _collect_raw_imports() -> list[RawImport]:
-    """Walk every file under `src/ets` and collect all import edges.
+    """Walk every file under `src/pe` and collect all import edges.
 
     Walks the *entire* AST (`ast.walk`), not just module-level statements,
     so function-level (lazy) imports are counted. Only edges targeting
-    `ets.*` are kept — stdlib/third-party imports don't participate in
+    `pe.*` are kept — stdlib/third-party imports don't participate in
     tier isolation.
 
     Returns:
-        All `ets.*`-targeting import edges found in the current tree.
+        All `pe.*`-targeting import edges found in the current tree.
     """
     raw: list[RawImport] = []
     for path in _iter_py_files():
@@ -355,11 +313,11 @@ def _collect_raw_imports() -> list[RawImport]:
         for node in ast.walk(tree):
             if isinstance(node, ast.Import):
                 for alias in node.names:
-                    if _is_ets_module(alias.name):
+                    if _is_pe_module(alias.name):
                         raw.append(RawImport(module, alias.name, None, node.lineno))
             elif isinstance(node, ast.ImportFrom):
                 dst = _resolve_import_from(node, package)
-                if not _is_ets_module(dst):
+                if not _is_pe_module(dst):
                     continue
                 for alias in node.names:
                     raw.append(RawImport(module, dst, alias.name, node.lineno))
@@ -400,7 +358,7 @@ def _assert_no_violations(edges: Iterable[tuple[str, str]], *, rule: str) -> Non
 
 
 def test_no_feature_imports_another_feature() -> None:
-    """Clause (a): `ets.features.X` never imports `ets.features.Y`, X != Y."""
+    """Clause (a): `pe.features.X` never imports `pe.features.Y`, X != Y."""
     bad = [
         (s, d)
         for s, d in EDGES
@@ -412,7 +370,7 @@ def test_no_feature_imports_another_feature() -> None:
 
 
 def test_features_import_only_core() -> None:
-    """Clause (b): features import only `ets.core.*` (never `ets.config_io`)."""
+    """Clause (b): features import only `pe.core.*` (never `pe.config_io`)."""
     bad = []
     for s, d in EDGES:
         si, di = classify(s), classify(d)
@@ -427,9 +385,9 @@ def test_features_import_only_core() -> None:
 
 
 def test_features_imported_only_from_engine_or_shim() -> None:
-    """Clause (c), door-granular under PLAN v2: `ets.features.*` is imported
+    """Clause (c), door-granular under PLAN v2: `pe.features.*` is imported
     only from engine or a shim — EXCEPT a feature's `plugin` door
-    (`ets.features.<X>.plugin` exactly), which `ets.config_io` may also
+    (`pe.features.<X>.plugin` exactly), which `pe.config_io` may also
     import (the two-door contract; see `_is_plugin_door` and the module
     docstring). A feature's runtime modules stay reachable only from engine/
     shim/same-feature, unchanged from v1.
@@ -452,17 +410,17 @@ def test_features_imported_only_from_engine_or_shim() -> None:
 
 
 def test_core_imports_only_core() -> None:
-    """Clause (d): `ets.core.*` imports only `ets.core.*`."""
+    """Clause (d): `pe.core.*` imports only `pe.core.*`."""
     bad = [(s, d) for s, d in EDGES if classify(s).tier == "T0" and classify(d).tier != "T0"]
     _assert_no_violations(bad, rule="(d) core imports only core")
 
 
 def test_config_io_imports_only_core() -> None:
     """Clause (e), door-granular under PLAN v2 (supersedes the v1 reading):
-    `ets.config_io.*` imports only `ets.core.*` (within ets) OR a feature's
-    `plugin` door EXACTLY (`ets.features.<X>.plugin`; see `_is_plugin_door`)
+    `pe.config_io.*` imports only `pe.core.*` (within ets) OR a feature's
+    `plugin` door EXACTLY (`pe.features.<X>.plugin`; see `_is_plugin_door`)
     — never a feature's bare package or its runtime modules
-    (`ets.features.<X>.solver`/`rules`/`state`). PLAN v2 "Two-door features"
+    (`pe.features.<X>.solver`/`rules`/`state`). PLAN v2 "Two-door features"
     is what widens clause (e); door granularity is what keeps the widening
     contained to one reviewed module per feature.
     """
@@ -480,7 +438,7 @@ def test_config_io_imports_only_core() -> None:
 
 
 def test_engine_excludes_workflows_and_apps() -> None:
-    """Clause (f): `ets.engine.*` imports nothing from T4 (workflows) or T5 (apps)."""
+    """Clause (f): `pe.engine.*` imports nothing from T4 (workflows) or T5 (apps)."""
     bad = [
         (s, d) for s, d in EDGES if classify(s).tier == "T3" and classify(d).tier in {"T4", "T5"}
     ]
@@ -488,7 +446,7 @@ def test_engine_excludes_workflows_and_apps() -> None:
 
 
 def test_analysis_modules_do_not_import_each_other() -> None:
-    """Clause (g): within `ets.analysis`, sibling modules never import each other."""
+    """Clause (g): within `pe.analysis`, sibling modules never import each other."""
     bad = [
         (s, d)
         for s, d in EDGES
@@ -502,7 +460,7 @@ def test_analysis_modules_do_not_import_each_other() -> None:
 
 
 def test_blocks_imports_only_config_io_or_itself() -> None:
-    """Clause (g): `ets.blocks` imports only `ets.config_io` (T1) or itself."""
+    """Clause (g): `pe.blocks` imports only `pe.config_io` (T1) or itself."""
     bad = []
     for s, d in EDGES:
         si = classify(s)
@@ -518,7 +476,7 @@ def test_blocks_imports_only_config_io_or_itself() -> None:
 
 
 def test_coupling_imports_only_core_config_io_engine_or_itself() -> None:
-    """Clause (g): `ets.coupling` imports only core/config_io/engine or itself."""
+    """Clause (g): `pe.coupling` imports only core/config_io/engine or itself."""
     allowed_tiers = {"T0", "T1", "T3"}
     bad = []
     for s, d in EDGES:

@@ -37,6 +37,10 @@ else
   PY=("$PYTHON_BIN")
 fi
 
+# Ensure `-m pe.cli` resolves on the pip-fallback path too (uv already installs
+# the pe package; PYTHONPATH is harmless there and required without it).
+export PYTHONPATH="$SCRIPT_DIR/src${PYTHONPATH:+:$PYTHONPATH}"
+
 echo "Starting Model Composer (admin) on port $PORT ..."
 ( sleep 2 && open "http://127.0.0.1:$PORT/?mode=composer" ) &
-exec "${PY[@]}" "$SCRIPT_DIR/ets_framework.py" --gui --no-browser --port "$PORT"
+exec "${PY[@]}" -m pe.cli --gui --no-browser --port "$PORT"

@@ -10,8 +10,8 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from ets.solvers import run_simulation_from_config
-from ets.solvers.events import validate_policy_events
+from pe.engine import run_simulation_from_config
+from pe.engine import validate_policy_events
 
 E = 100.0
 C = 100.0

@@ -4,12 +4,12 @@
 # in ets.core.defaults.
 import warnings
 
-from .core.defaults import MSR_DEFAULTS
-from .features.msr import MSRState
+from pe.core.defaults import MSR_DEFAULTS
+from pe.features.msr import MSRState
 
 warnings.warn(
-    "ets.msr is deprecated; import MSRState from ets.features.msr and "
-    "MSR_DEFAULTS from ets.core.defaults instead. "
+    "ets.msr is deprecated; import MSRState from pe.features.msr and "
+    "MSR_DEFAULTS from pe.core.defaults instead. "
     "Removal milestone: after the frontend migrates to the graph API (v2.0).",
     DeprecationWarning,
     stacklevel=2,

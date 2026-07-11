@@ -34,21 +34,21 @@ import pandas as pd
 import pytest
 from pandas.testing import assert_frame_equal
 
-from ets.config_io import build_markets_from_config
-from ets.core.costs import linear_abatement_factory
-from ets.core.market.model import CarbonMarket
-from ets.core.participant.models import MarketParticipant, TechnologyOption
-from ets.core.protocols import (
+from pe.config_io import build_markets_from_config
+from pe.core.costs import linear_abatement_factory
+from pe.core.market.model import CarbonMarket
+from pe.core.participant.models import MarketParticipant, TechnologyOption
+from pe.core.protocols import (
     AdoptionEvent,
     AdoptionSpec,
     AdoptionState,
     make_adoption_state,
     serialize_adoption_state,
 )
-from ets.engine.dispatch import run_simulation
-from ets.engine.feedback import solve_with_investment_feedback
-from ets.features.endogenous_investment.plugin import attach_adoption_specs
-from ets.features.endogenous_investment.rule import InvestmentRule
+from pe.engine.dispatch import run_simulation
+from pe.engine.feedback import solve_with_investment_feedback
+from pe.features.endogenous_investment.plugin import attach_adoption_specs
+from pe.features.endogenous_investment.rule import InvestmentRule
 
 R = 0.055  # scenario discount rate r [1/yr]
 Y = 0.03  # payout yield y [1/yr]
@@ -211,7 +211,7 @@ def test_v8_adopted_below_trigger_is_logged_info_not_raised(
         )
         return [{"market": m, "equilibrium": {"price": 120.0 - 15.0 * k}} for m in solved_markets]
 
-    with caplog.at_level(logging.INFO, logger="ets.engine.feedback"):
+    with caplog.at_level(logging.INFO, logger="pe.engine.feedback"):
         solve_with_investment_feedback(
             markets,
             stub_solver,
@@ -334,7 +334,7 @@ def test_max_iterations_exhaustion_warns_and_returns_last_iterate(
         )
         return make_adoption_state([*state, event])
 
-    with caplog.at_level(logging.WARNING, logger="ets.engine.feedback"):
+    with caplog.at_level(logging.WARNING, logger="pe.engine.feedback"):
         path = solve_with_investment_feedback(
             _one_year_markets("A"),
             _pinned_price_solver(50.0),

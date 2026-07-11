@@ -6,11 +6,11 @@
 # them.
 import warnings
 
-from ..engine.wiring import solve_hotelling_path
+from pe.engine.wiring import solve_hotelling_path
 
 warnings.warn(
     "ets.solvers.hotelling is deprecated; import solve_hotelling_path from "
-    "ets.engine instead. Removal milestone: 0.3.0.",
+    "pe.engine instead. Removal milestone: 0.3.0.",
     DeprecationWarning,
     stacklevel=2,
 )

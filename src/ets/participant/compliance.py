@@ -2,7 +2,7 @@
 # New location: src/ets/core/participant/compliance.py.
 import warnings
 
-from ..core.participant.compliance import (
+from pe.core.participant.compliance import (
     optimize_compliance,
     _scale_for_activity,
     _abatement_cost,
@@ -15,7 +15,7 @@ from ..core.participant.compliance import (
 
 warnings.warn(
     "ets.participant.compliance is deprecated; import from "
-    "ets.core.participant.compliance instead. Removal milestone: 0.3.0.",
+    "pe.core.participant.compliance instead. Removal milestone: 0.3.0.",
     DeprecationWarning,
     stacklevel=2,
 )

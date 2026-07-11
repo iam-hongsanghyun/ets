@@ -33,7 +33,7 @@ import inspect
 
 import pytest
 
-from ets.core.protocols import (
+from pe.core.protocols import (
     CapRule,
     DemandOverlay,
     Friction,
@@ -42,15 +42,15 @@ from ets.core.protocols import (
     PriceOverlay,
     SummaryReporter,
 )
-from ets.features.cbam import plugin as cbam_plugin
-from ets.features.sectors import plugin as sectors_plugin
+from pe.features.cbam import plugin as cbam_plugin
+from pe.features.sectors import plugin as sectors_plugin
 
 # The only permitted non-class public name: the sector-pool build-time
 # derivation (part of the transform pipeline; consumed by config_io's
 # builder host literal). Additions require a lead-modeller-approved order.
 _PINNED_PUBLIC_FUNCTIONS = {
-    "ets.features.sectors.plugin": {"derive_sector_pools"},
-    "ets.features.cbam.plugin": set(),
+    "pe.features.sectors.plugin": {"derive_sector_pools"},
+    "pe.features.cbam.plugin": set(),
 }
 
 _ALLOWED_PROTOCOLS = (ParticipantReporter, SummaryReporter, ParticipantTransform)

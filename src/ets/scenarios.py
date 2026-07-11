@@ -2,7 +2,7 @@
 # New location: src/ets/config_io/.
 import warnings
 
-from .config_io import (
+from pe.config_io import (
     normalize_year,
     build_market_from_year,
     build_markets_from_config,
@@ -26,7 +26,7 @@ from .config_io import (
 )
 
 warnings.warn(
-    "ets.scenarios is deprecated; import from ets.config_io instead. "
+    "ets.scenarios is deprecated; import from pe.config_io instead. "
     "Removal milestone: after the frontend migrates to the graph API (v2.0).",
     DeprecationWarning,
     stacklevel=2,

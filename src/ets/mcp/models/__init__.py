@@ -1,14 +1,15 @@
-"""``python -m ets.mcp.models`` entry-point subpackage for the ets-models server.
+"""Deprecated mirror of ``pe.mcp.models`` — import ``pe.mcp.models`` instead.
 
-Not where the server is implemented — that's ``ets.mcp.models_server``/
-``ets.mcp.models_tools`` (flat modules directly under ``ets.mcp``, alongside
-``server.py``/``tools.py``, so both MCP servers share one package's
-dependency law and ``tests/test_module_isolation.py`` T5 classification with
-no extra rule needed). This subpackage exists only so
-``python -m ets.mcp.models`` is a valid, distinct module path from
-``python -m ets.mcp`` (the composer) — see ``__main__.py``.
+Kept for the ets->pe rename window (D0-R1); removed at 0.4.0.
 """
 
-from __future__ import annotations
+import warnings
 
-__all__: list[str] = []
+from pe.mcp.models import *  # noqa
+
+warnings.warn(
+    "ets.mcp.models is deprecated; import pe.mcp.models instead. "
+    "Removal milestone: 0.4.0.",
+    DeprecationWarning,
+    stacklevel=2,
+)

@@ -1,9 +1,15 @@
-"""hoarding feature (T2) — the structural-hoarding Friction provider; see ``plugin.py``.
+"""Deprecated mirror of ``pe.features.hoarding`` — import ``pe.features.hoarding`` instead.
 
-Only the inflow schedule reader lives here. The EXTENDED HOST SET stays in
-the banking solver (Arbitration outcomes, O10, binding): the static-year
-supply reduction S_t − h_t, the no-arbitrage-prune exemption for hoarding
-years (the documented λ ≈ 0 violation), the window-start constraint
-a > max{t : h_t > 0}, and the bank accumulation of the hoarded volume are
-window-equilibrium math, not feature behaviour.
+Kept for the ets->pe rename window (D0-R1); removed at 0.4.0.
 """
+
+import warnings
+
+from pe.features.hoarding import *  # noqa
+
+warnings.warn(
+    "ets.features.hoarding is deprecated; import pe.features.hoarding instead. "
+    "Removal milestone: 0.4.0.",
+    DeprecationWarning,
+    stacklevel=2,
+)

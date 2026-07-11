@@ -26,10 +26,10 @@ from typing import Any
 import pandas as pd
 import pytest
 
-from ets import run_simulation_from_config, run_simulation_from_file
-from ets.blocks import Edge, Graph, Node, compile_graph, validate_graph
-from ets.blocks.catalogue import BLOCK_CATALOGUE
-from ets.blocks.compile import per_year_value
+from pe import run_simulation_from_config, run_simulation_from_file
+from pe.blocks import Edge, Graph, Node, compile_graph, validate_graph
+from pe.blocks.catalogue import BLOCK_CATALOGUE
+from pe.blocks.compile import per_year_value
 
 EXAMPLES_DIR = Path(__file__).resolve().parents[3] / "examples"
 

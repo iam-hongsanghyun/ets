@@ -3,7 +3,7 @@
 # (transport-free functions).
 import warnings
 
-from .web.handlers import (
+from pe.web.handlers import (
     ASSET_CONTENT_TYPES,
     ETSRequestHandler,
     launch_web_app,
@@ -19,7 +19,7 @@ from .web.handlers import (
 )
 
 warnings.warn(
-    "ets.webapp is deprecated; import from ets.web.handlers (or ets.web.api "
+    "ets.webapp is deprecated; import from pe.web.handlers (or pe.web.api "
     "for the transport-free functions) instead. "
     "Removal milestone: after the frontend migrates to the graph API (v2.0).",
     DeprecationWarning,

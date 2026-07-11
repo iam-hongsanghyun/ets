@@ -3,10 +3,10 @@
 # docs/feature-modules-plan.md).
 import warnings
 
-from ..engine.events import solve_scenario_with_events, validate_policy_events
+from pe.engine.events import solve_scenario_with_events, validate_policy_events
 
 warnings.warn(
-    "ets.solvers.events is deprecated; import from ets.engine instead. "
+    "ets.solvers.events is deprecated; import from pe.engine instead. "
     "Removal milestone: 0.3.0.",
     DeprecationWarning,
     stacklevel=2,

@@ -10,13 +10,13 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from ets.coupling import (
+from pe.coupling import (
     ElasticityExternalModel,
     NullExternalModel,
     run_coupled_simulation,
 )
-from ets.coupling.adapters import baseline_emissions
-from ets.solvers import run_simulation_from_config
+from pe.coupling.adapters import baseline_emissions
+from pe.engine import run_simulation_from_config
 
 
 def _tightening_cap_config() -> dict:

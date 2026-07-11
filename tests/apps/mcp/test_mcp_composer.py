@@ -1,6 +1,6 @@
 """MCP composer server tests.
 
-Exercises the tool FUNCTIONS directly (``ets.mcp.tools``) — no MCP transport
+Exercises the tool FUNCTIONS directly (``pe.mcp.tools``) — no MCP transport
 involved for most cases, mirroring how ``tests/apps/web/test_web_graph_api.py``
 drives the WSGI app in-process. Covers:
 
@@ -29,8 +29,8 @@ import asyncio
 
 import pytest
 
-from ets import model_store
-from ets.mcp import tools
+from pe import model_store
+from pe.mcp import tools
 
 
 # ── (a) new_graph() minimal skeleton ─────────────────────────────────────
@@ -214,7 +214,7 @@ def test_add_block_ambiguous_target_market_raises() -> None:
 
 
 def test_list_blocks_and_describe_block_cover_the_catalogue() -> None:
-    from ets.blocks import BLOCK_CATALOGUE
+    from pe.blocks import BLOCK_CATALOGUE
 
     all_blocks = tools.list_blocks()["blocks"]
     assert {b["id"] for b in all_blocks} == set(BLOCK_CATALOGUE.ids())
@@ -272,7 +272,7 @@ def test_remove_node_unknown_node_raises() -> None:
 
 def test_mcp_server_lists_tools_and_answers_call_tool_over_memory_transport() -> None:
     mcp_client = pytest.importorskip("mcp.shared.memory")
-    from ets.mcp.server import mcp as server
+    from pe.mcp.server import mcp as server
 
     async def _run() -> None:
         async with mcp_client.create_connected_server_and_client_session(server) as session:

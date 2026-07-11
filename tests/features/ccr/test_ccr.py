@@ -11,8 +11,9 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from ets.ccr import CCR_DEFAULTS, CCRState
-from ets.solvers import run_simulation_from_file
+from pe.core.defaults import CCR_DEFAULTS
+from pe.features.ccr import CCRState
+from pe.engine import run_simulation_from_file
 
 EXAMPLE = Path(__file__).resolve().parents[3] / "examples" / "benmir_ccr_carbon_cap_rule.json"
 

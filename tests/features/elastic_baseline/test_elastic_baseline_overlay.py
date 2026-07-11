@@ -23,8 +23,8 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from ets.core.participant.models import MarketParticipant
-from ets.features.elastic_baseline.plugin import ElasticBaselineOverlay, stamp_and_attach
+from pe.core.participant.models import MarketParticipant
+from pe.features.elastic_baseline.plugin import ElasticBaselineOverlay, stamp_and_attach
 
 
 def _raw_participant(**overrides: float) -> MarketParticipant:

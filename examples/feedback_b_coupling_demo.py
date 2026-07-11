@@ -21,12 +21,12 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from ets.coupling import (
+from pe.coupling import (
     ElasticityExternalModel,
     NullExternalModel,
     run_coupled_simulation,
 )
-from ets.engine import run_simulation_from_config
+from pe.engine import run_simulation_from_config
 
 REPO = Path(__file__).resolve().parents[1]
 

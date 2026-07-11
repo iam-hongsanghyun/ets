@@ -1,10 +1,15 @@
-"""price_controls feature (T2) — floor/ceiling trajectories, floor-cancellation, delivered floor.
+"""Deprecated mirror of ``pe.features.price_controls`` — import ``pe.features.price_controls`` instead.
 
-Two-door layout (``docs/feature-modules-plan.md`` PLAN v2): ``plugin.py`` is
-the config door (price-bound trajectory arms + the ``DeliveredFloor`` price
-overlay); ``rules.py`` is runtime (``FloorCancellationRule``, evaluated inside
-the banking fixed point by the host's dedicated slot). The in-clearing floor
-branch of ``core/market/clearing.py`` deliberately STAYS KERNEL — it is the
-oversupply boundary condition of static clearing, not a policy instrument
-(PLAN v2 §3 REMAINDER; Arbitration outcomes item 6).
+Kept for the ets->pe rename window (D0-R1); removed at 0.4.0.
 """
+
+import warnings
+
+from pe.features.price_controls import *  # noqa
+
+warnings.warn(
+    "ets.features.price_controls is deprecated; import pe.features.price_controls instead. "
+    "Removal milestone: 0.4.0.",
+    DeprecationWarning,
+    stacklevel=2,
+)

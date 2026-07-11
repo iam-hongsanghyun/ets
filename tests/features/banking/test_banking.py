@@ -14,8 +14,8 @@ from __future__ import annotations
 
 import numpy as np
 
-from ets.config_io import build_markets_from_config
-from ets.solvers import run_simulation_from_config, solve_banking_path
+from pe.config_io import build_markets_from_config
+from pe.engine import run_simulation_from_config, solve_banking_path
 
 E = 100.0     # BAU emissions per year [Mt]
 C = 100.0     # linear MAC slope [KRW per t per Mt]
@@ -204,7 +204,7 @@ def test_piecewise_mac_terminal_residual_is_loud(caplog):
         }
     # Logger channel follows the moved code (v1 O9 / v2 O13): the terminal
     # residual warning is emitted by features/banking/window.py.
-    with caplog.at_level(logging.WARNING, logger="ets.features.banking.window"):
+    with caplog.at_level(logging.WARNING, logger="pe.features.banking.window"):
         path = solve_banking_path(
             build_markets_from_config(config), discount_rate=R
         )

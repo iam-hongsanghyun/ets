@@ -2,7 +2,7 @@
 
 Covers what ``docs/invest-feedback-plan.md`` "Kernel contracts" and the
 binding spec (``docs/invest-feedback-spec.md`` D2/D6) require of
-``ets.core.protocols``:
+``pe.core.protocols``:
 
 (a) ``AdoptionSpec`` validates every bound loudly — one ``ValueError`` per
     field, naming the field and the rule (spec D6 ranges);
@@ -29,8 +29,8 @@ from typing import Any
 
 import pytest
 
-from ets.core.participant.models import MarketParticipant
-from ets.core.protocols import (
+from pe.core.participant.models import MarketParticipant
+from pe.core.protocols import (
     AdoptionEvent,
     AdoptionSpec,
     PathFeedback,
@@ -303,7 +303,7 @@ def test_direct_construction_defaults_adoption_specs_to_empty() -> None:
 
 def test_config_built_participants_default_adoption_specs_to_empty() -> None:
     """The banking-fixture path (build_markets_from_config) is untouched."""
-    from ets.config_io import build_markets_from_config
+    from pe.config_io import build_markets_from_config
 
     config = {
         "scenarios": [

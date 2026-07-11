@@ -33,17 +33,21 @@ else
   PY=("$PYTHON_BIN")
 fi
 
+# Ensure `-m pe.cli` resolves on the pip-fallback path too (uv already installs
+# the pe package; PYTHONPATH is harmless there and required without it).
+export PYTHONPATH="$SCRIPT_DIR/src${PYTHONPATH:+:$PYTHONPATH}"
+
 if [[ "$#" -eq 0 ]]; then
-  exec "${PY[@]}" "$SCRIPT_DIR/ets_framework.py" --gui
+  exec "${PY[@]}" -m pe.cli --gui
 fi
 
 if [[ "$1" == "sample" ]]; then
   shift
-  exec "${PY[@]}" "$SCRIPT_DIR/ets_framework.py" --mode "${1:-banking}"
+  exec "${PY[@]}" -m pe.cli --mode "${1:-banking}"
 fi
 
 if [[ "$1" == "samples" ]]; then
-  exec "${PY[@]}" "$SCRIPT_DIR/ets_framework.py" --list-modes
+  exec "${PY[@]}" -m pe.cli --list-modes
 fi
 
-exec "${PY[@]}" "$SCRIPT_DIR/ets_framework.py" "$@"
+exec "${PY[@]}" -m pe.cli "$@"

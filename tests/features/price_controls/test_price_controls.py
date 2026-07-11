@@ -35,12 +35,12 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from ets.config_io import build_markets_from_config
-from ets.config_io.builder import _interp_value
-from ets.core.protocols import PriceOverlay, SupplyRule
-from ets.features.price_controls.plugin import DeliveredFloor, apply_price_bound_trajectories
-from ets.features.price_controls.rules import FloorCancellationRule
-from ets.solvers import run_simulation_from_config, solve_banking_path
+from pe.config_io import build_markets_from_config
+from pe.config_io.builder import _interp_value
+from pe.core.protocols import PriceOverlay, SupplyRule
+from pe.features.price_controls.plugin import DeliveredFloor, apply_price_bound_trajectories
+from pe.features.price_controls.rules import FloorCancellationRule
+from pe.engine import run_simulation_from_config, solve_banking_path
 
 E = 100.0  # BAU emissions per year [Mt]
 C = 100.0  # linear MAC slope [KRW per t per Mt]

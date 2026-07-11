@@ -2,7 +2,7 @@
 # New location: src/ets/core/market/clearing.py.
 import warnings
 
-from ..core.market.clearing import (
+from pe.core.market.clearing import (
     total_net_demand,
     solve_equilibrium,
     _participant_outcome,
@@ -11,7 +11,7 @@ from ..core.market.clearing import (
 
 warnings.warn(
     "ets.market.equilibrium is deprecated; import from "
-    "ets.core.market.clearing instead. Removal milestone: 0.3.0.",
+    "pe.core.market.clearing instead. Removal milestone: 0.3.0.",
     DeprecationWarning,
     stacklevel=2,
 )

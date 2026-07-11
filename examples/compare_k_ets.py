@@ -8,7 +8,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path("/Users/sanghyun/github/ets/src")))
 
-from ets import run_simulation_from_file  # noqa: E402
+from pe import run_simulation_from_file  # noqa: E402
 
 KETS_MODEL = Path("/Users/sanghyun/github/k-ets/src/lib/model_output.json")
 CONFIG = Path("/Users/sanghyun/github/ets/examples/climate_solutions_k_ets_outlook.json")

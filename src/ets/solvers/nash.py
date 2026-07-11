@@ -6,11 +6,11 @@
 # inline (F2 preserved bit-for-bit).
 import warnings
 
-from ..engine.wiring import solve_nash_path
+from pe.engine.wiring import solve_nash_path
 
 warnings.warn(
     "ets.solvers.nash is deprecated; import solve_nash_path from "
-    "ets.engine instead. Removal milestone: 0.3.0.",
+    "pe.engine instead. Removal milestone: 0.3.0.",
     DeprecationWarning,
     stacklevel=2,
 )

@@ -23,8 +23,8 @@ from __future__ import annotations
 
 import copy
 
-from ets.config_io.builder import _PARTICIPANT_TRANSFORMS, build_market_from_year
-from ets.config_io.templates import blank_participant, blank_year_config
+from pe.config_io.builder import _PARTICIPANT_TRANSFORMS, build_market_from_year
+from pe.config_io.templates import blank_participant, blank_year_config
 
 
 def _year_config(participants: list[dict]) -> dict:

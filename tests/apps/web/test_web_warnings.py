@@ -1,10 +1,10 @@
-"""Regression test: dashboard payload captures WARNINGs from ``ets.*`` loggers.
+"""Regression test: dashboard payload captures WARNINGs from ``pe.*`` loggers.
 
 The web UI surfaces simulation warnings via ``_build_dashboard_payload``,
 which attaches a collecting handler to the package root logger for the
 duration of the run. It previously listened on ``"src.ets"`` — a logger name
-nothing in the package emits under (modules are imported as ``ets.<module>``,
-so ``logging.getLogger(__name__)`` yields ``ets.*``) — leaving the warnings
+nothing in the package emits under (modules are imported as ``pe.<module>``,
+so ``logging.getLogger(__name__)`` yields ``pe.*``) — leaving the warnings
 panel silently empty.
 """
 
@@ -12,13 +12,13 @@ import json
 import logging
 from pathlib import Path
 
-import ets.web.api as api
+import pe.web.api as api
 
 EXAMPLES = Path(__file__).resolve().parents[3] / "examples"
 
 
 def test_ets_logger_warning_reaches_payload(monkeypatch) -> None:
-    """A WARNING emitted by an ``ets.*`` logger mid-run lands in payload["warnings"]."""
+    """A WARNING emitted by an ``pe.*`` logger mid-run lands in payload["warnings"]."""
     config = json.loads(
         (EXAMPLES / "climate_solutions_basic_linear.json").read_text(encoding="utf-8")
     )
@@ -26,7 +26,7 @@ def test_ets_logger_warning_reaches_payload(monkeypatch) -> None:
     real_run_simulation = api.run_simulation
 
     def run_and_warn(markets):
-        logging.getLogger("ets.solvers.simulation").warning("synthetic-warning-for-test")
+        logging.getLogger("pe.solvers.simulation").warning("synthetic-warning-for-test")
         return real_run_simulation(markets)
 
     monkeypatch.setattr(api, "run_simulation", run_and_warn)

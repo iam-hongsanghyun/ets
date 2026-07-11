@@ -14,10 +14,10 @@ from typing import Any
 
 import pytest
 
-from ets.core.market.model import CarbonMarket
-from ets.core.participant.models import MarketParticipant, TechnologyOption
-from ets.core.protocols import AdoptionEvent, AdoptionSpec, make_adoption_state
-from ets.features.endogenous_investment.vintage import apply_adoption_state
+from pe.core.market.model import CarbonMarket
+from pe.core.participant.models import MarketParticipant, TechnologyOption
+from pe.core.protocols import AdoptionEvent, AdoptionSpec, make_adoption_state
+from pe.features.endogenous_investment.vintage import apply_adoption_state
 
 FLAGGED = "H2-DRI"
 OTHER = "Efficiency"

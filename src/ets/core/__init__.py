@@ -1,10 +1,15 @@
-"""T0 kernel of the ETS package (docs/feature-modules-plan.md §1).
+"""Deprecated mirror of ``pe.core`` — import ``pe.core`` instead.
 
-Market primitives, participant model, costs, expectations, ledger, rule
-protocols, policy defaults, paths, and logging live here. Kernel modules
-import only the stdlib, third-party packages, and ``ets.core.*`` — enforced
-by ``tests/test_module_isolation.py``.
-
-The public surface grows as migration work orders land; import the
-submodules directly (e.g. ``ets.core.defaults``).
+Kept for the ets->pe rename window (D0-R1); removed at 0.4.0.
 """
+
+import warnings
+
+from pe.core import *  # noqa
+
+warnings.warn(
+    "ets.core is deprecated; import pe.core instead. "
+    "Removal milestone: 0.4.0.",
+    DeprecationWarning,
+    stacklevel=2,
+)

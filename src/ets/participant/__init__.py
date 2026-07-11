@@ -2,7 +2,7 @@
 # New location: src/ets/core/participant/.
 import warnings
 
-from ..core.participant import (
+from pe.core.participant import (
     MarketParticipant,
     TechnologyOption,
     ComplianceOutcome,
@@ -10,7 +10,7 @@ from ..core.participant import (
 )
 
 warnings.warn(
-    "ets.participant is deprecated; import from ets.core.participant "
+    "ets.participant is deprecated; import from pe.core.participant "
     "instead. Removal milestone: 0.3.0.",
     DeprecationWarning,
     stacklevel=2,

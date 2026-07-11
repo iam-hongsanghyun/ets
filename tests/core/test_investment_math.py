@@ -1,4 +1,4 @@
-"""Core-path anchors for the Dixit–Pindyck math in ``ets.core.investment``.
+"""Core-path anchors for the Dixit–Pindyck math in ``pe.core.investment``.
 
 Imports from the T0 kernel module directly (the analysis facade is proven
 separately by ``tests/workflows/analysis/test_investment_trigger.py``) and
@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from ets.core.investment import credible_floor_multiple, trigger_multiple
+from pe.core.investment import credible_floor_multiple, trigger_multiple
 
 R, Y = 0.055, 0.03  # paper's r = 5.5 %, y = 3 %
 

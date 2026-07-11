@@ -2,7 +2,7 @@
 # New location: src/ets/core/participant/models.py.
 import warnings
 
-from ..core.participant.models import (
+from pe.core.participant.models import (
     CostSpec,
     TechnologyOption,
     ComplianceOutcome,
@@ -11,7 +11,7 @@ from ..core.participant.models import (
 
 warnings.warn(
     "ets.participant.models is deprecated; import from "
-    "ets.core.participant.models instead. Removal milestone: 0.3.0.",
+    "pe.core.participant.models instead. Removal milestone: 0.3.0.",
     DeprecationWarning,
     stacklevel=2,
 )

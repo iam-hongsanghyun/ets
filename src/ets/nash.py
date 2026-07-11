@@ -4,10 +4,10 @@
 # at v1 O11 / v2 O15).
 import warnings
 
-from .engine import solve_nash_path
+from pe.engine import solve_nash_path
 
 warnings.warn(
-    "ets.nash is deprecated; import from ets.engine instead. "
+    "ets.nash is deprecated; import from pe.engine instead. "
     "Removal milestone: after the frontend migrates to the graph API (v2.0).",
     DeprecationWarning,
     stacklevel=2,

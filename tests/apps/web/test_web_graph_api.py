@@ -1,5 +1,5 @@
 """Graph composer endpoints (blocks-graph-plan.md §5, Order 8), driven
-end-to-end through the WSGI app (``ets.web.server:app``) in-process.
+end-to-end through the WSGI app (``pe.web.server:app``) in-process.
 
 Covers:
   (a) GET /api/blocks parses and every BLOCK_CATALOGUE id appears.
@@ -27,9 +27,9 @@ from io import BytesIO
 from pathlib import Path
 from typing import Any
 
-import ets.web.api as api
-from ets.blocks import BLOCK_CATALOGUE, Graph
-from ets.web.server import app
+import pe.web.api as api
+from pe.blocks import BLOCK_CATALOGUE, Graph
+from pe.web.server import app
 
 EXAMPLES_DIR = Path(__file__).resolve().parents[3] / "examples"
 

@@ -11,5 +11,5 @@ if str(PROJECT_DIR) not in sys.path:
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
-from ets.web.server import app  # noqa: E402
+from pe.web.server import app  # noqa: E402
 

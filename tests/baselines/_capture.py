@@ -125,16 +125,23 @@ def _run_example(config_path: Path) -> tuple[str, dict]:
 
     Returns (entry_point_name, payload_fragment).
     """
-    from ets import run_simulation_from_file
+    # PROVENANCE PINS (D0-R1 landmine 2): the three returned entry_point strings
+    # ("ets.run_simulation_from_file", "ets.analysis.batch.run_batch",
+    # "ets.analysis.calibration.calibrate_slopes") are baked byte-for-byte into
+    # every baseline JSON and asserted by test_golden_baseline_replay. They are
+    # historical provenance LABELS, not live import paths — FROZEN verbatim
+    # across the ets->pe rename. The imports below move to pe; the return
+    # literals do NOT. Migrate only on a legitimate future recapture.
+    from pe import run_simulation_from_file
 
     raw = json.loads(config_path.read_text())
     if isinstance(raw, dict) and "sweeps" in raw and "config" in raw:
-        from ets.analysis.batch import run_batch
+        from pe.analysis.batch import run_batch
 
         result = run_batch(raw["config"], raw["sweeps"])
         return "ets.analysis.batch.run_batch", {"result": _json_safe(result)}
     if isinstance(raw, dict) and "observed_prices" in raw and "config" in raw:
-        from ets.analysis.calibration import calibrate_slopes
+        from pe.analysis.calibration import calibrate_slopes
 
         result = calibrate_slopes(
             raw["config"],

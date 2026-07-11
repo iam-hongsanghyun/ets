@@ -23,11 +23,11 @@ from types import SimpleNamespace
 
 import numpy as np
 
-from ets.config_io import build_markets_from_config
-from ets.core.protocols import Friction
-from ets.features.hoarding.plugin import HoardingInflow
-from ets.solvers import solve_banking_path
-from ets.solvers.banking import _default_friction
+from pe.config_io import build_markets_from_config
+from pe.core.protocols import Friction
+from pe.features.hoarding.plugin import HoardingInflow
+from pe.engine import solve_banking_path
+from pe.engine.wiring import default_friction as _default_friction
 
 E = 100.0  # BAU emissions per year [Mt]
 C = 100.0  # linear MAC slope [KRW per t per Mt]

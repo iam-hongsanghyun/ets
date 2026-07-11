@@ -7,11 +7,11 @@ v1.0 in this repository.
 This writes four self-contained example files plus a combined compare suite,
 each loadable directly:
 
-    python -m ets.cli --config examples/k_msr_P0_no_reserve.json
-    python -m ets.cli --config examples/k_msr_P1_draft_decree.json
-    python -m ets.cli --config examples/k_msr_A_reserve_price.json
-    python -m ets.cli --config examples/k_msr_B_quantity_rule.json
-    python -m ets.cli --config examples/k_msr_compare_suite.json   # all four
+    python -m pe.cli --config examples/k_msr_P0_no_reserve.json
+    python -m pe.cli --config examples/k_msr_P1_draft_decree.json
+    python -m pe.cli --config examples/k_msr_A_reserve_price.json
+    python -m pe.cli --config examples/k_msr_B_quantity_rule.json
+    python -m pe.cli --config examples/k_msr_compare_suite.json   # all four
 
 Scenario map (paper Section 3):
     P0  no reserve, benchmark.

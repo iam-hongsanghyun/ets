@@ -4,7 +4,7 @@
 # (O1/O6) stays.
 import warnings
 
-from ..core.defaults import (
+from pe.core.defaults import (
     DECREE_MSR_MAX_INTAKE_MT,
     DECREE_MSR_MAX_RELEASE_MT,
     DECREE_MSR_PRICE_BAND_HIGH,
@@ -13,17 +13,17 @@ from ..core.defaults import (
     DECREE_MSR_SURPLUS_UPPER_RATIO,
     MSR_DEFAULTS,
 )
-from ..features.msr.decree import (
+from pe.features.msr.decree import (
     DecreeSupplyRule,
     decree_msr_action,
     decree_msr_action as _decree_msr_action,
 )
-from ..features.msr.rules import MSRCapRule, ThresholdMSRSupplyRule
-from ..features.msr.state import MSRState
+from pe.features.msr.rules import MSRCapRule, ThresholdMSRSupplyRule
+from pe.features.msr.state import MSRState
 
 warnings.warn(
-    "ets.solvers.msr is deprecated; import from ets.features.msr "
-    "(defaults: ets.core.defaults). Removal milestone: 0.3.0.",
+    "ets.solvers.msr is deprecated; import from pe.features.msr "
+    "(defaults: pe.core.defaults). Removal milestone: 0.3.0.",
     DeprecationWarning,
     stacklevel=2,
 )

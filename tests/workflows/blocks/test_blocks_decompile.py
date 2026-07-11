@@ -6,8 +6,8 @@ For every *runnable* ``examples/*.json`` scenario-config document:
 
 "Runnable" excludes the two request-payload wrappers that are a different
 document shape entirely (``{"config": {...}, "sweeps"/"observed_prices": ...}``
-consumed by ``ets.analysis.batch``/``ets.analysis.calibration`` — not
-``ets.config_io``): ``k_ets_batch_eua_sweep.json`` and
+consumed by ``pe.analysis.batch``/``pe.analysis.calibration`` — not
+``pe.config_io``): ``k_ets_batch_eua_sweep.json`` and
 ``k_ets_calibration_request.json``.
 
 Every remaining example round-trips exactly (no xfails needed): unknown
@@ -24,8 +24,8 @@ from pathlib import Path
 
 import pytest
 
-from ets.blocks import compile_graph, graph_from_config
-from ets.config_io import normalize_config
+from pe.blocks import compile_graph, graph_from_config
+from pe.config_io import normalize_config
 
 EXAMPLES_DIR = Path(__file__).resolve().parents[3] / "examples"
 

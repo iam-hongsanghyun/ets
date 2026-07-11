@@ -11,9 +11,9 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from ets.config_io import build_participant
-from ets.features.elastic_baseline.plugin import stamp_and_attach
-from ets.solvers import run_simulation_from_config, run_simulation_from_file
+from pe.config_io import build_participant
+from pe.features.elastic_baseline.plugin import stamp_and_attach
+from pe.engine import run_simulation_from_config, run_simulation_from_file
 
 EXAMPLE = (
     Path(__file__).resolve().parents[3]

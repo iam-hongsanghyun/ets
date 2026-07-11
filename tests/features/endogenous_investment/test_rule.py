@@ -16,14 +16,14 @@ from typing import Any
 import numpy as np
 import pytest
 
-from ets.core.investment import credible_floor_multiple, trigger_multiple
-from ets.core.protocols import (
+from pe.core.investment import credible_floor_multiple, trigger_multiple
+from pe.core.protocols import (
     AdoptionEvent,
     AdoptionSpec,
     PathFeedback,
     make_adoption_state,
 )
-from ets.features.endogenous_investment.rule import InvestmentRule
+from pe.features.endogenous_investment.rule import InvestmentRule
 
 R, Y = 0.055, 0.03  # scenario discount rate r, payout yield y (paper values)
 RY = R / Y  # certainty-limit multiple r/y = 11/6

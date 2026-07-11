@@ -13,7 +13,7 @@ The capture/serialization logic is imported from
 ``tests/baselines/_capture.py`` (single source of truth) so the comparison is
 apples-to-apples, including the batch (``k_ets_batch_eua_sweep``) and
 calibration (``k_ets_calibration_request``) scenarios that run through
-``ets.analysis`` entry points instead of ``run_simulation_from_file``, and
+``pe.analysis`` entry points instead of ``run_simulation_from_file``, and
 including the NaN/inf -> null normalization.
 """
 

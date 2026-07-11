@@ -1,16 +1,15 @@
-"""nash_cournot feature (T2) — Cournot-Nash equilibrium in abatement quantities.
+"""Deprecated mirror of ``pe.features.nash_cournot`` — import ``pe.features.nash_cournot`` instead.
 
-Runtime-only feature (no config door): ``solver.py`` holds
-``solve_nash_path`` (best-response iteration; F2-frozen inline MSR with an
-injected duck-typed state), moved from ``solvers/nash.py`` in the
-hotelling/nash feature order (v1 O11 / v2 O15) and wired exclusively by
-``ets.engine``. ``ets/solvers/nash.py`` remains as a re-export shim.
-
-This ``__init__`` is the feature's deliberate public surface.
+Kept for the ets->pe rename window (D0-R1); removed at 0.4.0.
 """
 
-from .solver import solve_nash_path
+import warnings
 
-__all__ = [
-    "solve_nash_path",
-]
+from pe.features.nash_cournot import *  # noqa
+
+warnings.warn(
+    "ets.features.nash_cournot is deprecated; import pe.features.nash_cournot instead. "
+    "Removal milestone: 0.4.0.",
+    DeprecationWarning,
+    stacklevel=2,
+)

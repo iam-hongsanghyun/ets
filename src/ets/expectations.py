@@ -2,7 +2,7 @@
 # New location: src/ets/core/expectations.py.
 import warnings
 
-from .core.expectations import (
+from pe.core.expectations import (
     ALLOWED_EXPECTATION_RULES,
     ExpectationSpec,
     expectation_sort_key,
@@ -12,7 +12,7 @@ from .core.expectations import (
 )
 
 warnings.warn(
-    "ets.expectations is deprecated; import from ets.core.expectations instead. "
+    "ets.expectations is deprecated; import from pe.core.expectations instead. "
     "Removal milestone: after the frontend migrates to the graph API (v2.0).",
     DeprecationWarning,
     stacklevel=2,

@@ -24,8 +24,8 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from ets.config_io import build_markets_from_config
-from ets.solvers import solve_banking_path
+from pe.config_io import build_markets_from_config
+from pe.engine import solve_banking_path
 
 EXAMPLES = Path(__file__).resolve().parents[1] / "examples"
 

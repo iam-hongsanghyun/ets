@@ -12,9 +12,9 @@ from pathlib import Path
 
 import pytest
 
-from ets.config_io import build_participant
-from ets.costs import piecewise_abatement_factory
-from ets.solvers import run_simulation_from_file
+from pe.config_io import build_participant
+from pe.core.costs import piecewise_abatement_factory
+from pe.engine import run_simulation_from_file
 
 KETS = (
     Path(__file__).resolve().parents[2]

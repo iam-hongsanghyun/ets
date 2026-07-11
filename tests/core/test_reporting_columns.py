@@ -3,7 +3,7 @@
 Guards the equivalence argument for O7 (CBAM/sectors/MSR-placeholder/
 CCR-placeholder reporting extraction, `docs/feature-modules-plan.md` work
 order O7): every column expression relocated to
-`ets.features.{cbam,sectors,msr,ccr}.plugin` is VERBATIM, dict insertion
+`pe.features.{cbam,sectors,msr,ccr}.plugin` is VERBATIM, dict insertion
 order is reproduced by the staged literal in
 `config_io/builder.py`, and reporters are ATTACH-ALWAYS so an unconfigured
 scenario keeps its zero-valued columns. `tests/test_golden_baselines.py`
@@ -13,7 +13,7 @@ gate, and it runs in seconds instead of the ~11-minute full golden replay.
 
 The pinned literals below were captured by running the THREE reference
 scenarios through the CURRENT (pre-refactor) committed code, i.e.
-`ets.run_simulation_from_file` on the unmodified `core/market/reporting.py`
+`pe.run_simulation_from_file` on the unmodified `core/market/reporting.py`
 that this work order rewrites into a host + attached reporters (same pin-
 first-then-rewrite discipline as O6's anchors). A drift in either list means
 the host's staged literal, a reporter's column dict, or the reporter
@@ -52,10 +52,10 @@ from pathlib import Path
 
 import pytest
 
-from ets import run_simulation_from_file
-from ets.core.costs import linear_abatement_factory
-from ets.core.market import CarbonMarket
-from ets.core.participant import MarketParticipant
+from pe import run_simulation_from_file
+from pe.core.costs import linear_abatement_factory
+from pe.core.market import CarbonMarket
+from pe.core.participant import MarketParticipant
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 EXAMPLES_DIR = REPO_ROOT / "examples"

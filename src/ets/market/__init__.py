@@ -5,10 +5,10 @@
 # CarbonMarket method attachment exactly as before the move.
 import warnings
 
-from ..core.market import CarbonMarket
+from pe.core.market import CarbonMarket
 
 warnings.warn(
-    "ets.market is deprecated; import from ets.core.market instead. "
+    "ets.market is deprecated; import from pe.core.market instead. "
     "Removal milestone: 0.3.0.",
     DeprecationWarning,
     stacklevel=2,

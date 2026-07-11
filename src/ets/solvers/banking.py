@@ -8,18 +8,18 @@
 # delegates are alias re-exports of the wiring builders.
 import warnings
 
-from ..core.defaults import BANKING_DEFAULTS
-from ..engine.wiring import (
+from pe.core.defaults import BANKING_DEFAULTS
+from pe.engine.wiring import (
     default_friction as _default_friction,
     default_supply_rule_factories as _default_supply_rule_factories,
     solve_banking_path,
 )
-from ..features.banking.window import solve_banking_window
+from pe.features.banking.window import solve_banking_window
 
 # Re-exports carried over from the pre-move module surface (O6): the decree
 # action and both MSR supply rules, importable from here until retirement
 # (sourced one hop from the feature so only THIS shim's warning fires).
-from ..features.msr import (
+from pe.features.msr import (
     DecreeSupplyRule,
     MSRState,
     ThresholdMSRSupplyRule,
@@ -28,8 +28,8 @@ from ..features.msr import (
 
 warnings.warn(
     "ets.solvers.banking is deprecated; import solve_banking_path from "
-    "ets.engine (runtime: ets.features.banking; default wiring: "
-    "ets.engine.wiring). Removal milestone: 0.3.0.",
+    "pe.engine (runtime: pe.features.banking; default wiring: "
+    "pe.engine.wiring). Removal milestone: 0.3.0.",
     DeprecationWarning,
     stacklevel=2,
 )

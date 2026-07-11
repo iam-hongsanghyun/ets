@@ -4,12 +4,12 @@
 # in ets.core.defaults.
 import warnings
 
-from .core.defaults import CCR_DEFAULTS
-from .features.ccr import CCRState
+from pe.core.defaults import CCR_DEFAULTS
+from pe.features.ccr import CCRState
 
 warnings.warn(
-    "ets.ccr is deprecated; import CCRState from ets.features.ccr and "
-    "CCR_DEFAULTS from ets.core.defaults instead. "
+    "ets.ccr is deprecated; import CCRState from pe.features.ccr and "
+    "CCR_DEFAULTS from pe.core.defaults instead. "
     "Removal milestone: after the frontend migrates to the graph API (v2.0).",
     DeprecationWarning,
     stacklevel=2,

@@ -6,7 +6,7 @@
 # (cli.py, web/*) now read ets.core.paths directly.
 import warnings
 
-from .core.paths import (
+from pe.core.paths import (
     PROJECT_DIR,
     SRC_DIR,
     FRONTEND_DIR,
@@ -19,7 +19,7 @@ from .core.paths import (
 )
 
 warnings.warn(
-    "ets.config is deprecated; import from ets.core.paths instead. "
+    "ets.config is deprecated; import from pe.core.paths instead. "
     "Removal milestone: 0.3.0.",
     DeprecationWarning,
     stacklevel=2,

@@ -14,9 +14,9 @@ from typing import Any
 
 import pytest
 
-from ets.core.participant.models import MarketParticipant, TechnologyOption
-from ets.core.protocols import AdoptionSpec, SpliceCarrier
-from ets.features.endogenous_investment.plugin import (
+from pe.core.participant.models import MarketParticipant, TechnologyOption
+from pe.core.protocols import AdoptionSpec, SpliceCarrier
+from pe.features.endogenous_investment.plugin import (
     ADOPTION_CARRIER,
     attach_adoption_specs,
     normalize_investment_trigger,

@@ -1,51 +1,15 @@
-from .normalize import normalize_year
-from .builder import (
-    build_market_from_year,
-    build_markets_from_config,
-    build_markets_from_file,
-    load_config,
-    save_config,
-    normalize_config,
-    normalize_scenario,
-    normalize_participant,
-    normalize_technology_option,
-    build_participant,
-    build_technology_option,
-    _interp_value,
-    _interp_ratio,
-    _normalize_trajectory,
-)
-from .templates import (
-    blank_config,
-    blank_scenario,
-    blank_year_config,
-    blank_participant,
-    blank_technology_option,
-    blank_sector,
-    convergence_scenario_template,
-)
+"""Deprecated mirror of ``pe.config_io`` — import ``pe.config_io`` instead.
 
-__all__ = [
-    "normalize_year",
-    "build_market_from_year",
-    "build_markets_from_config",
-    "build_markets_from_file",
-    "load_config",
-    "save_config",
-    "normalize_config",
-    "normalize_scenario",
-    "normalize_participant",
-    "normalize_technology_option",
-    "build_participant",
-    "build_technology_option",
-    "_interp_value",
-    "_interp_ratio",
-    "_normalize_trajectory",
-    "blank_config",
-    "blank_scenario",
-    "blank_year_config",
-    "blank_participant",
-    "blank_technology_option",
-    "blank_sector",
-    "convergence_scenario_template",
-]
+Kept for the ets->pe rename window (D0-R1); removed at 0.4.0.
+"""
+
+import warnings
+
+from pe.config_io import *  # noqa
+
+warnings.warn(
+    "ets.config_io is deprecated; import pe.config_io instead. "
+    "Removal milestone: 0.4.0.",
+    DeprecationWarning,
+    stacklevel=2,
+)

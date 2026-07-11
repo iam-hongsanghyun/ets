@@ -30,15 +30,15 @@ from typing import Any
 import numpy as np
 import pytest
 
-from ets import run_simulation_from_config
-from ets.config_io import (
+from pe import run_simulation_from_config
+from pe.config_io import (
     blank_scenario,
     blank_technology_option,
     build_markets_from_config,
     normalize_scenario,
     normalize_technology_option,
 )
-from ets.core.protocols import AdoptionEvent, make_adoption_state, serialize_adoption_state
+from pe.core.protocols import AdoptionEvent, make_adoption_state, serialize_adoption_state
 
 R = 0.055  # scenario discount rate r [1/yr]
 Y = 0.03  # payout yield y [1/yr]

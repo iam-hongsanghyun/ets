@@ -4,7 +4,7 @@ Reference
 ---------
 ``docs/feature-modules-plan.md`` — work order O6 (v1 §4, PLAN v2 §2 protocol
 family) and the economist's binding lifecycle doctrine
-(``ets.core.protocols``): supply rules are stateful across YEARS within one
+(``pe.core.protocols``): supply rules are stateful across YEARS within one
 schedule evaluation, PURE across solver invocations and across fixed-point
 iterations — hosts construct fresh instances per evaluation via factories.
 Moving rule evaluation outside the fixed point computes a DIFFERENT
@@ -52,12 +52,12 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from ets.config_io import build_markets_from_config
-from ets.core.defaults import MSR_DEFAULTS
-from ets.core.protocols import Observables, SupplyRule
-from ets.solvers import solve_banking_path
-from ets.solvers.banking import _default_supply_rule_factories
-from ets.solvers.msr import DecreeSupplyRule, ThresholdMSRSupplyRule
+from pe.config_io import build_markets_from_config
+from pe.core.defaults import MSR_DEFAULTS
+from pe.core.protocols import Observables, SupplyRule
+from pe.engine import solve_banking_path
+from pe.engine.wiring import default_supply_rule_factories as _default_supply_rule_factories
+from pe.features.msr import DecreeSupplyRule, ThresholdMSRSupplyRule
 
 E = 100.0  # BAU emissions per year [Mt]
 C = 100.0  # linear MAC slope [KRW per t per Mt]
@@ -359,7 +359,7 @@ def test_fixed_point_iteration_count_does_not_change_the_reserve_trajectory(capl
     would diverge from the plain solve."""
     # Logger channel follows the moved code (v1 O9 / v2 O13): the iteration
     # debug lines are emitted by features/banking/solver.py.
-    with caplog.at_level(logging.DEBUG, logger="ets.features.banking.solver"):
+    with caplog.at_level(logging.DEBUG, logger="pe.features.banking.solver"):
         base = solve_banking_path(build_markets_from_config(_decree_config()), discount_rate=R)
     iteration_logs = [
         rec.message for rec in caplog.records if "supply-rule iteration" in rec.message
@@ -371,7 +371,7 @@ def test_fixed_point_iteration_count_does_not_change_the_reserve_trajectory(capl
     forced_config["scenarios"][0]["banking_supply_rule_tolerance"] = -1.0
     forced_config["scenarios"][0]["banking_supply_rule_max_iters"] = 12
     caplog.clear()
-    with caplog.at_level(logging.WARNING, logger="ets.features.banking.solver"):
+    with caplog.at_level(logging.WARNING, logger="pe.features.banking.solver"):
         forced = solve_banking_path(build_markets_from_config(forced_config), discount_rate=R)
     # The forced run really did exhaust its iteration budget (loud fallback).
     assert any("did not converge" in rec.message for rec in caplog.records)

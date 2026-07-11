@@ -1,12 +1,12 @@
 {
   "mcpServers": {
-    "ets-composer": {
+    "pe-composer": {
       "command": "uv",
-      "args": ["run", "--extra", "mcp", "python", "-m", "ets.mcp"]
+      "args": ["run", "--extra", "mcp", "python", "-m", "pe.mcp"]
     },
-    "ets-models": {
+    "pe-models": {
       "command": "uv",
-      "args": ["run", "--extra", "mcp", "python", "-m", "ets.mcp.models"]
+      "args": ["run", "--extra", "mcp", "python", "-m", "pe.mcp.models"]
     }
   }
 }

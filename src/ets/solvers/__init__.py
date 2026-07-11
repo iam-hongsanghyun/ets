@@ -6,9 +6,9 @@
 # canonical homes so importing this package fires exactly ONE warning.
 import warnings
 
-from ..core.baseline import compute_baseline_prices
-from ..core.defaults import BANKING_DEFAULTS, CCR_DEFAULTS, MSR_DEFAULTS
-from ..core.expectations import (
+from pe.core.baseline import compute_baseline_prices
+from pe.core.defaults import BANKING_DEFAULTS, CCR_DEFAULTS, MSR_DEFAULTS
+from pe.core.expectations import (
     ALLOWED_EXPECTATION_RULES,
     ExpectationSpec,
     expectation_sort_key,
@@ -16,7 +16,7 @@ from ..core.expectations import (
     build_expectation_specs,
     derive_expected_prices,
 )
-from ..engine import (
+from pe.engine import (
     run_simulation,
     run_simulation_from_config,
     run_simulation_from_file,
@@ -26,14 +26,14 @@ from ..engine import (
     solve_scenario_path,
     solve_transmission_path,
 )
-from ..features.ccr import CCRState
-from ..features.msr import MSRState
-from ..features.transmission import blend_prices
+from pe.features.ccr import CCRState
+from pe.features.msr import MSRState
+from pe.features.transmission import blend_prices
 
 warnings.warn(
-    "ets.solvers is deprecated; import solve entry points from ets.engine "
-    "(rule/state runtimes: ets.features.*; defaults and "
-    "compute_baseline_prices: ets.core). Removal milestone: 0.3.0.",
+    "ets.solvers is deprecated; import solve entry points from pe.engine "
+    "(rule/state runtimes: pe.features.*; defaults and "
+    "compute_baseline_prices: pe.core). Removal milestone: 0.3.0.",
     DeprecationWarning,
     stacklevel=2,
 )

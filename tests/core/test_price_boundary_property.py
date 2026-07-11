@@ -35,8 +35,8 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from ets.config_io import build_markets_from_config
-from ets.core.market.clearing import solve_equilibrium, total_net_demand
+from pe.config_io import build_markets_from_config
+from pe.core.market.clearing import solve_equilibrium, total_net_demand
 
 E = 100.0  # BAU emissions [Mt]
 C = 100.0  # linear MAC slope [KRW per t per Mt]

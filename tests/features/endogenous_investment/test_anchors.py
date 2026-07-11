@@ -58,7 +58,7 @@ import pandas as pd
 import pytest
 from pandas.testing import assert_frame_equal
 
-from ets import run_simulation_from_config
+from pe import run_simulation_from_config
 
 R = 0.055  # scenario discount rate r [1/yr]
 Y = 0.03  # payout yield y [1/yr]

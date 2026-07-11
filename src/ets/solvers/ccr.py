@@ -4,13 +4,13 @@
 # (O1) stays.
 import warnings
 
-from ..core.defaults import CCR_DEFAULTS
-from ..features.ccr.rules import CCRCapRule
-from ..features.ccr.state import CCRState
+from pe.core.defaults import CCR_DEFAULTS
+from pe.features.ccr.rules import CCRCapRule
+from pe.features.ccr.state import CCRState
 
 warnings.warn(
-    "ets.solvers.ccr is deprecated; import from ets.features.ccr "
-    "(defaults: ets.core.defaults). Removal milestone: 0.3.0.",
+    "ets.solvers.ccr is deprecated; import from pe.features.ccr "
+    "(defaults: pe.core.defaults). Removal milestone: 0.3.0.",
     DeprecationWarning,
     stacklevel=2,
 )

@@ -1,4 +1,4 @@
-"""``ets.blocks.manifest.derive_manifest`` — the model-manifest API (WO-M1).
+"""``pe.blocks.manifest.derive_manifest`` — the model-manifest API (WO-M1).
 
 Covers:
   (a) ``derive_manifest`` succeeds for every *runnable* ``examples/*.json``
@@ -11,7 +11,7 @@ Covers:
       no MSR/CCR/banking block at all).
   (c) Vocabulary test: every ``BlockSpec.feature`` is drawn from a frozen
       literal vocabulary (core + the feature names + the workflow ids from
-      the catalogue-mapping table) — re-point this at ``ets.features.*``
+      the catalogue-mapping table) — re-point this at ``pe.features.*``
       once that tree lands (feature-modules-plan.md, later restructure
       orders; it does not exist yet).
 """
@@ -23,7 +23,7 @@ from pathlib import Path
 
 import pytest
 
-from ets.blocks import BLOCK_CATALOGUE, derive_manifest
+from pe.blocks import BLOCK_CATALOGUE, derive_manifest
 
 EXAMPLES_DIR = Path(__file__).resolve().parents[3] / "examples"
 
@@ -113,7 +113,7 @@ def test_k_msr_p1_draft_decree_is_plain_competitive() -> None:
     anywhere in the config (verified against the raw JSON, not assumed from
     the filename). It does tag every participant with a sector_group (Steel,
     Petrochem, Power, Cement, Refinery, Other), so the ``sectors`` direct
-    detector (``ets.blocks.manifest._direct_detectors``) genuinely fires even
+    detector (``pe.blocks.manifest._direct_detectors``) genuinely fires even
     though the scenario defines no ``sectors[]`` cap-pool table."""
     manifest = derive_manifest(_load("k_msr_P1_draft_decree"))
     assert set(manifest["features"]) == {"core", "competitive", "price_controls", "sectors"}
@@ -198,7 +198,7 @@ def test_showcase_full_stack_features() -> None:
     carries a 'sectors' table, and the manifest DOES report a 'sectors'
     feature: even though decompile.py never synthesises a sector *node*
     (documented scope reduction — sectors round-trip as opaque market
-    params), ``ets.blocks.manifest._direct_detectors`` scans the normalized
+    params), ``pe.blocks.manifest._direct_detectors`` scans the normalized
     config directly for a non-empty ``sectors[]`` table (or a per-participant
     ``sector_group``) and reports the feature regardless of graph coverage.
     Same direct-detector mechanism surfaces 'oba' on k_ets_oba_benchmark (see
@@ -387,7 +387,7 @@ def test_every_block_feature_is_in_the_frozen_vocabulary() -> None:
 
 
 # A derived manifest's "features" also includes any direct-detector output
-# (ets.blocks.manifest._direct_detectors) that has no BlockSpec of its own —
+# (pe.blocks.manifest._direct_detectors) that has no BlockSpec of its own —
 # today just "policy_events" (splicing is engine composition, not a
 # drawable block; see manifest.py's module docstring). That is a distinct,
 # intentionally larger vocabulary from BlockSpec.feature's.

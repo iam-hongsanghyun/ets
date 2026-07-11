@@ -1,6 +1,6 @@
 """MCP models (governor) server tests.
 
-Exercises the tool FUNCTIONS directly (``ets.mcp.models_tools``) — no MCP
+Exercises the tool FUNCTIONS directly (``pe.mcp.models_tools``) — no MCP
 transport involved for most cases, mirroring
 ``tests/apps/mcp/test_mcp_composer.py``. Covers:
 
@@ -26,8 +26,8 @@ import asyncio
 
 import pytest
 
-from ets import model_store
-from ets.mcp import models_tools, tools
+from pe import model_store
+from pe.mcp import models_tools, tools
 
 _BASIC_LINEAR = "climate_solutions_basic_linear"
 _AUCTION_CONTROLS = "climate_solutions_auction_controls"
@@ -75,9 +75,9 @@ def test_describe_model_unknown_id_raises() -> None:
 
 
 def test_model_manifest_is_raw_derive_manifest_passthrough() -> None:
-    from ets.blocks import derive_manifest
-    from ets.config_io import load_config
-    from ets.core.paths import EXAMPLES_DIR
+    from pe.blocks import derive_manifest
+    from pe.config_io import load_config
+    from pe.core.paths import EXAMPLES_DIR
 
     expected = derive_manifest(load_config(EXAMPLES_DIR / f"{_BASIC_LINEAR}.json"))
     assert models_tools.model_manifest(_BASIC_LINEAR) == expected
@@ -236,7 +236,7 @@ def test_rename_model_empty_name_raises(tmp_path, monkeypatch) -> None:
 
 def test_mcp_models_server_lists_all_tools_over_memory_transport() -> None:
     mcp_client = pytest.importorskip("mcp.shared.memory")
-    from ets.mcp.models_server import mcp as server
+    from pe.mcp.models_server import mcp as server
 
     async def _run() -> None:
         async with mcp_client.create_connected_server_and_client_session(server) as session:

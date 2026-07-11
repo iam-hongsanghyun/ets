@@ -53,9 +53,9 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from ets.ccr import CCRState
-from ets.msr import MSRState
-from ets.solvers import run_simulation_from_config
+from pe.features.ccr import CCRState
+from pe.features.msr import MSRState
+from pe.engine import run_simulation_from_config
 
 # ── Closed-form: the composition arithmetic itself ───────────────────────────
 

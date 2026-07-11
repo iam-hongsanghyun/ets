@@ -22,8 +22,8 @@ from __future__ import annotations
 
 import pytest
 
-from ets.blocks import BLOCK_CATALOGUE
-from ets.config_io import (
+from pe.blocks import BLOCK_CATALOGUE
+from pe.config_io import (
     blank_participant,
     blank_scenario,
     blank_technology_option,
