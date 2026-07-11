@@ -102,6 +102,18 @@ _OPTIONAL_COLUMN_GROUPS: tuple[tuple[tuple[str, str], ...], ...] = (
     _MSR_COLUMNS,
     _CCR_COLUMNS,
 )
+# D2 joint-equilibrium convergence diagnostics — stamped ONLY on cyclic-SCC
+# market rows (dispatch key-presence guard); an acyclic/single-market run never
+# carries them. Unlike the groups above these are PRESENCE-guarded, not
+# nonzero-guarded: a non-converged cyclic SCC stamps ``Joint Converged = 0.0``,
+# which is exactly the case the user most needs surfaced — a nonzero filter
+# would wrongly hide it.
+_JOINT_COLUMNS: tuple[tuple[str, str], ...] = (
+    ("joint_converged", "Joint Converged"),
+    ("joint_outer_iterations", "Joint Outer Iterations"),
+    ("joint_max_normalized_change", "Joint Max Normalized Change"),
+    ("joint_cycle_detected", "Joint Cycle Detected"),
+)
 
 
 def _round(value: Any) -> Any:
@@ -197,6 +209,10 @@ def compact_run_summary(
         optional_groups = [
             columns for columns in _OPTIONAL_COLUMN_GROUPS if _any_nonzero(ordered, columns)
         ]
+        # Joint diagnostics: presence-guarded (see _JOINT_COLUMNS) — a cyclic SCC
+        # stamps them on every row of its member scenarios; acyclic runs omit them.
+        if any(label in ordered.columns for _, label in _JOINT_COLUMNS):
+            optional_groups = [*optional_groups, _JOINT_COLUMNS]
 
         years = []
         for _, row in shown.iterrows():
