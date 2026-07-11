@@ -36,7 +36,7 @@ from typing import TYPE_CHECKING
 
 import pandas as pd
 
-from ..config_io import build_markets_from_config, load_config
+from ..config_io import build_markets_from_config, iter_market_bodies, load_config
 
 # Aliased to the pre-move underscore names so the bodies below stay verbatim.
 from ..core.ledger import (
@@ -45,7 +45,7 @@ from ..core.ledger import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Mapping
 
     from ..core.market import CarbonMarket
 
@@ -346,7 +346,22 @@ def run_simulation(markets: list[CarbonMarket]) -> tuple[pd.DataFrame, pd.DataFr
     return summary_df, participant_df
 
 
-def run_simulation_from_config(config: dict) -> tuple[pd.DataFrame, pd.DataFrame]:
+def _run_flat_config(config: dict) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Solve today's flat (single-market) scenarios — the byte-identical legacy path.
+
+    VERBATIM the pre-D1-3 body of ``run_simulation_from_config``: normalize,
+    split plain vs policy-event scenarios, dispatch each. The multi-market
+    partition in ``run_simulation_from_config`` only ever hands this function
+    scenarios WITHOUT a ``markets`` key, so a config that carries no linked
+    scenario reaches this path unchanged (39 goldens bit-identical — the
+    legacy branch is untouched).
+
+    Args:
+        config: A config whose every scenario is flat (no ``markets`` key).
+
+    Returns:
+        ``(summary_df, participant_df)``.
+    """
     from ..config_io import normalize_config
     from .events import solve_scenario_with_events
 
@@ -366,6 +381,311 @@ def run_simulation_from_config(config: dict) -> tuple[pd.DataFrame, pd.DataFrame
         pd.concat([f[0] for f in frames], ignore_index=True),
         pd.concat([f[1] for f in frames], ignore_index=True),
     )
+
+
+def run_simulation_from_config(config: dict) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Solve a config, routing linked (multi-market) scenarios to the DAG solver.
+
+    Partition (D1-3): a scenario carrying a ``markets`` key is a multi-market
+    (linked) scenario and is routed to :func:`solve_multi_market_scenario`;
+    every other scenario is flat and stays on the byte-identical legacy path
+    (:func:`_run_flat_config`). A config with NO markets-shaped scenario — every
+    committed golden — is handed WHOLE to ``_run_flat_config``, so the single-
+    market path is bit-for-bit unchanged (the multi-market path is only taken by
+    a linked config, of which none ship yet).
+
+    Args:
+        config: A raw config dict with a ``scenarios`` list.
+
+    Returns:
+        ``(summary_df, participant_df)`` — flat results first, then each
+        multi-market scenario in declaration order.
+
+    Raises:
+        ValueError: ``scenarios`` is not a list; or any downstream validation
+            error (link validation, cycle, E7 events-on-multi-market, E8
+            horizon).
+    """
+    scenarios = config.get("scenarios")
+    if not isinstance(scenarios, list):
+        raise ValueError("Config must contain a 'scenarios' list.")
+
+    multi = [s for s in scenarios if isinstance(s, dict) and "markets" in s]
+    if not multi:
+        # No linked scenario: the whole config down the untouched legacy path.
+        return _run_flat_config(config)
+
+    flat = [s for s in scenarios if not (isinstance(s, dict) and "markets" in s)]
+    frames: list[tuple[pd.DataFrame, pd.DataFrame]] = []
+    if flat:
+        frames.append(_run_flat_config({"scenarios": flat}))
+    for scenario in multi:
+        frames.append(solve_multi_market_scenario(scenario))
+    return (
+        pd.concat([f[0] for f in frames], ignore_index=True),
+        pd.concat([f[1] for f in frames], ignore_index=True),
+    )
+
+
+def _build_leg_markets(body: dict, composite_scenario_name: str) -> list[CarbonMarket]:
+    """Build one market's ``CarbonMarket`` list under the composite scenario name.
+
+    Wraps the already-normalized market ``body`` back into a single-scenario
+    config keyed by the composite grouping name ``"{scenario} :: {market_id}"``
+    (the ``_rename_markets`` suffix precedent) and hands it to
+    ``build_markets_from_config`` — REUSING the whole builder pipeline (meta
+    derivation, per-year construction, investment-spec stamping) rather than
+    duplicating it. ``build_markets_from_config`` re-normalizes; the body is
+    already normalized and normalization is idempotent (the legacy path already
+    double-normalizes: ``normalize_config`` then ``build_markets_from_config``).
+
+    Args:
+        body: A normalized market body (from ``iter_market_bodies``).
+        composite_scenario_name: ``"{scenario_name} :: {market_id}"``.
+
+    Returns:
+        The market's per-year ``CarbonMarket`` objects.
+    """
+    synthetic = {"scenarios": [{"name": composite_scenario_name, **body, "policy_events": []}]}
+    return build_markets_from_config(synthetic)
+
+
+def _solve_market_leg(
+    shifted_markets: list[CarbonMarket], composite_scenario_name: str, market_id: str
+) -> tuple[list[CarbonMarket], list[dict]]:
+    """Solve ONE market of a chain — mirrors ``run_simulation``'s per-scenario body.
+
+    Runs the SAME per-approach solve ``run_simulation`` runs for a single
+    scenario (the ``_path_solver_for`` closure, UNTOUCHED), with the SAME
+    investment-feedback wrapping — PER-MARKET, in topological order
+    (block-triangular: one-way links make sequential per-market fixed points
+    compose exactly to the chain equilibrium, spec §7 E4). ``model_approach
+    "all"`` is rejected inside a multi-market scenario (the comparison fan-out
+    is not one ``ordered_markets`` thread a link/adoption loop could wrap).
+
+    Args:
+        shifted_markets: The market's ``CarbonMarket`` list AFTER inbound-link
+            application (link-shifted MACs / break-even thresholds).
+        composite_scenario_name: For log/error attribution.
+        market_id: For error attribution.
+
+    Returns:
+        ``(ordered_markets, path_details)`` — the chronologically sorted
+        markets and the solved per-year detail dicts.
+
+    Raises:
+        ValueError: ``model_approach`` is ``"all"``; a half-configured
+            investment scenario (via ``_investment_configured``); or a solve
+            failure propagated from the wrapped path solver.
+    """
+    ordered_markets = sorted(shifted_markets, key=_market_year_sort_key)
+    m0 = ordered_markets[0]
+    approach = getattr(m0, "model_approach", "competitive") or "competitive"
+
+    if approach == "all":
+        raise ValueError(
+            f"Scenario leg '{composite_scenario_name}' (market '{market_id}'): "
+            "model_approach 'all' is not permitted inside a multi-market scenario "
+            "— the comparison fan-out solves three renamed market lists, not one "
+            "linkable/adoptable path. Pick a single approach per market."
+        )
+
+    transmission_lambda = getattr(m0, "forward_transmission_lambda", None)
+    if transmission_lambda is not None and approach != "competitive":
+        logger.warning(
+            f"Scenario leg '{composite_scenario_name}': forward_transmission_lambda "
+            f"is only applied under model_approach='competitive' (got '{approach}'); "
+            "ignoring the λ blend."
+        )
+        transmission_lambda = None
+
+    investment_on = _investment_configured(m0)
+    solver = _path_solver_for(approach, m0, transmission_lambda=transmission_lambda)
+    if investment_on:
+        # Lazy imports (activation scoping) — identical to run_simulation.
+        from ..features.endogenous_investment.rule import InvestmentRule
+        from .feedback import solve_with_investment_feedback
+
+        specs = tuple(
+            spec
+            for participant in m0.participants
+            for spec in getattr(participant, "adoption_specs", ())
+        )
+        r = float(getattr(m0, "discount_rate", 0.04) or 0.04)
+        max_iters_raw = getattr(m0, "investment_max_iterations", None)
+
+        def _fresh_rule(specs: tuple = specs, r: float = r) -> InvestmentRule:
+            return InvestmentRule(specs, r)
+
+        path = solve_with_investment_feedback(
+            ordered_markets,
+            solver,
+            _fresh_rule,
+            specs,
+            scenario_discount_rate=r,
+            max_iterations=None if max_iters_raw is None else int(max_iters_raw),
+        )
+    else:
+        path = solver(ordered_markets)
+    return ordered_markets, path
+
+
+def _delivered_path(path_details: list[dict]) -> dict[str, float]:
+    """Extract ``{year_label: delivered_price}`` from a solved path (the E4 signal)."""
+    return {
+        str(item["market"].year): float(item["equilibrium"]["price"])
+        for item in path_details
+    }
+
+
+def solve_multi_market_scenario(scenario: Mapping[str, object]) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Solve one linked (multi-market) scenario as a one-way recursive-PE DAG.
+
+    The D1-3 multi-market dispatch (``docs/platform-spec-d0-d1.md`` §2d, §3, §7):
+
+    1. Guard policy events (E7): events × multi-market is deferred to D2.
+    2. Read the normalized market bodies (``iter_market_bodies``) and build the
+       ``LinkSpec`` DAG (``engine.links.build_link_specs``).
+    3. Enforce the E8 horizon strict-subset per link (at solve entry).
+    4. Topologically order the markets (``engine.links.topological_market_order``
+       — deterministic; cycle → ValueError, R34).
+    5. Solve each market in topological order. BEFORE a market solves, apply its
+       inbound links (``engine.links.apply_inbound_links``) reading the FINAL
+       delivered paths of its already-solved ancestors — ONCE, before the path
+       solve (spec §2d). Investment feedback wraps each market's solve PER
+       MARKET (block-triangular, E4).
+    6. Collect results under the composite grouping key ``"{scenario} ::
+       {market_id}"`` so ``collect_path_results``/summary machinery is
+       unmodified; stamp the guarded ``"Market"`` and link-diagnostic columns
+       (E6). REPORT in DECLARATION order (spec §3), while SOLVING topologically.
+
+    Args:
+        scenario: A raw multi-market scenario dict (``markets``/``links``).
+
+    Returns:
+        ``(summary_df, participant_df)`` — rows in declaration order of the
+        markets, each summary row carrying the guarded ``"Market"`` column and,
+        for a market with inbound links, per-(from,to) ``"Link ... Price In"``
+        and per-(from,to,channel) ``"Link ... Input Shift"`` diagnostic columns.
+
+    Raises:
+        ValueError: policy events present (E7); a link cycle (R34); an E8
+            horizon violation; ``model_approach "all"`` in a market; or any
+            link/body validation error.
+    """
+    from .links import (
+        apply_inbound_links,
+        build_link_specs,
+        check_horizon_alignment,
+        topological_market_order,
+    )
+
+    scenario_name = str(
+        scenario.get("name") or scenario.get("scenario_name") or "Multi-Market Scenario"
+    ).strip()
+
+    if scenario.get("policy_events"):
+        raise ValueError(
+            f"Scenario '{scenario_name}': policy_events on a multi-market scenario "
+            "are deferred to D2 (E7) — per-market carriers × link re-application × "
+            "cross-market announcement semantics is an open design problem. The "
+            "natural first relaxation is events on SINK markets only (no outgoing "
+            "links), where the existing splice machinery is already correct; until "
+            "then, keep events single-market."
+        )
+
+    market_bodies = iter_market_bodies(scenario)
+    # Multi-market scenarios always key every body by a non-None market_id (the
+    # None key is the degenerate flat case, which the partition never routes
+    # here); str() keeps the ids typed for the ordering/link machinery.
+    declared_ids = [str(market_id) for market_id, _ in market_bodies]
+    bodies_by_id = {str(market_id): body for market_id, body in market_bodies}
+
+    links = build_link_specs(scenario)
+    check_horizon_alignment(links, bodies_by_id)
+    topo_ids = topological_market_order(declared_ids, links)
+
+    solved_delivered_paths: dict[str, dict[str, float]] = {}
+    leg_summaries: dict[str, list[dict]] = {}
+    leg_frames: dict[str, list[pd.DataFrame]] = {}
+
+    for market_id in topo_ids:
+        composite = f"{scenario_name} :: {market_id}"
+        base_markets = _build_leg_markets(bodies_by_id[market_id], composite)
+        inbound = [link for link in links if link.to_market == market_id]
+        logger.debug(
+            "Multi-market solve: market %r, inbound_links=%d, ancestors_solved=%d",
+            market_id,
+            len(inbound),
+            len(solved_delivered_paths),
+        )
+        shifted = apply_inbound_links(market_id, base_markets, inbound, solved_delivered_paths)
+        ordered, path = _solve_market_leg(shifted, composite, market_id)
+        solved_delivered_paths[market_id] = _delivered_path(path)
+
+        local_summaries: list[dict] = []
+        local_frames: list[pd.DataFrame] = []
+        _collect_path_results(ordered, path, local_summaries, local_frames)
+        _stamp_multi_market_columns(local_summaries, path, market_id, inbound, solved_delivered_paths)
+        leg_summaries[market_id] = local_summaries
+        leg_frames[market_id] = local_frames
+
+    # SOLVE topological, REPORT in declaration order (spec §3).
+    scenario_summaries: list[dict] = []
+    participant_frames: list[pd.DataFrame] = []
+    for market_id in declared_ids:
+        scenario_summaries.extend(leg_summaries[market_id])
+        participant_frames.extend(leg_frames[market_id])
+
+    summary_df = pd.DataFrame.from_records(scenario_summaries)
+    participant_df = pd.concat(participant_frames, ignore_index=True)
+    return summary_df, participant_df
+
+
+def _stamp_multi_market_columns(
+    summaries: list[dict],
+    path_details: list[dict],
+    market_id: str,
+    inbound_links: list,
+    solved_delivered_paths: Mapping[str, Mapping[str, float]],
+) -> None:
+    """Stamp the guarded ``Market`` + per-link diagnostic columns onto summary rows.
+
+    Multi-market-ONLY, key-presence-guarded (the D3 reporter-conditionality
+    precedent — an always-on column fails goldens): ``collect_path_results``
+    stays unmodified; these columns are appended to the summary dicts it
+    produced (aligned by year — ``summaries`` and ``path_details`` are both in
+    path order). E6 exact ASCII strings:
+
+    * ``"Market"`` — the market id (every multi-market row).
+    * ``"Link {from}->{to} Price In"`` — the source's delivered ``P_A(t)``, one
+      column per ``(from, to)`` pair, deduped (two channels on a pair share it).
+    * ``"Link {from}->{to} {channel} Input Shift"`` — ``phi·P_A(t)``, channel-
+      qualified so two links on a pair with distinct channels never collide.
+
+    Args:
+        summaries: The market's summary rows (mutated in place — columns
+            appended at the tail).
+        path_details: The market's per-year detail dicts (same order as
+            ``summaries``; source of each row's year label).
+        market_id: The market id stamped into ``"Market"``.
+        inbound_links: The market's inbound ``LinkSpec`` list (empty → only the
+            ``"Market"`` column is stamped).
+        solved_delivered_paths: ``{market_id: {year: delivered_price}}`` — read
+            for each inbound link's source ``P_A(t)``.
+    """
+    for summary_row, item in zip(summaries, path_details, strict=True):
+        summary_row["Market"] = market_id
+        year = str(item["market"].year)
+        priced_pairs: set[tuple[str, str]] = set()
+        for link in inbound_links:
+            price_in = float(solved_delivered_paths[link.from_market][year])
+            pair = (link.from_market, link.to_market)
+            if pair not in priced_pairs:
+                summary_row[f"Link {link.from_market}->{link.to_market} Price In"] = price_in
+                priced_pairs.add(pair)
+            shift_col = f"Link {link.from_market}->{link.to_market} {link.channel} Input Shift"
+            summary_row[shift_col] = float(link.phi) * price_in
 
 
 def run_simulation_from_file(config_path: str | Path) -> tuple[pd.DataFrame, pd.DataFrame]:
