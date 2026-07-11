@@ -81,6 +81,9 @@ __all__ = [
     "CapRuleFactory",
     "DemandOverlay",
     "Friction",
+    "LinkChannel",
+    "LinkChannelFactory",
+    "LinkSpec",
     "Observables",
     "ParticipantReporter",
     "ParticipantTransform",
@@ -1048,6 +1051,201 @@ class PathFeedback(Protocol):
 
 
 # ──────────────────────────────────────────────────────────────────────────────
+# One-way market links — cross-market price channels (D1)
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+@dataclass(frozen=True, kw_only=True)
+class LinkSpec:
+    r"""One-way price link A -> B: an additive input shift on market B (frozen, kw-only).
+
+    The parameter half of a D1 PriceLink (``docs/platform-spec-d0-d1.md`` §2,
+    §6): a single upstream (source) market A feeds ONE channel of a
+    downstream (target) market B through the additive-linear rule
+
+    Algorithm:
+        LaTeX:
+        $$ x_B(t) \;=\; x_B^{\mathrm{base}}(t) \;+\; \phi \, P_A(t) $$
+
+        ASCII fallback:
+            x_B(t) = x_B_base(t) + phi * P_A(t)
+
+        Symbols (units):
+            x_B(t)      : the channel's target field in year t — a MAC price
+                          LEVEL or an investment break-even threshold
+                          [currency_B / t]
+            x_B_base(t) : the field's value before the link  [currency_B / t]
+            phi         : link coefficient, SIGN-FREE, 0 legal
+                          [units_B per units_A]
+            P_A(t)      : source market A's delivered price in year t
+                          [currency_A / unit_A], CONTEMPORANEOUS (same t)
+            t           : scenario year label
+
+    Additive-linear ONLY (spec §2a — no multiplicative/CES/capped/lagged
+    form; a defaulted functional form is an economic constant hiding in a
+    fallback). Timing is CONTEMPORANEOUS and BINDING, not configurable
+    (spec §2c): the recursive-PE topological order makes ``P_A(t)`` known
+    data when B solves, so there is no within-market simultaneity to resolve
+    with a lag (contrast a ``SupplyRule``'s lagged observables, which resolve
+    a simultaneity that does NOT exist across a one-way link). This carries
+    PARAMETERS ONLY; the shift math lives in the channel implementations
+    (``features/market_links/channels.py``), which the engine re-invokes
+    ONCE before the path solve, copy-on-write (spec §2d, F4 purity).
+
+    Attributes:
+        from_market: source market A's id (the price ``P_A`` is read from A's
+            SOLVED delivered path). Non-empty; distinct from ``to_market``
+            (self-links rejected, spec §3 R34).
+        to_market: target market B's id (the shifted market). Non-empty.
+        channel: which of B's fields the shift writes — a channel key
+            (``mac_cost`` / ``invest_break_even``). The valid set is owned by
+            the engine's ``LINK_CHANNELS`` registry, not this kernel object;
+            only non-emptiness is checked here.
+        phi: link coefficient φ, sign-free, ``0`` legal (an inert link).
+            Finite.
+        phi_unit: φ's declared unit string [units_B per units_A] — REQUIRED
+            (a silent dimensionless fallback is an economic constant hiding
+            in a default, spec §2e). Non-empty.
+        target_participants: the participants of B whose field is shifted —
+            an EXPLICIT tuple of names, or the single wildcard ``("*",)``
+            meaning every participant (spec §6 — no implicit "all").
+            Non-empty; coerced to a tuple.
+        target_technologies: the technology-option / adoption-spec names the
+            shift applies to. REQUIRED (non-empty) for ``mac_cost``; MAY be
+            empty for ``invest_break_even`` (then every adoption spec on a
+            targeted participant is compiled). Each name non-empty; coerced
+            to a tuple.
+        back_demand_estimate: optional ψ for the diagnostic
+            "Feedback Ignored" column (spec §3) — DIAGNOSTIC ONLY, never fed
+            back into A's solve. Finite when set; ``None`` (default) = no
+            column.
+
+    Raises:
+        ValueError: On any bound violation, naming the offending field and
+            the rule it broke (loud validation — spec §6).
+    """
+
+    from_market: str
+    to_market: str
+    channel: str
+    phi: float
+    phi_unit: str
+    target_participants: tuple[str, ...]
+    target_technologies: tuple[str, ...]
+    back_demand_estimate: float | None = None
+
+    def __post_init__(self) -> None:
+        label = f"LinkSpec({self.from_market!r} -> {self.to_market!r}, channel={self.channel!r})"
+        for field_name in ("from_market", "to_market", "channel", "phi_unit"):
+            value = getattr(self, field_name)
+            if not isinstance(value, str) or not value:
+                raise ValueError(
+                    f"{label}: {field_name} must be a non-empty string, got {value!r}."
+                )
+        if self.from_market == self.to_market:
+            raise ValueError(
+                f"{label}: from_market and to_market are both {self.from_market!r} "
+                "— self-links are forbidden (spec §3 R34)."
+            )
+        if (
+            isinstance(self.phi, bool)
+            or not isinstance(self.phi, (int, float))
+            or not math.isfinite(self.phi)
+        ):
+            raise ValueError(
+                f"{label}: phi must be a finite number (sign-free; 0 legal), got {self.phi!r}."
+            )
+        object.__setattr__(self, "phi", float(self.phi))
+        for field_name in ("target_participants", "target_technologies"):
+            value = getattr(self, field_name)
+            if isinstance(value, str) or not isinstance(value, (list, tuple)):
+                raise ValueError(
+                    f"{label}: {field_name} must be a list/tuple of names "
+                    f"(not a bare string), got {value!r}."
+                )
+            names = tuple(str(name) for name in value)
+            if any(not name for name in names):
+                raise ValueError(f"{label}: {field_name} contains an empty name.")
+            object.__setattr__(self, field_name, names)
+        if not self.target_participants:
+            raise ValueError(
+                f"{label}: target_participants must be a non-empty explicit list "
+                "(or ('*',) for all) — no implicit 'all' (spec §6)."
+            )
+        if self.back_demand_estimate is not None:
+            if not math.isfinite(self.back_demand_estimate):
+                raise ValueError(
+                    f"{label}: back_demand_estimate must be finite when set "
+                    f"(diagnostic only), got {self.back_demand_estimate!r}."
+                )
+            object.__setattr__(self, "back_demand_estimate", float(self.back_demand_estimate))
+
+
+@runtime_checkable
+class LinkChannel(Protocol):
+    r"""Pure additive input-shift of a downstream market from an upstream price path.
+
+    A ``LinkChannel`` writes ONE field family of the target markets B from
+    the solved delivered price path of the source market A, applying the
+    additive-linear rule of ``LinkSpec``:
+
+    Algorithm:
+        LaTeX:
+        $$ x_B(t) \;=\; x_B^{\mathrm{base}}(t) \;+\; \phi \, P_A(t) $$
+
+        ASCII fallback:
+            for each target market of year t:
+                x_B(t) = x_B_base(t) + phi * P_A(t)
+
+        Symbols (units): see ``LinkSpec``.
+
+    Placement (spec §2d, F4 purity): the engine applies a channel ONCE,
+    BEFORE the path solver, never inside any fixed point — so the operator
+    must be PURE and COPY-ON-WRITE. It NEVER mutates ``target_markets`` or
+    anything reachable from it: changed markets / participants / technology
+    options / adoption specs are fresh copies (``copy.copy`` +
+    ``dataclasses.replace`` on the frozen leaves), and untouched objects pass
+    through BY IDENTITY. With nothing to shift (empty ``target_markets`` or
+    no matching participant/technology) it returns the SAME list object — the
+    copy-on-write identity guarantee (``PathFeedback.apply`` /
+    ``features.endogenous_investment.vintage`` precedent).
+
+    Timing is CONTEMPORANEOUS (spec §2c): ``P_A(t)`` is read at the target
+    market's OWN year label ``t`` from ``source_price_path`` (same year, not
+    lagged). A target year absent from the source path is an error (spec §7
+    E8 strict-subset: every target year must exist in the source's path).
+
+    References:
+        docs/platform-spec-d0-d1.md §2 (PriceLink semantics), §2d
+        (placement/purity), §2c (contemporaneous), §7 E8 (horizon subset).
+    """
+
+    def apply(
+        self,
+        link: LinkSpec,
+        source_price_path: Mapping[str, float],
+        target_markets: list[CarbonMarket],
+    ) -> list[CarbonMarket]:
+        """Apply the link's additive shift to the target markets.
+
+        Args:
+            link: The link's parameters (channel, phi, targets — see
+                ``LinkSpec``).
+            source_price_path: Source market A's SOLVED delivered price by
+                year label [currency_A/unit_A]; read contemporaneously at
+                each target market's own year.
+            target_markets: The target market B's per-year markets (year
+                order). NEVER mutated.
+
+        Returns:
+            A new list of target markets with the shift applied on the
+            channel's field, or ``target_markets`` itself when there is
+            nothing to shift (copy-on-write identity).
+        """
+        ...
+
+
+# ──────────────────────────────────────────────────────────────────────────────
 # Factories — what the engine actually wires (see module docstring)
 # ──────────────────────────────────────────────────────────────────────────────
 
@@ -1062,3 +1260,12 @@ PathFeedbackFactory: TypeAlias = Callable[[], PathFeedback]
 
 The engine wires the factory, never a shared instance — the host-owned
 ``AdoptionState`` is the only cross-iteration state (spec D1.4)."""
+
+LinkChannelFactory: TypeAlias = Callable[[], LinkChannel]
+"""Zero-argument constructor of a fresh ``LinkChannel``.
+
+The engine's ``LINK_CHANNELS`` registry (``engine/wiring.py``) maps each
+channel key to one of these — the channel classes themselves are
+zero-argument factories. A link is applied ONCE before the path solve, so a
+fresh instance per application is the natural lifecycle; the channels are
+stateless anyway (pure copy-on-write, no cross-call state)."""

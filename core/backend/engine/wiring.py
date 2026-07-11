@@ -48,7 +48,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
 
     from ..core.market.model import CarbonMarket
-    from ..core.protocols import CapRule, Friction, SupplyRuleFactory
+    from ..core.protocols import CapRule, Friction, LinkChannelFactory, SupplyRuleFactory
     from ..features.banking.solver import FloorRule
     from ..features.hoarding.plugin import HoardingInflow
     from ..features.price_controls.plugin import DeliveredFloor
@@ -62,6 +62,7 @@ __all__ = [
     "default_floor_rule_factory",
     "default_friction",
     "default_supply_rule_factories",
+    "link_channels",
     "solve_banking_path",
     "solve_hotelling_path",
     "solve_nash_path",
@@ -259,6 +260,45 @@ def default_floor_rule_factory() -> Callable[[], FloorCancellationRule]:
     from ..features.price_controls.rules import FloorCancellationRule
 
     return FloorCancellationRule
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# One-way market links — the reviewed channel registry (D1-2)
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+def link_channels() -> dict[str, LinkChannelFactory]:
+    """Return the reviewed link-channel registry — a static source literal.
+
+    The ``LINK_CHANNELS`` literal below is the channel registry
+    (``docs/platform-plan-d0-d1.md`` D1-2): a fixed, reviewed
+    channel-key -> factory mapping, NEVER dynamic registration (no plugin
+    entry points, no import-time side-effect registry). The two v1 channels
+    are ranked in spec §2b: ``mac_cost`` (rank 1 — the additive shift on
+    ``mac_blocks[*].marginal_cost`` and the threshold MAC level) and
+    ``invest_break_even`` (rank 2 — the K-MSR input-price-endogenous
+    threshold). The channel CLASSES are themselves zero-argument
+    ``LinkChannelFactory`` callables (the channels are stateless, pure
+    copy-on-write).
+
+    LAZY ACTIVATION (binding, the ``default_*`` builders' precedent): the
+    ``features.market_links.channels`` import is FUNCTION-LOCAL, so importing
+    this module — or ``pe.engine`` — loads no channel runtime. Only calling
+    ``link_channels`` (which the engine does ONLY for a scenario that carries
+    links, D1-3) imports the channel classes; a non-linked scenario never
+    touches ``market_links.channels``.
+
+    Returns:
+        The channel registry: ``{channel_key: LinkChannelFactory}`` for the
+        two v1 channels.
+    """
+    from ..features.market_links.channels import InvestBreakEvenChannel, MacCostChannel
+
+    LINK_CHANNELS: dict[str, LinkChannelFactory] = {
+        "mac_cost": MacCostChannel,
+        "invest_break_even": InvestBreakEvenChannel,
+    }
+    return LINK_CHANNELS
 
 
 # ──────────────────────────────────────────────────────────────────────────────
