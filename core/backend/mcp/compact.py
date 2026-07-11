@@ -28,11 +28,52 @@ from typing import Any
 import pandas as pd
 
 from ..blocks import derive_manifest
-from ..config_io import normalize_config
+from ..config_io import DEFAULT_FLOW_LABEL, DEFAULT_FLOW_UNIT, normalize_config
 
 _MAX_YEARS_PER_SCENARIO = 12
 _ROUND_DECIMALS = 4
 _NONZERO_ATOL = 1e-9
+
+
+def _flow_header_line(config: dict[str, Any]) -> str | None:
+    """``"flow: <label> [<unit>]"`` for a config, or ``None`` when every default.
+
+    D0-R2 (docs/platform-spec-d0-d1.md §5): flow_label/flow_unit are
+    display-only and absent by default (the D1 COMPAT RULE — a carbon
+    scenario never carries either key). This helper is the ONE place the
+    MCP describe/run surfaces derive that display line, so an existing
+    carbon-model's ``description``/``run_model`` output is byte-for-byte
+    unchanged (this returns ``None`` and callers skip the line entirely)
+    while a non-carbon model (e.g. the RPS/REC showcase, flow_label "REC")
+    gains one extra line/key.
+
+    Args:
+        config: A (normalized) scenario-config dict.
+
+    Returns:
+        ``None`` if no scenario in ``config`` declares ``flow_label`` or
+        ``flow_unit``; otherwise ``"flow: <label> [<unit>]"`` using the
+        first (declaration-order-independent, sorted) declared pair,
+        substituting :data:`~pe.config_io.DEFAULT_FLOW_LABEL` /
+        :data:`~pe.config_io.DEFAULT_FLOW_UNIT` for whichever half of the
+        pair a scenario leaves unset.
+    """
+    pairs: set[tuple[str, str]] = set()
+    for scenario in config.get("scenarios", []):
+        label = scenario.get("flow_label")
+        unit = scenario.get("flow_unit")
+        if label or unit:
+            pairs.add(
+                (
+                    str(label) if label else DEFAULT_FLOW_LABEL,
+                    str(unit) if unit else DEFAULT_FLOW_UNIT,
+                )
+            )
+    if not pairs:
+        return None
+    label, unit = sorted(pairs)[0]
+    return f"flow: {label} [{unit}]"
+
 
 # (compact key, summary_df column label) — see core/market/reporting.py:scenario_summary
 # for where every one of these column labels is written.
@@ -98,6 +139,7 @@ def compact_run_summary(
     *,
     scenario: str | None = None,
     max_years_per_scenario: int = _MAX_YEARS_PER_SCENARIO,
+    config: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Reduce a solved run's scenario-summary frame to a chat-sized dict.
 
@@ -110,11 +152,18 @@ def compact_run_summary(
         max_years_per_scenario: Truncate each scenario's year list to this
             many rows (chronological, from the start) — keeps the payload
             bounded for long-horizon models.
+        config: The run's (normalized) scenario-config dict, if available —
+            when given AND at least one scenario declares a non-default
+            ``flow_label``/``flow_unit`` (D0-R2), the returned dict gains a
+            top-level ``"flow"`` key (:func:`_flow_header_line`). ``None``
+            (the default) never adds the key — an existing carbon-model
+            caller that doesn't pass ``config`` is byte-for-byte unchanged.
 
     Returns:
         ``{"scenarios": {name: {"years": [...], "total_years": int,
-        "truncated": bool}}}``. Each year row always carries ``year``,
-        ``price``, ``auction_offered``, ``auction_sold``,
+        "truncated": bool}}, "flow": "<label> [<unit>]" (only when
+        non-default and ``config`` given)}``. Each year row always carries
+        ``year``, ``price``, ``auction_offered``, ``auction_sold``,
         ``total_abatement``; ``bank``/``borrowed`` are added only if the
         scenario ever has a nonzero bank/borrow balance, and the three
         ``msr_*``/``ccr_*`` columns only if MSR/CCR is ever active — no
@@ -124,8 +173,13 @@ def compact_run_summary(
         ValueError: ``scenario`` is given and matches no scenario in
             ``summary_df``.
     """
+    flow_line = _flow_header_line(config) if config is not None else None
+
     if summary_df.empty:
-        return {"scenarios": {}}
+        result: dict[str, Any] = {"scenarios": {}}
+        if flow_line is not None:
+            result["flow"] = flow_line
+        return result
 
     if scenario is not None:
         available = sorted(summary_df["Scenario"].unique())
@@ -162,7 +216,10 @@ def compact_run_summary(
             "truncated": truncated,
         }
 
-    return {"scenarios": scenarios}
+    result = {"scenarios": scenarios}
+    if flow_line is not None:
+        result["flow"] = flow_line
+    return result
 
 
 # ── shared "list a runnable model" entry (composer's list_models, the ────
@@ -187,7 +244,11 @@ def describe_model_entry(model_id: str, source: str, config: dict[str, Any]) -> 
         — ``features``/``approach`` are ``derive_manifest(config)``'s
         top-level lists; ``name`` is title-cased from the id (registry ids
         drop their ``"user_"`` prefix first); ``description`` is a one-line
-        scenario-count/approach/features summary.
+        scenario-count/approach/features summary, PLUS a trailing
+        ``- flow: <label> [<unit>]`` segment (:func:`_flow_header_line`)
+        when at least one scenario declares a non-default D0-R2
+        flow_label/flow_unit — omitted entirely for a carbon model (the
+        existing description text is byte-for-byte unchanged).
     """
     manifest = derive_manifest(config)
     scenario_names = [str(s.get("name", "")) for s in config.get("scenarios", [])]
@@ -197,6 +258,9 @@ def describe_model_entry(model_id: str, source: str, config: dict[str, Any]) -> 
         f"{', '.join(manifest['approach']) or 'n/a'} - "
         f"features: {', '.join(manifest['features'])}"
     )
+    flow_line = _flow_header_line(config)
+    if flow_line is not None:
+        description = f"{description} - {flow_line}"
     return {
         "id": model_id,
         "name": label.replace("_", " ").title(),

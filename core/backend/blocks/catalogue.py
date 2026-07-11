@@ -124,6 +124,23 @@ def _market_block() -> BlockSpec:
                 "policy_events", "policy_events", "scenario", "list", default=(),
                 label="Policy-event timeline (raw pass-through)",
             ),
+            # D0-R2 flow vocabulary (docs/platform-spec-d0-d1.md §5, display
+            # only — the kernel never branches on either key). Default is
+            # ``None`` (absent), NOT "carbon"/"tCO2e": config_io's
+            # ``_normalize_market_body`` only ever writes these keys into the
+            # normalized scenario when the raw config actually carries them
+            # (the D1 COMPAT RULE — a scenario without them normalizes
+            # byte-identically to today, no injected default value). Display
+            # callers (MCP compact.py today, the D0-R3 frontend next) fall
+            # back to "carbon"/"tCO2e" themselves when the key is absent.
+            ParamSpec(
+                "flow_label", "flow_label", "scenario", "str", None,
+                label="Flow label (display only; falls back to 'carbon' when absent)",
+            ),
+            ParamSpec(
+                "flow_unit", "flow_unit", "scenario", "str", None,
+                label="Flow unit (display only; falls back to 'tCO2e' when absent)",
+            ),
         ),
         ports=(
             PortSpec("participants", "in", "compliance", cardinality="1..n"),

@@ -122,6 +122,10 @@ def _decompile_scenario(
         market_params["sectors"] = scenario["sectors"]
     if scenario.get("policy_events"):
         market_params["policy_events"] = scenario["policy_events"]
+    if scenario.get("flow_label"):
+        market_params["flow_label"] = scenario["flow_label"]
+    if scenario.get("flow_unit"):
+        market_params["flow_unit"] = scenario["flow_unit"]
 
     scenario_extra = {k: v for k, v in scenario.items() if k not in KNOWN_SCENARIO_KEYS and k != "years"}
     if scenario_extra:

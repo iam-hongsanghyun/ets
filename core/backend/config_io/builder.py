@@ -256,6 +256,15 @@ def _validated_msr_mode(scenario: dict[str, Any], label: str) -> str:
 # round-trips unchanged.
 _OPTIONAL_MARKET_BODY_KEYS = ("flow_label", "flow_unit", "price_unit")
 
+# Display-tier fallbacks for the two D0-R2 flow-vocabulary keys above — used
+# ONLY by presentation callers (MCP compact.py's flow header today; the
+# D0-R3 frontend chips next) when a scenario carries no flow_label/flow_unit.
+# The kernel never reads these constants and normalize_scenario never injects
+# them (see the comment above) — the "default" is a display convention, not a
+# normalized value, so byte-identity of existing carbon-model output holds.
+DEFAULT_FLOW_LABEL = "carbon"
+DEFAULT_FLOW_UNIT = "tCO2e"
+
 
 def _normalize_market_body(raw_body: Mapping[str, Any], *, label: str) -> dict[str, Any]:
     """Normalize a market body — the scenario shape minus ``name``/``policy_events``.

@@ -213,7 +213,7 @@ def _compile_market(graph: Graph, market_node: Node) -> dict[str, Any]:
         raise CompileError(f"Market '{market_node.id}' has no years in its 'years' grid.")
 
     owners.set_scenario(scenario_fields, "name", market_node.params.get("name", "New Scenario"), f"node:{market_node.id}")
-    for passthrough_key in ("sectors", "policy_events"):
+    for passthrough_key in ("sectors", "policy_events", "flow_label", "flow_unit"):
         raw = market_node.params.get(passthrough_key)
         if raw:
             owners.set_scenario(scenario_fields, passthrough_key, raw, f"node:{market_node.id}")

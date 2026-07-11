@@ -33,8 +33,23 @@ from pe.config_io import (
     normalize_technology_option,
     normalize_year,
 )
+from pe.config_io.builder import _OPTIONAL_MARKET_BODY_KEYS
 
-SCENARIO_KEYS = set(normalize_scenario(blank_scenario()))
+# D0-R2/D1 vocabulary keys (flow_label/flow_unit/price_unit) are additive and
+# ABSENT BY DEFAULT — normalize_scenario(blank_scenario()) never injects them
+# (the D1 COMPAT RULE: no key means "today's carbon labels", not a value).
+# A ParamSpec whose config_key is one of these keys would otherwise fail the
+# drift guard below even though it is honestly wired, so SCENARIO_KEYS is the
+# union of the plain-blank normalization and one that actually carries every
+# optional key (probing that they normalize/round-trip correctly when
+# present) — generic over `_OPTIONAL_MARKET_BODY_KEYS`, so a future optional
+# key never needs a matching edit here.
+_SCENARIO_WITH_OPTIONALS = blank_scenario()
+_SCENARIO_WITH_OPTIONALS.update({key: "probe" for key in _OPTIONAL_MARKET_BODY_KEYS})
+
+SCENARIO_KEYS = set(normalize_scenario(blank_scenario())) | set(
+    normalize_scenario(_SCENARIO_WITH_OPTIONALS)
+)
 YEAR_KEYS = set(normalize_year(blank_year_config()))
 PARTICIPANT_KEYS = set(normalize_participant(blank_participant())) | set(
     normalize_technology_option(blank_technology_option(), "probe")

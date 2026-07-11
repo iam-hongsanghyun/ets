@@ -83,7 +83,8 @@ def run_model(model_id: str, scenario: str | None = None) -> dict[str, Any]:
         scenario: If given, only that scenario's results are returned.
 
     Returns:
-        ``{"ok": True, "model_id", "scenarios": {...}}`` — see
+        ``{"ok": True, "model_id", "scenarios": {...}}`` (plus a top-level
+        ``"flow"`` key when non-default, D0-R2) — see
         ``ets.mcp.compact.compact_run_summary`` for the per-year shape.
 
     Raises:
@@ -95,7 +96,7 @@ def run_model(model_id: str, scenario: str | None = None) -> dict[str, Any]:
     return {
         "ok": True,
         "model_id": model_id,
-        **compact_run_summary(summary_df, scenario=scenario),
+        **compact_run_summary(summary_df, scenario=scenario, config=config),
     }
 
 
