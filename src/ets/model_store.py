@@ -1,14 +1,18 @@
 """Transport-free scenario-registry I/O, shared by every app tier (T5).
 
-``ets.web.api`` (``POST /api/graph/save-model``, ``GET /api/templates``) and
-``ets.mcp.tools`` (``list_models``, ``new_graph``, ``save_model``) both need
-to turn a composer :class:`~ets.blocks.graph.Graph` into a validated,
-runnable scenario config, persist it under ``USER_SCENARIOS_DIR`` alongside
-its source graph, and enumerate the example/registry models already there.
-That logic used to live only in ``ets.web.api._handle_graph_save_model``;
-this module is the one place it's implemented, so a model saved through
-either app appears immediately in both (they share one registry directory on
-disk) and neither app duplicates the validate-compile-persist sequence.
+``ets.web.api`` (``POST /api/graph/save-model``, ``GET /api/templates``),
+``ets.mcp.tools`` (``list_models``, ``new_graph``, ``save_model`` — the
+composer, which authors models), and ``ets.mcp.models_tools``
+(``list_models``, ``describe_model``, ``run_model``, ``rename_model``,
+``delete_model``, ... — the governor, which operates the already-saved
+registry) all need to turn a composer :class:`~ets.blocks.graph.Graph` into
+a validated, runnable scenario config, persist it under
+``USER_SCENARIOS_DIR`` alongside its source graph, and enumerate/rename/
+delete the example/registry models already there. That logic used to live
+only in ``ets.web.api._handle_graph_save_model``; this module is the one
+place it's implemented, so a model saved through any app appears
+immediately in the others (they share one registry directory on disk) and
+no app duplicates the validate-compile-persist(-rename/delete) sequence.
 
 Design choice — a small top-level module, not ``ets.blocks``: this package
 does real file I/O (``USER_SCENARIOS_DIR.mkdir``, reading/writing
@@ -169,6 +173,116 @@ def save_graph_as_model(
         config_path=config_path,
         graph_path=graph_path,
     )
+
+
+def _require_registry_model_id(model_id: str) -> str:
+    """Validate ``model_id`` is a registry (``"user_<slug>"``) id; return its slug.
+
+    Shared guard for :func:`rename_registry_model` and
+    :func:`delete_registry_model` — both are registry-only mutations, per
+    ``ets.mcp.models_tools``'s role split (the governor operates the
+    registry but never touches a bundled example).
+
+    Args:
+        model_id: A model id, as accepted by :func:`resolve_model_config`.
+
+    Returns:
+        The slug (``model_id`` with its ``"user_"`` prefix stripped).
+
+    Raises:
+        ModelStoreError: ``model_id`` doesn't start with ``"user_"`` (an
+            example id, or empty/malformed) — examples are immutable.
+    """
+    slug = model_id.removeprefix("user_")
+    if not model_id.startswith("user_") or not slug:
+        raise ModelStoreError(
+            f"'{model_id}' is not a registry model id — only models saved to the "
+            "registry (ids starting with 'user_') can be renamed or deleted; "
+            "bundled examples are immutable."
+        )
+    return slug
+
+
+def rename_registry_model(
+    model_id: str, new_name: str, *, registry_dir: Path | None = None
+) -> SavedModel:
+    """Rename a registry model by re-slugging its on-disk files to ``new_name``.
+
+    A registry model's display name (see :func:`resolve_model_config`'s
+    sibling ``ets.mcp.compact.describe_model_entry``) is derived from its
+    id/slug, not stored inside the config — so "renaming" means moving
+    ``<old_slug>.json`` (and its ``<old_slug>.graph.json`` sidecar, if
+    present) to the new slug's filenames, exactly mirroring how
+    :func:`save_graph_as_model` derives a slug from a display name.
+
+    Args:
+        model_id: The registry model's current ``"user_<slug>"`` id.
+        new_name: The new display name; also the basis of the new slug (via
+            :func:`slugify_filename`).
+        registry_dir: Defaults to ``ets.core.paths.USER_SCENARIOS_DIR``.
+
+    Returns:
+        The renamed model's :class:`SavedModel` (``id`` is the new
+        ``"user_<slug>"``).
+
+    Raises:
+        ModelStoreError: ``model_id`` isn't a registry id (see
+            :func:`_require_registry_model_id`), doesn't exist, ``new_name``
+            is empty, or the new slug collides with a different existing
+            registry model.
+    """
+    slug = _require_registry_model_id(model_id)
+    display_name = new_name.strip()
+    if not display_name:
+        raise ModelStoreError("A model needs a non-empty name.")
+
+    directory = registry_dir if registry_dir is not None else USER_SCENARIOS_DIR
+    config_path = directory / f"{slug}.json"
+    graph_path = directory / f"{slug}.graph.json"
+    if not config_path.exists():
+        raise ModelStoreError(f"Unknown model id '{model_id}'.")
+
+    new_slug = slugify_filename(display_name)
+    new_config_path = directory / f"{new_slug}.json"
+    new_graph_path = directory / f"{new_slug}.graph.json"
+    if new_slug != slug and new_config_path.exists():
+        raise ModelStoreError(
+            f"A registry model named '{display_name}' already exists (id 'user_{new_slug}')."
+        )
+
+    config_path.rename(new_config_path)
+    if graph_path.exists():
+        graph_path.rename(new_graph_path)
+
+    return SavedModel(
+        id=f"user_{new_slug}",
+        name=display_name,
+        config=load_config(new_config_path),
+        config_path=new_config_path,
+        graph_path=new_graph_path,
+    )
+
+
+def delete_registry_model(model_id: str, *, registry_dir: Path | None = None) -> None:
+    """Delete a registry model's config and (if present) its graph sidecar.
+
+    Args:
+        model_id: The registry model's ``"user_<slug>"`` id.
+        registry_dir: Defaults to ``ets.core.paths.USER_SCENARIOS_DIR``.
+
+    Raises:
+        ModelStoreError: ``model_id`` isn't a registry id (see
+            :func:`_require_registry_model_id`), or doesn't exist.
+    """
+    slug = _require_registry_model_id(model_id)
+    directory = registry_dir if registry_dir is not None else USER_SCENARIOS_DIR
+    config_path = directory / f"{slug}.json"
+    graph_path = directory / f"{slug}.graph.json"
+    if not config_path.exists():
+        raise ModelStoreError(f"Unknown model id '{model_id}'.")
+    config_path.unlink()
+    if graph_path.exists():
+        graph_path.unlink()
 
 
 def iter_examples(*, examples_dir: Path | None = None) -> Iterator[tuple[str, dict[str, Any]]]:

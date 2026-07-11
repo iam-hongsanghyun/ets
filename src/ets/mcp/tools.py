@@ -26,10 +26,10 @@ from __future__ import annotations
 from typing import Any
 
 from .. import model_store
-from ..blocks import BLOCK_CATALOGUE, Edge, Graph, Node, derive_manifest, validate_graph
+from ..blocks import BLOCK_CATALOGUE, Edge, Graph, Node, validate_graph
 from ..blocks.serialize import serialize_block, serialize_catalogue
 from ..engine import run_simulation_from_config
-from .compact import compact_run_summary
+from .compact import compact_run_summary, describe_model_entry
 from .suggestions import next_steps_for
 
 # ── new_graph()'s blank skeleton ─────────────────────────────────────────
@@ -91,25 +91,10 @@ def _minimal_skeleton() -> Graph:
 
 
 # ── 1. list_models ───────────────────────────────────────────────────────
-
-
-def _describe_model(model_id: str, source: str, config: dict[str, Any]) -> dict[str, Any]:
-    manifest = derive_manifest(config)
-    scenario_names = [str(s.get("name", "")) for s in config.get("scenarios", [])]
-    label = model_id.removeprefix("user_") if source == "registry" else model_id
-    description = (
-        f"{len(scenario_names)} scenario(s) - approach: "
-        f"{', '.join(manifest['approach']) or 'n/a'} - "
-        f"features: {', '.join(manifest['features'])}"
-    )
-    return {
-        "id": model_id,
-        "name": label.replace("_", " ").title(),
-        "source": source,
-        "features": manifest["features"],
-        "approach": manifest["approach"],
-        "description": description,
-    }
+#
+# Shared with the governor server: ``ets.mcp.models_tools`` registers this
+# same function as its own ``list_models`` tool (see that module's docstring)
+# rather than re-implementing it — both servers list the identical registry.
 
 
 def list_models() -> dict[str, Any]:
@@ -127,11 +112,11 @@ def list_models() -> dict[str, Any]:
         (conversational) canvas.
     """
     models = [
-        _describe_model(model_id, "example", config)
+        describe_model_entry(model_id, "example", config)
         for model_id, config in model_store.iter_examples()
     ]
     models += [
-        _describe_model(model_id, "registry", config)
+        describe_model_entry(model_id, "registry", config)
         for model_id, config in model_store.iter_registry_models()
     ]
     return {"models": models}
