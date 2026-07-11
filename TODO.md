@@ -88,6 +88,8 @@ Items are grouped by theme. Checked items are complete. Unchecked items are pend
 
 ## Engine defects found during modularization (math changes — need economist sign-off + new baselines)
 
+- [ ] **Floor-cancellation 2-cycle in the banking fixed point**: a deeply binding auction-reserve floor with `unsold_treatment: "cancel"` produces a genuine 16.9-Mt supply 2-cycle (diagnosed via the DEBUG delta trace while building `k_msr_decree_induces_investment`; dodged there with `unsold_treatment: "reserve"`). The supply-rule iteration has no damping for the cancellation channel — needs an economist-designed convergence treatment (dampen the cancellation delta, or a cycle-detection fallback) rather than an ad-hoc fix.
+
 - [ ] **Nash–Cournot equilibrium is degenerate**: `solvers/nash.py:_solve_nash_year` runs the best-response iteration but returns `market.solve_equilibrium(...)` (plain competitive clearing) — converged strategic abatements never feed the reported equilibrium, so Nash prices are bit-identical to competitive (verified empirically, dP/dQ = 0.526, two strategic gencos). Fix is a math change: report the strategic equilibrium; then add a Nash golden example (deliberately not added while degenerate). Related: F2 wiring inconsistencies (ungated MSR, no CCR in nash path).
 - [ ] Nash caveat in docs/UI (economist sign-off warning 2): until the degenerate-Nash fix lands, "Nash–Cournot" output is bit-identical to competitive — the label overstates the equilibrium; add a user-facing note.
 - [ ] Fold nash's F2-frozen inline MSR literal fallbacks into the W3 value-drift guard when that follow-up is picked up (economist sign-off warning 3).
