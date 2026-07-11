@@ -79,6 +79,7 @@ packages = [
 "pe.features.nash_cournot"           = "modules/nash_cournot/backend"
 "pe.features.oba"                    = "modules/oba/backend"
 "pe.features.price_controls"         = "modules/price_controls/backend"
+"pe.features.sectors"                = "modules/sectors/backend"
 
 [tool.pytest.ini_options]
 # pythonpath=["src"] DROPPED (WO-0): tests import the editable-installed `pe`
