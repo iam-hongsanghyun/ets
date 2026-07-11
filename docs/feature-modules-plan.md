@@ -381,3 +381,34 @@ snapshot)**
    `tests/baselines/` and covered by `tests/test_golden_baselines.py`; and a
    `tests/test_model_manifest.py` snapshot assertion so the new feature's
    manifest detection (step 3) is pinned, not assumed.
+
+## Addendum: Phase 1 — endogenous investment feedback
+
+Endogenous investment feedback (`docs/invest-feedback-spec.md`,
+`docs/invest-feedback-plan.md`; work orders EI-1–EI-9) is the second
+mechanism, since this checklist was written down, to be built as a full
+six-touchpoint exercise under its own dedicated work-order sequence:
+backend feature dir (`features/endogenous_investment/{plugin,rule,
+vintage}.py` plus `core/investment.py`, EI-1/3/4) → dispatch wiring
+(`engine/dispatch.py`'s guarded `investment_on` branch, EI-2/5) → catalogue
+`BlockSpec` + decompile detector + manifest direct detector + validator
+rule R33 (EI-6) → frontend `features/endogenous_investment/index.jsx` +
+`registry.js` line (EI-8, landing concurrently in `frontend/**`, a separate
+lane) → tests: feature unit tests, the V2–V8 economist anchors, two
+captured goldens (`investment_competitive_transition`,
+`k_msr_decree_induces_investment`), and a `test_model_manifest.py` snapshot
+(EI-7).
+
+The four `Investment *` summary columns reaffirm the **D3
+reporter-conditionality precedent**: they are patched into
+`core/ledger.py:collect_path_results` under a key-presence guard (the
+banking-columns precedent, `if "investment_adoptions" in item: ...`) —
+never added as literals to the `_SUMMARY_REPORTERS_*` attach-always
+families CBAM/sectors/MSR/CCR use. `test_golden_baselines._walk_diff` walks
+key UNIONS across scenarios, so an always-on new column would fail every
+existing golden; guarding by key presence keeps "column set is a
+deterministic function of config" intact.
+`tests/core/test_reporting_columns.py` gained a fourth pinned reference
+scenario (`investment_competitive_transition`) pinning exactly this: the
+four columns land at the summary TAIL, guarded, with the participant frame
+gaining no new columns in v1.
