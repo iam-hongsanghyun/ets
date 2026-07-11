@@ -68,6 +68,7 @@ packages = [
 "pe"  = "core/backend"
 "ets" = "compat/ets"
 "pe.features.banking"                = "modules/banking/backend"
+"pe.features.cbam"                   = "modules/cbam/backend"
 
 [tool.pytest.ini_options]
 # pythonpath=["src"] DROPPED (WO-0): tests import the editable-installed `pe`
