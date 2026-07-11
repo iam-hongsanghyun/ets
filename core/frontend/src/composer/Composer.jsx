@@ -40,6 +40,7 @@ import {
   JointNonConvergenceBanner,
   JointConvergenceCard,
 } from "../components/MultiMarket.jsx";
+import { SectorInteraction } from "../components/SectorInteraction.jsx";
 
 const NODE_TYPES = { blockNode: BlockNode };
 
@@ -501,6 +502,10 @@ function ComposerCanvas() {
             ))}
           </nav>
           <JointConvergenceCard row={activeJointRow} />
+          <SectorInteraction
+            summary={runPayload.summary}
+            scenarioName={activeRunScenario ? String(activeRunScenario.name).split(" :: ")[0] : null}
+          />
           <AnalysisView
             scenario={activeRunScenario}
             yearObj={activeRunYearObj}
