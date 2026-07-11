@@ -9,6 +9,21 @@ working. The competitive path solver (``solve_scenario_path``) stays in
 v2 O14) and is imported lazily inside ``run_simulation`` — alongside the
 other approach solvers — so no module-level cycle arises with the
 solvers-tier re-exports of this module's names.
+
+PURE REFACTOR (EI-2, ``docs/invest-feedback-plan.md`` D2): the per-approach
+solve invocation ``run_simulation`` used to build inline is now
+``_path_solver_for`` — a closure factory that captures the exact same
+kwargs derivation from a scenario's first market (``m0``) and returns a
+``ordered_markets -> path`` callable. Zero behaviour change: calling
+``_path_solver_for(approach, m0, transmission_lambda=...)(ordered_markets)``
+runs the identical branch body, with identical lazy imports, that used to
+sit directly in ``run_simulation``'s if/elif ladder. This exists so a later
+order (EI-5, ``engine/feedback.py``) can re-invoke the SAME approach's full
+path solve on successive vintaged market lists without re-deriving or
+drifting from the wiring literals — the closure is the one place they live.
+The ``"all"`` comparison branch is NOT routed through the factory (it fans
+a scenario out over three differently-renamed market lists, not one
+``ordered_markets`` thread) and stays inline, unchanged.
 """
 
 from __future__ import annotations
@@ -30,6 +45,8 @@ from ..core.ledger import (
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from ..core.market import CarbonMarket
 
 logger = logging.getLogger(__name__)
@@ -43,6 +60,140 @@ def _rename_markets(markets: list[CarbonMarket], suffix: str) -> list[CarbonMark
         copy.scenario_name = f"{m.scenario_name} [{suffix}]"
         renamed.append(copy)
     return renamed
+
+
+def _hot_kwargs(m0: CarbonMarket) -> dict[str, float | int]:
+    """Hotelling/transmission solver kwargs derived from a scenario's first market.
+
+    Args:
+        m0: First market of the scenario's chronologically sorted path.
+
+    Returns:
+        Keyword arguments for ``solve_hotelling_path``/``solve_transmission_path``.
+    """
+    return dict(
+        discount_rate=float(getattr(m0, "discount_rate", 0.04) or 0.04),
+        risk_premium=float(getattr(m0, "risk_premium", 0.0) or 0.0),
+        max_bisection_iters=int(getattr(m0, "solver_hotelling_max_bisection_iters", 80) or 80),
+        max_lambda_expansions=int(getattr(m0, "solver_hotelling_max_lambda_expansions", 20) or 20),
+        convergence_tol=float(getattr(m0, "solver_hotelling_convergence_tol", 1e-4) or 1e-4),
+    )
+
+
+def _nash_kwargs(m0: CarbonMarket) -> dict[str, object]:
+    """Nash-Cournot solver kwargs derived from a scenario's first market.
+
+    Args:
+        m0: First market of the scenario's chronologically sorted path.
+
+    Returns:
+        Keyword arguments for ``solve_nash_path``.
+    """
+    return dict(
+        strategic_participants=list(getattr(m0, "nash_strategic_participants", None) or []) or None,
+        price_step=float(getattr(m0, "solver_nash_price_step", 0.5) or 0.5),
+        max_iters=int(getattr(m0, "solver_nash_max_iters", 120) or 120),
+        convergence_tol=float(getattr(m0, "solver_nash_convergence_tol", 1e-3) or 1e-3),
+    )
+
+
+def _path_solver_for(
+    approach: str,
+    m0: CarbonMarket,
+    *,
+    transmission_lambda: float | None,
+) -> Callable[[list[CarbonMarket]], list[dict]]:
+    """Build the closure that runs one scenario's full per-approach path solve.
+
+    PURE extraction of ``run_simulation``'s former inline if/elif ladder
+    (everything except the ``"all"`` comparison fan-out, which the caller
+    keeps handling separately). Every keyword argument the returned closure
+    passes downstream is derived from ``m0`` exactly once, at closure-build
+    time — identical to the pre-extraction inline reads — so
+    ``_path_solver_for(approach, m0, transmission_lambda=lam)(ordered_markets)``
+    is bit-identical to the old inline call for the same
+    ``(approach, m0, ordered_markets)`` triple. This is what lets a later
+    outer loop (``engine/feedback.py``, EI-5, ``docs/invest-feedback-plan.md``)
+    re-invoke the SAME approach's full solve on successive vintaged market
+    lists without re-deriving or drifting from the wiring literals below —
+    the closure is the one and only place they live.
+
+    Every ``features.*``/``.wiring`` import stays lazy INSIDE the returned
+    closure's body (never at factory-build time), so building the closure
+    never loads a feature runtime module — only calling it does. This
+    preserves the activation-scoping contract
+    (``tests/engine/test_lazy_activation.py``).
+
+    Args:
+        approach: The scenario's resolved ``model_approach``. ``"all"`` is
+            handled entirely by the caller and is never passed here — if it
+            were, this falls through to the competitive default, which is
+            NOT what ``"all"`` means, so callers must keep excluding it.
+        m0: First market of the scenario's chronologically sorted path.
+        transmission_lambda: The scenario's forward-transmission λ after the
+            caller's competitive-only gate and warning (``None`` when unset
+            or ignored for a non-competitive approach). Passed in rather
+            than re-derived so the caller's warning log fires exactly once
+            per scenario, not once per solve invocation.
+
+    Returns:
+        A callable ``ordered_markets -> path`` (list of per-year result
+        dicts, one row per market year) that runs the wired solver for
+        ``approach``.
+    """
+    if transmission_lambda is not None:
+        lam = float(transmission_lambda)
+        hot_kwargs = _hot_kwargs(m0)
+
+        def _solve_transmission(ordered_markets: list[CarbonMarket]) -> list[dict]:
+            from .wiring import solve_transmission_path
+
+            return solve_transmission_path(ordered_markets, lam=lam, **hot_kwargs)
+
+        return _solve_transmission
+
+    if approach == "banking":
+        discount_rate = float(getattr(m0, "discount_rate", 0.055) or 0.055)
+        risk_premium = float(getattr(m0, "risk_premium", 0.0) or 0.0)
+
+        def _solve_banking(ordered_markets: list[CarbonMarket]) -> list[dict]:
+            from .wiring import solve_banking_path
+
+            return solve_banking_path(
+                ordered_markets,
+                discount_rate=discount_rate,
+                risk_premium=risk_premium,
+            )
+
+        return _solve_banking
+
+    if approach == "hotelling":
+        hot_kwargs = _hot_kwargs(m0)
+
+        def _solve_hotelling(ordered_markets: list[CarbonMarket]) -> list[dict]:
+            from .wiring import solve_hotelling_path
+
+            return solve_hotelling_path(ordered_markets, **hot_kwargs)
+
+        return _solve_hotelling
+
+    if approach == "nash_cournot":
+        nash_kwargs = _nash_kwargs(m0)
+
+        def _solve_nash(ordered_markets: list[CarbonMarket]) -> list[dict]:
+            from .wiring import solve_nash_path
+
+            return solve_nash_path(ordered_markets, **nash_kwargs)
+
+        return _solve_nash
+
+    def _solve_competitive(ordered_markets: list[CarbonMarket]) -> list[dict]:
+        # Default: competitive (MSR handled inside solve_scenario_path)
+        from .wiring import solve_scenario_path
+
+        return solve_scenario_path(ordered_markets)
+
+    return _solve_competitive
 
 
 def run_simulation(markets: list[CarbonMarket]) -> tuple[pd.DataFrame, pd.DataFrame]:
@@ -65,23 +216,6 @@ def run_simulation(markets: list[CarbonMarket]) -> tuple[pd.DataFrame, pd.DataFr
 
         m0 = ordered_markets[0]
 
-        def _hot_kwargs():
-            return dict(
-                discount_rate=float(getattr(m0, "discount_rate", 0.04) or 0.04),
-                risk_premium=float(getattr(m0, "risk_premium", 0.0) or 0.0),
-                max_bisection_iters=int(getattr(m0, "solver_hotelling_max_bisection_iters", 80) or 80),
-                max_lambda_expansions=int(getattr(m0, "solver_hotelling_max_lambda_expansions", 20) or 20),
-                convergence_tol=float(getattr(m0, "solver_hotelling_convergence_tol", 1e-4) or 1e-4),
-            )
-
-        def _nash_kwargs():
-            return dict(
-                strategic_participants=list(getattr(m0, "nash_strategic_participants", None) or []) or None,
-                price_step=float(getattr(m0, "solver_nash_price_step", 0.5) or 0.5),
-                max_iters=int(getattr(m0, "solver_nash_max_iters", 120) or 120),
-                convergence_tol=float(getattr(m0, "solver_nash_convergence_tol", 1e-3) or 1e-3),
-            )
-
         transmission_lambda = getattr(m0, "forward_transmission_lambda", None)
         if transmission_lambda is not None and approach != "competitive":
             logger.warning(
@@ -91,47 +225,26 @@ def run_simulation(markets: list[CarbonMarket]) -> tuple[pd.DataFrame, pd.DataFr
             )
             transmission_lambda = None
 
-        if transmission_lambda is not None:
-            from .wiring import solve_transmission_path
-
-            path = solve_transmission_path(
-                ordered_markets, lam=float(transmission_lambda), **_hot_kwargs()
-            )
-            _collect_path_results(ordered_markets, path, scenario_summaries, participant_frames)
-
-        elif approach == "banking":
-            from .wiring import solve_banking_path
-
-            path = solve_banking_path(
-                ordered_markets,
-                discount_rate=float(getattr(m0, "discount_rate", 0.055) or 0.055),
-                risk_premium=float(getattr(m0, "risk_premium", 0.0) or 0.0),
-            )
-            _collect_path_results(ordered_markets, path, scenario_summaries, participant_frames)
-
-        elif approach == "hotelling":
-            path = solve_hotelling_path(ordered_markets, **_hot_kwargs())
-            _collect_path_results(ordered_markets, path, scenario_summaries, participant_frames)
-
-        elif approach == "nash_cournot":
-            path = solve_nash_path(ordered_markets, **_nash_kwargs())
-            _collect_path_results(ordered_markets, path, scenario_summaries, participant_frames)
-
-        elif approach == "all":
+        if approach == "all":
+            # Not routed through _path_solver_for: fans one scenario out over
+            # three differently-renamed market lists, not one ordered_markets
+            # thread (transmission_lambda is always None here — "all" != the
+            # competitive-only gate above always clears it — matching the
+            # pre-extraction elif ladder's effective behaviour exactly).
             comp_markets = _rename_markets(ordered_markets, "Competitive")
             hot_markets  = _rename_markets(ordered_markets, "Hotelling")
             nash_markets = _rename_markets(ordered_markets, "Nash-Cournot")
 
             comp_path = solve_scenario_path(comp_markets)
-            hot_path  = solve_hotelling_path(hot_markets, **_hot_kwargs())
-            nash_path = solve_nash_path(nash_markets, **_nash_kwargs())
+            hot_path  = solve_hotelling_path(hot_markets, **_hot_kwargs(m0))
+            nash_path = solve_nash_path(nash_markets, **_nash_kwargs(m0))
 
             for path, mkt_list in [(comp_path, comp_markets), (hot_path, hot_markets), (nash_path, nash_markets)]:
                 _collect_path_results(mkt_list, path, scenario_summaries, participant_frames)
 
         else:
-            # Default: competitive (MSR handled inside solve_scenario_path)
-            path = solve_scenario_path(ordered_markets)
+            solver = _path_solver_for(approach, m0, transmission_lambda=transmission_lambda)
+            path = solver(ordered_markets)
             _collect_path_results(ordered_markets, path, scenario_summaries, participant_frames)
 
     summary_df = pd.DataFrame.from_records(scenario_summaries)
