@@ -5,6 +5,11 @@ executor orders (docs/joint-equilibrium-plan.md §6). Companion:
 docs/platform-spec-d0-d1.md (D0/D1 spec), TODO.md:91 (floor-cancellation
 2-cycle — a sibling prerequisite, §3).
 
+> **Building one, not proving one?** This is the economic spec (the math,
+> the anchors, the convergence proofs). For the practical "how do I draw,
+> run, and read a joint model" walkthrough — canvas, config, and MCP — see
+> [docs/joint-model-guide.md](joint-model-guide.md).
+
 ## 1. The equilibrium object
 
 A converged cyclic SCC computes a **joint (simultaneous) partial
