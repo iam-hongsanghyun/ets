@@ -8,7 +8,7 @@ from pathlib import Path
 # so the repo root is one more parent up. Same directory as before the move.
 PROJECT_DIR = Path(__file__).resolve().parents[3]
 SRC_DIR = PROJECT_DIR / "src"
-FRONTEND_DIR = PROJECT_DIR / "frontend"
+FRONTEND_DIR = PROJECT_DIR / "core" / "frontend"
 FRONTEND_DIST_DIR = FRONTEND_DIR / "dist"
 EXAMPLES_DIR = PROJECT_DIR / "examples"
 DOCS_DIR = PROJECT_DIR / "docs"

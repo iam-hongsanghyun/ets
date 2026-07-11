@@ -4,7 +4,7 @@
 __pycache__/
 *.pyc
 outputs/
-frontend/node_modules/
+core/frontend/node_modules/
 tmp_template.json
 .vercel
 _clonetest/
