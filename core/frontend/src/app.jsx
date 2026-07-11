@@ -19,6 +19,7 @@ import {
   JointNonConvergenceBanner,
   JointConvergenceCard,
 } from "./components/MultiMarket.jsx";
+import { SectorInteraction } from "./components/SectorInteraction.jsx";
 
 export default function App({ enabledFeatures = null, manifest = null, initialTemplateId = null } = {}) {
   const [templates, setTemplates] = useS([]);
@@ -531,6 +532,7 @@ export default function App({ enabledFeatures = null, manifest = null, initialTe
             ))}
           </nav>
           <JointConvergenceCard row={activeJointRow} />
+          <SectorInteraction summary={summary} scenarioName={activeScenario?.name} />
         </div>
       )}
 
