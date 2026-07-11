@@ -1,12 +1,18 @@
-"""Compact per-scenario/per-year result summaries for the ``run_model`` tool.
+"""Compact result/manifest shapes shared by both MCP servers (composer + models).
 
 ``ets.engine.run_simulation_from_config`` returns full pandas DataFrames —
 one row per scenario-year, with a ``f"{participant} <metric>"`` column for
 *every* participant in the model — far too wide to hand an AI assistant
 inline. This module keeps only the handful of scenario-level columns a
 conversational "how did the model do" answer needs, and caps how many years
-of one scenario it shows, so ``run_model``'s output stays a small, bounded
-size regardless of how many participants or years the graph has.
+of one scenario it shows, so a run's output stays a small, bounded size
+regardless of how many participants or years the model has.
+
+Used by both servers: ``ets.mcp.tools`` (the composer — ``run_model`` on an
+in-progress graph) and ``ets.mcp.models_tools`` (the governor — ``run_model``/
+``describe_model``/``compare_models``/``sweep_model`` on an already-saved
+model id), so the compact shapes stay identical regardless of which server
+an AI assistant is talking to.
 
 Engineering caps below (``_MAX_YEARS_PER_SCENARIO``, ``_ROUND_DECIMALS``) are
 not economic/model parameters — see ``ets.model_store``'s module docstring
@@ -16,9 +22,13 @@ for why this repo colocates constants of this kind in code rather than a
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from typing import Any
 
 import pandas as pd
+
+from ..blocks import derive_manifest
+from ..config_io import normalize_config
 
 _MAX_YEARS_PER_SCENARIO = 12
 _ROUND_DECIMALS = 4
@@ -153,3 +163,189 @@ def compact_run_summary(
         }
 
     return {"scenarios": scenarios}
+
+
+# ── shared "list a runnable model" entry (composer's list_models, the ────
+# ── governor's list_models/describe_model) ───────────────────────────────
+
+
+def describe_model_entry(model_id: str, source: str, config: dict[str, Any]) -> dict[str, Any]:
+    """One ``list_models()`` row: id/name/source/feature chips/description.
+
+    The single place this "what is this model, at a glance" summary is
+    built — both ``ets.mcp.tools.list_models`` (the composer) and
+    ``ets.mcp.models_tools.describe_model`` (the governor) call this rather
+    than each deriving their own label/description text.
+
+    Args:
+        model_id: An example stem or registry ``"user_<slug>"`` id.
+        source: ``"example"`` or ``"registry"``.
+        config: The model's scenario-config dict.
+
+    Returns:
+        ``{"id", "name", "source", "features", "approach", "description"}``
+        — ``features``/``approach`` are ``derive_manifest(config)``'s
+        top-level lists; ``name`` is title-cased from the id (registry ids
+        drop their ``"user_"`` prefix first); ``description`` is a one-line
+        scenario-count/approach/features summary.
+    """
+    manifest = derive_manifest(config)
+    scenario_names = [str(s.get("name", "")) for s in config.get("scenarios", [])]
+    label = model_id.removeprefix("user_") if source == "registry" else model_id
+    description = (
+        f"{len(scenario_names)} scenario(s) - approach: "
+        f"{', '.join(manifest['approach']) or 'n/a'} - "
+        f"features: {', '.join(manifest['features'])}"
+    )
+    return {
+        "id": model_id,
+        "name": label.replace("_", " ").title(),
+        "source": source,
+        "features": manifest["features"],
+        "approach": manifest["approach"],
+        "description": description,
+    }
+
+
+# ── shared year-label ordering (describe_model's year span, sweep_model's ─
+# ── final-year pick, compare_models' aligned year axis) ──────────────────
+
+
+def sort_year_labels(labels: Iterable[str]) -> list[str]:
+    """Chronological order for a set of year labels: numeric first, then lexicographic.
+
+    Same ordering rule as :func:`_year_sort_index` (numeric year labels sort
+    numerically; a non-numeric label, e.g. a Hotelling scenario's "Base
+    Year" fallback, sorts after every numeric one) but for a plain
+    collection of label strings rather than a ``summary_df``'s ``"Year"``
+    column.
+
+    Args:
+        labels: Year label strings; duplicates are fine (deduplicated).
+
+    Returns:
+        Deduplicated labels, numeric ones ascending by value, followed by
+        any non-numeric ones in lexicographic order.
+    """
+
+    def _sort_key(label: str) -> tuple[int, float, str]:
+        try:
+            return (0, float(label), label)
+        except (TypeError, ValueError):
+            return (1, 0.0, label)
+
+    return sorted(set(labels), key=_sort_key)
+
+
+# ── describe_model: manifest + scenario/year/participant/mechanism ───────
+
+
+_STRUCTURAL_MANIFEST_CATEGORIES = frozenset({"market", "participants"})
+
+
+def compact_model_description(model_id: str, source: str, config: dict[str, Any]) -> dict[str, Any]:
+    """Manifest + scenario/year/participant/mechanism overview for ``describe_model``.
+
+    Builds on :func:`describe_model_entry`'s ``{id, name, source, features,
+    approach, description}`` with the extra detail a governor needs before
+    running a model: every scenario name, the overall year span, every
+    participant name across every scenario, and a "mechanisms" breakdown —
+    the non-structural block categories in play (e.g. ``price_formation``,
+    ``policy``, ``expectations``, ``analysis``, whichever the catalogue
+    reports), each mapped to its block ids. The ``market``/``participants``
+    categories are omitted here — already covered by ``scenarios``/
+    ``participants`` below, not "mechanisms" in the governance sense.
+
+    Args:
+        model_id: An example stem or registry ``"user_<slug>"`` id.
+        source: ``"example"`` or ``"registry"``.
+        config: The model's scenario-config dict.
+
+    Returns:
+        :func:`describe_model_entry`'s dict, plus ``{"scenarios": [names],
+        "years": {"start", "end", "count"}, "participants": [names],
+        "mechanisms": {category: [block_id, ...]}}``.
+    """
+    overview = describe_model_entry(model_id, source, config)
+    manifest = derive_manifest(config)
+    normalized = normalize_config(config)
+
+    scenario_names = [str(scenario["name"]) for scenario in normalized["scenarios"]]
+    year_labels = sort_year_labels(
+        str(year["year"]) for scenario in normalized["scenarios"] for year in scenario["years"]
+    )
+    participants = sorted(
+        {
+            str(participant["name"])
+            for scenario in normalized["scenarios"]
+            for year in scenario["years"]
+            for participant in year.get("participants", [])
+            if participant.get("name")
+        }
+    )
+    mechanisms = {
+        category: blocks
+        for category, blocks in manifest["categories"].items()
+        if category not in _STRUCTURAL_MANIFEST_CATEGORIES
+    }
+
+    return {
+        **overview,
+        "scenarios": scenario_names,
+        "years": {
+            "start": year_labels[0] if year_labels else None,
+            "end": year_labels[-1] if year_labels else None,
+            "count": len(year_labels),
+        },
+        "participants": participants,
+        "mechanisms": mechanisms,
+    }
+
+
+# ── sweep_model: per-value headline results ───────────────────────────────
+
+
+def compact_sweep_summary(batch: dict[str, Any]) -> dict[str, Any]:
+    """Reduce ``ets.analysis.batch.run_batch``'s output to per-value headlines.
+
+    Args:
+        batch: ``run_batch``'s return value for a single-parameter sweep
+            (one entry in ``sweeps``) — ``{"runs": [...], "n_runs",
+            "n_errors", "sweep_axes"}``.
+
+    Returns:
+        ``{"runs": [{"params", "error", "final_year", "final_price",
+        "cumulative_abatement"}, ...], "n_runs", "n_errors"}`` — one entry
+        per swept value, in ``batch["runs"]`` order. ``final_year`` is the
+        chronologically-last year in that run's results (see
+        :func:`sort_year_labels`); ``final_price``/``cumulative_abatement``
+        are ``None`` when the run errored or produced no year rows.
+    """
+    runs: list[dict[str, Any]] = []
+    for run in batch["runs"]:
+        result_years = run["results"]
+        if run["error"] is not None or not result_years:
+            runs.append(
+                {
+                    "params": run["params"],
+                    "error": run["error"],
+                    "final_year": None,
+                    "final_price": None,
+                    "cumulative_abatement": None,
+                }
+            )
+            continue
+        year_order = sort_year_labels(str(row["year"]) for row in result_years)
+        final_year = year_order[-1]
+        final_row = next(row for row in result_years if str(row["year"]) == final_year)
+        cumulative_abatement = sum(float(row["total_abatement"]) for row in result_years)
+        runs.append(
+            {
+                "params": run["params"],
+                "error": None,
+                "final_year": final_year,
+                "final_price": _round(float(final_row["price"])),
+                "cumulative_abatement": _round(cumulative_abatement),
+            }
+        )
+    return {"runs": runs, "n_runs": batch["n_runs"], "n_errors": batch["n_errors"]}
