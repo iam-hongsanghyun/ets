@@ -194,6 +194,20 @@ def _path_solver_for(
 
         return _solve_nash
 
+    if approach == "product":
+        # Steel↔carbon flagship product market (D3-3, docs/multi-commodity-plan.md
+        # §1/§6): a goods market clearing on a demand curve, routed to the
+        # product_market feature solver. Placed BEFORE the competitive default so
+        # it fires ONLY for the new "product" string — every carbon approach falls
+        # through untouched (golden-inert). Standalone here (exogenous carbon_price
+        # on each market); the coupling is D3-4.
+        def _solve_product(ordered_markets: list[CarbonMarket]) -> list[dict]:
+            from .wiring import solve_product_path
+
+            return solve_product_path(ordered_markets)
+
+        return _solve_product
+
     def _solve_competitive(ordered_markets: list[CarbonMarket]) -> list[dict]:
         # Default: competitive (MSR handled inside solve_scenario_path)
         from .wiring import solve_scenario_path
