@@ -20,8 +20,9 @@ import {
   JointConvergenceCard,
 } from "./components/MultiMarket.jsx";
 import { SectorInteraction } from "./components/SectorInteraction.jsx";
+import { CanvasView } from "./pe/CanvasView.jsx";
 
-export default function App({ enabledFeatures = null, manifest = null, initialTemplateId = null } = {}) {
+export default function App({ enabledFeatures = null, manifest = null, initialTemplateId = null, initialConfig = null } = {}) {
   const [templates, setTemplates] = useS([]);
   const [config, setConfig] = useS({ scenarios: [] });
   const [results, setResults] = useS({});
@@ -96,7 +97,10 @@ export default function App({ enabledFeatures = null, manifest = null, initialTe
       const payload = await response.json();
       setTemplates(payload.templates || []);
       const defaultTemplate =
-        (initialTemplateId && payload.templates?.find((item) => item.id === initialTemplateId)?.config)
+        // A restored SESSION seeds the editor from its own full config (more
+        // specific than any model/template); models fall back to the picker.
+        initialConfig
+        || (initialTemplateId && payload.templates?.find((item) => item.id === initialTemplateId)?.config)
         || payload.templates?.find((item) => item.id === "example")?.config
         || payload.templates?.find((item) => item.config?.scenarios?.some((scenario) =>
           scenario.years?.some((year) => (year.participants || []).length > 0)
@@ -267,6 +271,56 @@ export default function App({ enabledFeatures = null, manifest = null, initialTe
         scenario.id === activeScenario.id ? { ...scenario, ...patch } : scenario
       ),
     }));
+  };
+
+  // Config write-back for the Canvas tab. Both reuse the App's existing
+  // flat-vs-joint routing: updateScenarioYears delegates to mapActiveYears
+  // (which targets the active market's years for a joint scenario, or the flat
+  // scenario's years otherwise), and updateScenarioSectors mirrors it for the
+  // scenario/market-level sectors list. This keeps ALL config-mutation routing
+  // in the App — the Canvas only supplies pure array transforms — so an edit on
+  // the Canvas lands in exactly the same place the Model forms edit.
+  const updateScenarioYears = (mapYears) => {
+    commitConfig((prev) => mapActiveYears(prev, mapYears));
+  };
+
+  const updateScenarioSectors = (mapSectors) => {
+    commitConfig((prev) => ({
+      ...prev,
+      scenarios: prev.scenarios.map((scenario) => {
+        if (scenario.id !== activeScenario.id) return scenario;
+        if (activeMarket != null) {
+          return {
+            ...scenario,
+            markets: (scenario.markets || []).map((market) =>
+              String(market.market_id) === String(activeMarket)
+                ? { ...market, sectors: mapSectors(market.sectors || []) }
+                : market
+            ),
+          };
+        }
+        return { ...scenario, sectors: mapSectors(scenario.sectors || []) };
+      }),
+    }));
+  };
+
+  const saveAsSession = async () => {
+    const suggested = activeScenario?.name ? `${activeScenario.name} session` : "Session";
+    const name = (window.prompt("Save this working config as a session named:", suggested) || "").trim();
+    if (!name) return;
+    setStatus("Saving session…");
+    try {
+      const response = await fetch("/api/session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, config: configRef.current, source_model_id: initialTemplateId || null }),
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error || "Session save failed.");
+      setStatus("Session saved");
+    } catch (error) {
+      setStatus("Session save failed");
+    }
   };
 
   const addScenario = () => {
@@ -464,6 +518,7 @@ export default function App({ enabledFeatures = null, manifest = null, initialTe
             onRemoveScenario={removeScenario}
             onLoadTemplate={loadTemplateIntoEditor}
             onSaveScenario={saveActiveScenarioToLibrary}
+            onSaveSession={saveAsSession}
             status={status}
             showGuideTab={showGuideTab}
             hideLoadTemplate={enabledFeatures != null}
@@ -489,6 +544,7 @@ export default function App({ enabledFeatures = null, manifest = null, initialTe
         onRemoveScenario={removeScenario}
         onLoadTemplate={loadTemplateIntoEditor}
         onSaveScenario={saveActiveScenarioToLibrary}
+        onSaveSession={saveAsSession}
         status={status}
         showGuideTab={showGuideTab}
         hideLoadTemplate={enabledFeatures != null}
@@ -555,6 +611,16 @@ export default function App({ enabledFeatures = null, manifest = null, initialTe
           navigationTarget={validationTarget}
           enabledFeatures={enabledFeatures}
           manifest={manifest}
+        />
+      )}
+
+      {activeSection === "canvas" && (
+        <CanvasView
+          key={viewScenario?.id}
+          scenario={viewScenario}
+          activeYear={activeYear}
+          updateScenarioYears={updateScenarioYears}
+          updateScenarioSectors={updateScenarioSectors}
         />
       )}
 
