@@ -50,10 +50,13 @@ A real implementation would look roughly like::
 
 The schema (a ``models`` table: ``id text primary key, name text,
 config_json text, graph_json text, source text, domain text, created_at
-timestamptz, updated_at timestamptz``) matches
+timestamptz, updated_at timestamptz, kind text not null default 'model',
+source_model_id text``) matches
 :class:`~pe.registry.sqlite_backend.SqliteBackend`'s SQLite schema exactly,
 so a migration from SQLite to Supabase is a straight per-row copy — no
-reshaping of ``ModelRecord``.
+reshaping of ``ModelRecord``. A real ``list_models(kind=...)`` adds a
+``.eq("kind", kind)`` filter to the PostgREST select; ``save_model`` writes
+the two extra columns straight into its upsert payload.
 
 Row Level Security is deliberately left as a TODO for whoever wires this
 up for real: a hosted multi-tenant registry needs a policy scoping rows to
@@ -105,13 +108,15 @@ class SupabaseBackend:
         *,
         source: str = "graph",
         domain: str | None = None,
+        kind: str = "model",
+        source_model_id: str | None = None,
     ) -> ModelRecord:
         raise self._unimplemented("save_model")
 
     def get_model(self, model_id: str) -> ModelRecord | None:
         raise self._unimplemented("get_model")
 
-    def list_models(self) -> list[ModelRecord]:
+    def list_models(self, *, kind: str | None = None) -> list[ModelRecord]:
         raise self._unimplemented("list_models")
 
     def rename_model(self, model_id: str, new_name: str) -> ModelRecord:

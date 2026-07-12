@@ -68,6 +68,19 @@ class ModelRecord:
             pack. Never a hardcoded domain value from this module.
         created_at: ISO-8601 UTC timestamp, set once at first save.
         updated_at: ISO-8601 UTC timestamp, refreshed on every save.
+        kind: The registry tier of this entry — ``"model"`` (a reusable
+            nutshell: structure plus possibly-PARTIAL contents, authored in
+            the builder and shown in its template picker) or ``"session"``
+            (the FULL runnable state — every company/sector/detailed
+            setting — instantiated FROM a model, worked on in pe.command,
+            and shown/loaded ONLY there). Defaults to ``"model"``: every
+            pre-``kind`` row (and every writer that does not pass it) is a
+            model, so existing registries are byte-compatible. Free-form
+            beyond those two tags — a future tier can add its own without a
+            schema change.
+        source_model_id: For a ``"session"``, the registry id of the model
+            it was instantiated from; ``None`` for a ``"model"`` (a model is
+            not derived from anything).
     """
 
     id: str
@@ -78,6 +91,8 @@ class ModelRecord:
     domain: str | None
     created_at: str
     updated_at: str
+    kind: str = "model"
+    source_model_id: str | None = None
 
 
 class StorageBackend(Protocol):
@@ -101,8 +116,22 @@ class StorageBackend(Protocol):
         *,
         source: str = "graph",
         domain: str | None = None,
+        kind: str = "model",
+        source_model_id: str | None = None,
     ) -> ModelRecord:
-        """Insert or upsert one model. Idempotent on ``model_id``.
+        """Insert or upsert one registry entry. Idempotent on ``model_id``.
+
+        The one storage primitive behind BOTH registry tiers: a model
+        (``kind="model"``, the default — byte-compatible with every
+        pre-``kind`` caller) and a session (``kind="session"``, carrying a
+        ``source_model_id`` link back to the model it was instantiated from).
+        Idempotent on ``model_id``, so it doubles as the UPDATE-EXISTING
+        path: re-saving under an existing id overwrites that entry (used
+        when a session is promoted back onto its source model), while a
+        fresh id inserts a new one.
+        The ``kind``/``source_model_id`` distinction is a stored column, not
+        a separate table or method, so the tier filter lives entirely in the
+        query (:meth:`list_models`) rather than in duplicated write paths.
 
         Args:
             model_id: The registry slug (unprefixed).
@@ -111,6 +140,10 @@ class StorageBackend(Protocol):
             graph: The source composer graph dict, or ``None``.
             source: Provenance tag, see :class:`ModelRecord`.
             domain: Optional domain-pack tag, see :class:`ModelRecord`.
+            kind: Registry tier, see :class:`ModelRecord` (default
+                ``"model"``).
+            source_model_id: Source-model link for a project, see
+                :class:`ModelRecord` (default ``None``).
 
         Returns:
             The persisted :class:`ModelRecord`, with ``created_at``
@@ -120,11 +153,24 @@ class StorageBackend(Protocol):
         ...
 
     def get_model(self, model_id: str) -> ModelRecord | None:
-        """Fetch one model by id, or ``None`` if no such model is saved."""
+        """Fetch one entry by id, or ``None`` if no such entry is saved.
+
+        Kind-agnostic: returns a model or a session alike (the id namespaces
+        keep the two tiers distinct — see ``pe.model_store``).
+        """
         ...
 
-    def list_models(self) -> list[ModelRecord]:
-        """List every saved model, ordered deterministically by ``id``."""
+    def list_models(self, *, kind: str | None = None) -> list[ModelRecord]:
+        """List saved entries, ordered deterministically by ``id``.
+
+        Args:
+            kind: When given, return only entries of that tier
+                (``"model"`` or ``"session"``); when ``None`` (the default),
+                return every entry regardless of tier. The builder's
+                template picker and ``list_models`` pass ``kind="model"`` so
+                sessions never leak into the model corpus; pe.command's
+                session list passes ``kind="session"``.
+        """
         ...
 
     def rename_model(self, model_id: str, new_name: str) -> ModelRecord:

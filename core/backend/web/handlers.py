@@ -27,7 +27,7 @@ from .api import (
     _WarningCollector,
     build_analysis,
 )
-from .routes import ROUTES
+from .routes import resolve_route
 
 __all__ = [
     "ASSET_CONTENT_TYPES",
@@ -73,9 +73,11 @@ class ETSRequestHandler(BaseHTTPRequestHandler):
             self._serve_dist_asset("index.html")
             return
         if parsed.path.startswith("/api/"):
-            route = ROUTES.get(("GET", parsed.path))
-            if route is not None:
+            resolved = resolve_route("GET", parsed.path)
+            if resolved is not None:
+                route, path_params = resolved
                 query = {key: values[0] for key, values in parse_qs(parsed.query).items()}
+                query.update(path_params)
                 try:
                     self._write_json(route(b"", self.headers, query))
                 except Exception as exc:
@@ -87,19 +89,35 @@ class ETSRequestHandler(BaseHTTPRequestHandler):
         self._serve_dist_asset(relative_path)
 
     def do_POST(self) -> None:
+        self._dispatch_body("POST")
+
+    def do_DELETE(self) -> None:
+        self._dispatch_body("DELETE")
+
+    def do_PATCH(self) -> None:
+        self._dispatch_body("PATCH")
+
+    def _dispatch_body(self, method: str) -> None:
+        """Dispatch a body-bearing request (POST/DELETE/PATCH) through the router.
+
+        DELETE (no body) and PATCH (a JSON body) share POST's flow: read the
+        body if any, resolve the route (including a ``/api/session/<id>``
+        prefix route), and adapt. Preserves the pre-routes contract for an
+        unknown path — parse the JSON body first so a malformed body yields
+        400 and a well-formed one 404.
+        """
         parsed = urlparse(self.path)
         length = int(self.headers.get("Content-Length", "0"))
-        body = self.rfile.read(length)
+        body = self.rfile.read(length) if length > 0 else b""
         try:
-            route = ROUTES.get(("POST", parsed.path))
-            if route is None:
-                # Preserve pre-routes behaviour: unknown POST paths parsed
-                # the JSON body first, so a malformed body yields 400, a
-                # well-formed one 404.
+            resolved = resolve_route(method, parsed.path)
+            if resolved is None:
                 json.loads(body.decode("utf-8")) if body else {}
                 self.send_error(HTTPStatus.NOT_FOUND, "Not found")
                 return
+            route, path_params = resolved
             query = {key: values[0] for key, values in parse_qs(parsed.query).items()}
+            query.update(path_params)
             payload = route(body, self.headers, query)
             self._write_json(payload)
         except Exception as exc:

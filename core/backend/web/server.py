@@ -8,7 +8,7 @@ from urllib.parse import parse_qs
 from ..core.paths import DOCS_DIR, FRONTEND_DIST_DIR
 from .api import _json_safe
 from .handlers import ASSET_CONTENT_TYPES
-from .routes import ROUTES
+from .routes import resolve_route
 
 
 def _json_response(start_response, payload: dict, status: HTTPStatus = HTTPStatus.OK):
@@ -59,11 +59,15 @@ def app(environ, start_response):
     path = environ.get("PATH_INFO", "/") or "/"
     query = {key: values[0] for key, values in parse_qs(environ.get("QUERY_STRING", "")).items()}
 
-    route = ROUTES.get((method, path))
-    if route is not None:
+    resolved = resolve_route(method, path)
+    if resolved is not None:
+        route, path_params = resolved
+        merged_query = {**query, **path_params}
         if method == "GET":
             try:
-                return _json_response(start_response, route(b"", _FakeHeaders(environ), query))
+                return _json_response(
+                    start_response, route(b"", _FakeHeaders(environ), merged_query)
+                )
             except Exception as exc:
                 return _json_response(start_response, {"error": str(exc)}, HTTPStatus.BAD_REQUEST)
         try:
@@ -72,7 +76,7 @@ def app(environ, start_response):
             length = 0
         raw = environ["wsgi.input"].read(length) if length > 0 else b""
         try:
-            payload = route(raw, _FakeHeaders(environ), query)
+            payload = route(raw, _FakeHeaders(environ), merged_query)
             return _json_response(start_response, payload)
         except Exception as exc:
             return _json_response(start_response, {"error": str(exc)}, HTTPStatus.BAD_REQUEST)

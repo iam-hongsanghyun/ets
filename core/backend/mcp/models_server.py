@@ -87,6 +87,8 @@ def build_server() -> FastMCP:
         models_tools.rename_model,
         models_tools.delete_model,
         models_tools.model_manifest,
+        models_tools.list_sessions,
+        models_tools.run_session,
     ):
         server.tool()(fn)
     return server

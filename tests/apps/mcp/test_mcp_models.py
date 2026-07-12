@@ -267,6 +267,8 @@ def test_mcp_models_server_lists_all_tools_over_memory_transport() -> None:
                 "rename_model",
                 "delete_model",
                 "model_manifest",
+                "list_sessions",
+                "run_session",
             }
 
             result = await session.call_tool("list_models", {})
