@@ -48,6 +48,7 @@ packages = [
     "pe.features.endogenous_investment", "pe.features.hoarding",
     "pe.features.hotelling", "pe.features.market_links", "pe.features.msr",
     "pe.features.nash_cournot", "pe.features.oba", "pe.features.price_controls",
+    "pe.features.product_market",
     "pe.features.sectors", "pe.features.transmission",
     # deprecated ets compat mirror (physically under compat/ets/, removed 0.4.0).
     # Full list mechanically generated: `find compat/ets -name __init__.py`.
@@ -80,6 +81,7 @@ packages = [
 "pe.features.nash_cournot"           = "modules/nash_cournot/backend"
 "pe.features.oba"                    = "modules/oba/backend"
 "pe.features.price_controls"         = "modules/price_controls/backend"
+"pe.features.product_market"         = "modules/product_market/backend"
 "pe.features.sectors"                = "modules/sectors/backend"
 "pe.features.transmission"           = "modules/transmission/backend"
 

@@ -66,6 +66,7 @@ __all__ = [
     "solve_banking_path",
     "solve_hotelling_path",
     "solve_nash_path",
+    "solve_product_path",
     "solve_scenario_path",
     "solve_transmission_path",
 ]
@@ -470,6 +471,35 @@ def solve_nash_path(ordered_markets, **nash_kwargs) -> list[dict]:
 
         msr_state = MSRState()
     return _nash_solve_path(ordered_markets, msr_state=msr_state, **nash_kwargs)
+
+
+def solve_product_path(ordered_markets: list[CarbonMarket]) -> list[dict]:
+    """Engine-bound product solve: bind the product_market feature solver, delegate.
+
+    The steel↔carbon flagship's ``model_approach: "product"`` binding (D3-3,
+    ``docs/multi-commodity-plan.md`` §6). Unlike the carbon approaches, the
+    product market carries no default cap/supply rules (its cap buckets are
+    inert, plan §1) — the feature solver builds the demand/import/producer-supply
+    curves from the stamped product body and clears each year via the T0
+    primitive ``pe.core.market.product_clearing.solve_product_equilibrium``. The
+    exogenous ``carbon_price`` on each market makes the leg solvable STANDALONE
+    (D3-4 replaces it with the coupled joint price).
+
+    LAZY ACTIVATION (binding, the ``default_*`` builders' precedent): the
+    ``features.product_market.solver`` import is FUNCTION-LOCAL, so importing
+    this module — or ``pe.engine`` — loads no product runtime; only SOLVING a
+    ``"product"`` scenario does.
+
+    Args:
+        ordered_markets: The scenario's product markets, sorted chronologically.
+
+    Returns:
+        Ledger-compatible path details from
+        ``features.product_market.solver.solve_product_path``.
+    """
+    from ..features.product_market.solver import solve_product_path as _product_solve_path
+
+    return _product_solve_path(ordered_markets)
 
 
 def solve_transmission_path(ordered_markets, lam: float, **kwargs) -> list[dict]:

@@ -380,6 +380,19 @@ def _normalize_market_body(raw_body: Mapping[str, Any], *, label: str) -> dict[s
             ``invest_credibility``, ``msr_mode``, or an empty-string
             ``flow_label``/``flow_unit``/``price_unit``.
     """
+    # Product market (D3-3, docs/multi-commodity-plan.md §1/§6): a
+    # ``model_approach: "product"`` body is a goods market, not a carbon
+    # compliance flow — it is normalised ENTIRELY by the product_market plugin
+    # door (the two-door config-facing surface), never the carbon year pipeline
+    # below. Detected BEFORE ``blank_scenario`` so producer participants never
+    # hit ``normalize_participant``. Golden-inert: no carbon body reaches this
+    # branch. The import is function-local so a carbon-only config never loads
+    # the product_market plugin.
+    if str(raw_body.get("model_approach") or "").strip() == "product":
+        from ..features.product_market.plugin import normalize_product_body
+
+        return normalize_product_body(raw_body, label=label)
+
     scenario = blank_scenario()
     scenario.update(raw_body)
 
@@ -636,6 +649,90 @@ def build_markets_from_file(config_path: str | Path) -> list[CarbonMarket]:
     return build_markets_from_config(load_config(config_path))
 
 
+# ── Product market construction (D3-3, docs/multi-commodity-plan.md §1) ──────
+# A product market is a CarbonMarket with INERT cap buckets (total_cap =
+# auction_offered = 0) carrying the normalised product body as stamped
+# attributes (as msr_*/eua_price already are, plan §1). One inert placeholder
+# participant satisfies the CarbonMarket ≥1-participant / cap-consistency
+# invariants without contributing free allocation — the producers are stamped
+# as product data (``product_producers``) and read by the engine's product
+# solver, never as carbon participants (the multi-commodity carbon market has NO
+# free-alloc supply bucket, spec §7 V-D3-3). None of the carbon reporters is
+# attached, so the reporting host emits base columns only over the solver's
+# producer participant frame.
+_PRODUCT_SHELL_PARTICIPANT_NAME = "__product_shell__"
+
+
+def _build_product_markets(scenario: dict[str, Any]) -> list[CarbonMarket]:
+    """Build one inert-cap ``CarbonMarket`` per year of a product scenario.
+
+    Args:
+        scenario: A normalised product scenario (``model_approach: "product"``)
+            carrying ``carbon_price``/``product_demand``/``import_supply``/
+            ``years`` (the ``product_market`` plugin's normalised body plus the
+            scenario ``name``).
+
+    Returns:
+        The scenario's per-year product markets, in year (declaration) order.
+    """
+    scenario_name = str(scenario["name"])
+    return [
+        _build_product_market_from_year(scenario_name, year_body, scenario)
+        for year_body in scenario["years"]
+    ]
+
+
+def _build_product_market_from_year(
+    scenario_name: str, year_body: dict[str, Any], scenario: Mapping[str, Any]
+) -> CarbonMarket:
+    """Construct one product-market year as an inert-cap ``CarbonMarket``.
+
+    Args:
+        scenario_name: The scenario name (market ledger key).
+        year_body: One normalised ``years[i]`` entry ``{year, producers: [...]}``.
+        scenario: The whole normalised product scenario (read for the body-level
+            ``carbon_price``/``product_demand``/``import_supply``).
+
+    Returns:
+        The ``CarbonMarket`` shell with the product body stamped as attributes
+        for the engine's ``"product"`` dispatch branch.
+    """
+    placeholder = MarketParticipant(
+        name=_PRODUCT_SHELL_PARTICIPANT_NAME,
+        initial_emissions=0.0,
+        marginal_abatement_cost=0.0,
+        free_allocation_ratio=0.0,
+        penalty_price=0.0,
+    )
+    market = CarbonMarket(
+        participants=[placeholder],
+        total_cap=0.0,
+        auction_offered=0.0,
+        scenario_name=scenario_name,
+        year=str(year_body["year"]),
+    )
+    # Stamp the product body (read by pe.engine's product solver via getattr) and
+    # the scenario-level fields dispatch reads via getattr on the first market.
+    # setattr (not a typed attribute write): CarbonMarket carries these product
+    # + approach fields dynamically — the solver/dispatch read them via getattr,
+    # so they are written via setattr symmetrically (no new mypy attr-defined;
+    # the dispatch.py investment-field precedent).
+    setattr(market, "model_approach", "product")  # noqa: B010
+    setattr(market, "product_carbon_price", float(scenario.get("carbon_price") or 0.0))  # noqa: B010
+    setattr(market, "product_demand", dict(scenario.get("product_demand") or {}))  # noqa: B010
+    setattr(market, "product_import_supply", dict(scenario.get("import_supply") or {}))  # noqa: B010
+    setattr(market, "product_producers", list(year_body.get("producers") or []))  # noqa: B010
+    # Dispatch/run_simulation getattr fields — product uses neither transmission
+    # nor investment feedback; set them explicitly to the inert/off values.
+    setattr(market, "forward_transmission_lambda", None)  # noqa: B010
+    setattr(market, "investment_feedback_enabled", False)  # noqa: B010
+    setattr(market, "investment_max_iterations", None)  # noqa: B010
+    setattr(market, "investment_initial_adoptions", [])  # noqa: B010
+    setattr(market, "discount_rate", float(scenario.get("discount_rate") or 0.04))  # noqa: B010
+    setattr(market, "risk_premium", float(scenario.get("risk_premium") or 0.0))  # noqa: B010
+    return market
+
+
 def build_markets_from_config(config: dict[str, Any]) -> list[CarbonMarket]:
     normalized = normalize_config(deepcopy(config))
     markets: list[CarbonMarket] = []
@@ -648,6 +745,14 @@ def build_markets_from_config(config: dict[str, Any]) -> list[CarbonMarket]:
                 "pe.engine.run_simulation_from_config (which routes it to "
                 "pe.engine.solve_multi_market_scenario), never this function."
             )
+        # Product market (D3-3): a ``model_approach: "product"`` scenario is
+        # built by the dedicated product path (inert cap buckets + stamped
+        # product body), NOT the carbon per-year pipeline. Gated on the approach
+        # string, so every carbon scenario reaches the byte-identical branch
+        # below (golden-inert).
+        if str(scenario.get("model_approach") or "").strip() == "product":
+            markets.extend(_build_product_markets(scenario))
+            continue
         scenario_meta = {
             "model_approach": scenario.get("model_approach", "competitive"),
             "discount_rate": scenario.get("discount_rate", 0.04),

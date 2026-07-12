@@ -27,7 +27,19 @@ def _norm_traj(raw: Any) -> dict:
         return {}
     return out
 ALLOWED_ABATEMENT_TYPES = {"linear", "threshold", "piecewise"}
-ALLOWED_MODEL_APPROACHES = {"competitive", "hotelling", "banking", "nash_cournot", "all"}
+# "product" (D3-3, docs/multi-commodity-plan.md §1) is REQUIRED here — an
+# approach absent from this whitelist is silently clamped to "competitive" (see
+# builder._normalize_market_body), which would route a product body down the
+# carbon path. The product body itself is normalised by the product_market
+# plugin door, not the standard carbon year pipeline.
+ALLOWED_MODEL_APPROACHES = {
+    "competitive",
+    "hotelling",
+    "banking",
+    "nash_cournot",
+    "all",
+    "product",
+}
 
 
 def normalize_year(raw_year: dict[str, Any]) -> dict[str, Any]:
