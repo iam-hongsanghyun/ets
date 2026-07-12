@@ -76,7 +76,35 @@ function ModelGroup({ eyebrow, title, description, templates, manifests, onSelec
   );
 }
 
-function ModelLanding({ templates, manifests, status, error, onDismissError, onSelect }) {
+function SessionGroup({ sessions, onSelect }) {
+  if (!sessions.length) return null;
+  return (
+    <section className="panel">
+      <div className="panel-head">
+        <div>
+          <div className="eyebrow">Resume</div>
+          <h2>Saved sessions</h2>
+          <p className="muted">Working configs saved from the editor. A session carries its full config, not just a model's structure.</p>
+        </div>
+      </div>
+      <div className="builder-list">
+        {sessions.map((session) => (
+          <button
+            key={session.id}
+            type="button"
+            className="builder-list-item"
+            onClick={() => onSelect(session)}
+          >
+            <span>{session.name}</span>
+            <span className="builder-item-meta">Session</span>
+          </button>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function ModelLanding({ templates, manifests, sessions, status, error, onDismissError, onSelect, onSelectSession }) {
   const examples = templates.filter((template) => template.source === "example");
   const userModels = templates.filter((template) => template.source === "user");
   const other = templates.filter((template) => template.source !== "example" && template.source !== "user");
@@ -109,6 +137,7 @@ function ModelLanding({ templates, manifests, status, error, onDismissError, onS
             <p className="lede">Select a model — the interface loads only that model's modules. Every model opens with only the mechanisms it actually uses; no unrelated MSR, CCR, CBAM, sector, or OBA sections.</p>
           </div>
         </section>
+        <SessionGroup sessions={sessions} onSelect={onSelectSession} />
         <ModelGroup
           eyebrow="Start"
           title="Blank configuration"
@@ -179,7 +208,8 @@ export function PeApp() {
   const [templates, setTemplates] = useState([]);
   const [status, setStatus] = useState("Loading…");
   const [error, setError] = useState(null);
-  const [selected, setSelected] = useState(null); // { id, name, manifest }
+  const [selected, setSelected] = useState(null); // { id, name, manifest, initialConfig?, sourceModelId? }
+  const [sessions, setSessions] = useState([]);
   // Manifest cache, keyed by template id — persists for the life of the pe
   // shell (this component never unmounts between landing <-> model views),
   // so both the landing chips and selectModel below reuse one fetch per id.
@@ -203,6 +233,25 @@ export function PeApp() {
       cancelled = true;
     };
   }, []);
+
+  // List saved sessions for the "Saved sessions" restore strip. Re-fetched each
+  // time we return to the landing (selected -> null) so a just-saved session
+  // shows without a reload.
+  useEffect(() => {
+    if (selected) return;
+    let cancelled = false;
+    fetch("/api/sessions")
+      .then((response) => response.json())
+      .then((payload) => {
+        if (!cancelled) setSessions(payload.sessions || []);
+      })
+      .catch(() => {
+        if (!cancelled) setSessions([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selected]);
 
   // Lazily batch-fetch every template's manifest so the landing page can
   // show module chips per entry without one request-per-render or one giant
@@ -252,6 +301,42 @@ export function PeApp() {
     }
   }
 
+  // Restore a saved session: load its full config (GET /api/session/<id>) and
+  // open it in the SAME editor a model opens in, seeded with the session's
+  // config. The shell is scoped by a manifest derived from that config (POST
+  // /api/model-manifest), exactly as a model's manifest scopes it.
+  async function selectSession(session) {
+    setError(null);
+    setStatus("Loading session…");
+    try {
+      const response = await fetch(`/api/session/${encodeURIComponent(session.id)}`);
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error || "This session could not be loaded.");
+      let manifest = null;
+      try {
+        const manifestResponse = await fetch("/api/model-manifest", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload.config),
+        });
+        if (manifestResponse.ok) manifest = await manifestResponse.json();
+      } catch {
+        manifest = null;
+      }
+      setSelected({
+        id: session.id,
+        name: session.name,
+        manifest,
+        initialConfig: payload.config,
+        sourceModelId: payload.source_model_id || null,
+      });
+      setStatus("Loaded");
+    } catch (err) {
+      setError(err.message || "This session could not be loaded.");
+      setStatus("Loaded");
+    }
+  }
+
   function backToModels() {
     setSelected(null);
     setError(null);
@@ -262,10 +347,12 @@ export function PeApp() {
       <ModelLanding
         templates={templates}
         manifests={manifests}
+        sessions={sessions}
         status={status}
         error={error}
         onDismissError={() => setError(null)}
         onSelect={selectModel}
+        onSelectSession={selectSession}
       />
     );
   }
@@ -277,7 +364,8 @@ export function PeApp() {
         key={selected.id}
         enabledFeatures={selected.manifest?.features || null}
         manifest={selected.manifest}
-        initialTemplateId={selected.id}
+        initialTemplateId={selected.sourceModelId ?? selected.id}
+        initialConfig={selected.initialConfig ?? null}
       />
     </div>
   );

@@ -632,6 +632,10 @@ function Header({
   onRemoveScenario,
   status,
   showGuideTab = true,
+  // Optional "save the current working config as a SESSION" action. Present
+  // only in the pe.command shell (App passes it); the default shell leaves it
+  // out, so the button never renders there.
+  onSaveSession = null,
   // pe mode locks the shell to the model chosen on the welcome page — "Back
   // to models" (frontend/src/pe/PeApp.jsx's ModelToolbar) is the only way to
   // switch models, so the in-editor template splice control is hidden here.
@@ -642,6 +646,7 @@ function Header({
   const [selectedTemplate, setSelectedTemplate] = useS(templates?.[0]?.id || "blank");
   const sections = [
     { id: "build", label: "Model" },
+    { id: "canvas", label: "Canvas" },
     { id: "validation", label: "Validation" },
     { id: "analysis", label: "Analysis" },
     { id: "scenario", label: "Scenario" },
@@ -682,6 +687,9 @@ function Header({
               </button>
             ))}
           </nav>
+          {onSaveSession && (
+            <button className="ghost-btn" onClick={onSaveSession}>Save as session</button>
+          )}
         </div>
       </div>
       {activeSection === "build" && (
