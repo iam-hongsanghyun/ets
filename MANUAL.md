@@ -780,6 +780,7 @@ walkthrough above, via `configure.command`.
 | `docs/blocks-composition-rules.md` | Graph-validation rules R1–R32 and engine findings F1–F6 |
 | `docs/algorithm-overview.md` | Solver math (competitive, Hotelling, Nash), MSR, CBAM, validation rules, execution flow |
 | `docs/joint-model-guide.md` | Composing a multi-market cyclic (joint) model — canvas back-edges, `market_link` channels, the `joint_solver` block, the four `Joint *` diagnostics, damping; see also `docs/joint-equilibrium.md` for the economics |
+| `docs/multi-commodity-guide.md` | Composing a multi-commodity (steel↔carbon) model — the product-market + producer config shape, the cap/elasticity/abatement/CBAM/imports/OBA/investment levers, leakage, and the CBAM cap-preserving vs OBA cap-relaxing contrast; see also `docs/multi-commodity-spec.md` for the economics |
 | `core/doc/data-model.md` | Every config field — type, default, validation, example |
 | `core/doc/multi-year-simulation.md` | Banking, borrowing, expectation rules, BAU trajectory, grid factor trajectory, sector dynamics, auction revenue decomposition |
 | `modules/oba/doc/reference.md` | Output-Based Allocation concept, formula, override hierarchy, worked steel example |
