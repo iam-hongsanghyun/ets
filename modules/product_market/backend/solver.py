@@ -454,9 +454,13 @@ def _solve_one_market(market: CarbonMarket) -> dict[str, Any]:
     )
     if abs(loop_gain) >= _LOOP_GAIN_WARN_THRESHOLD:
         logger.warning(
-            "product market %r year %r: steel<->carbon joint loop gain |g|=%.4g >= 1 "
-            "(R37, spec §7) — damped Gauss-Seidel may not contract; check "
-            "demand elasticity / cap tightness / emission intensity.",
+            "product market %r year %r: R37 (D3 adaptation, spec §7) — steel<->carbon "
+            "joint loop gain |g|=%.4g >= 1: damped Gauss-Seidel may not contract. This is "
+            "the SAME contraction check the D2 joint engine reports as the 'Joint "
+            "Converged'/'Joint Cycle Detected' diagnostics (docs/joint-equilibrium.md §3); "
+            "R37 evaluates it here from the producer FOC slopes because the shared-agent "
+            "structural coupling has no external link coefficient. Check demand elasticity "
+            "/ cap tightness / emission intensity, or lower the joint_solver relaxation.",
             market.scenario_name,
             market.year,
             loop_gain,

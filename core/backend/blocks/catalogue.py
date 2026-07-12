@@ -35,10 +35,19 @@ _MSR_MODES = ("bank_threshold", "price_band", "surplus_rule", "hybrid")
 _EXPECTATION_RULES = ("myopic", "next_year_baseline", "perfect_foresight", "manual")
 _UNSOLD_TREATMENTS = ("reserve", "cancel", "carry_forward")
 _AUCTION_MODES = ("explicit", "derive_from_cap")
-# Mirrors modules/market_links/backend/plugin.py:ALLOWED_LINK_CHANNELS (spec
-# §2b: v1 ships exactly these two, no default) — duplicated here only as
-# strings, per this module's own dependency law (see module docstring).
-_LINK_CHANNELS = ("mac_cost", "invest_break_even")
+# Mirrors modules/market_links/backend/plugin.py:ALLOWED_LINK_CHANNELS —
+# duplicated here only as strings, per this module's own dependency law (see
+# module docstring). D1 shipped ``mac_cost``/``invest_break_even`` (spec §2b);
+# D3-4/D3-7 add the two steel↔carbon shared-agent coupling channels
+# (``carbon_input_price``/``output_ref_price``, docs/multi-commodity-spec.md §7):
+# they stamp the sibling PRICE onto the shared producer (not a MAC shift, not a
+# quantity). Golden-inert: no existing graph uses the two new keys, so widening
+# the enum leaves every committed scenario byte-identical.
+_LINK_CHANNELS = ("mac_cost", "invest_break_even", "carbon_input_price", "output_ref_price")
+# The product-market OBA design lever (spec §7 ruling #4): ``output_based`` is
+# the cap-RELAXING marginal φ·q allocation, ``fixed_cap`` the distributional
+# design. Mirrors modules/product_market/backend/plugin.py:_ALLOWED_OBA_MODES.
+_PRODUCT_OBA_MODES = ("output_based", "fixed_cap")
 # Mirrors config_io/builder.py:_JOINT_SOLVER_ALLOWED_SWEEPS / _..._ALLOWED_SEEDS
 # (D2 joint-equilibrium schema, docs/joint-equilibrium-plan.md §4) — duplicated
 # here only as strings, per this module's dependency law. config_io is the
@@ -199,7 +208,168 @@ def _market_block() -> BlockSpec:
             # today. Mirrors how a policy/baseline metadata block attaches to a
             # market via a dedicated in-port.
             PortSpec("joint_solver", "in", "joint_solver", cardinality="0..1"),
+            # D3-7 producer_ref (docs/multi-commodity-spec.md §6/§7 V-D3-3): a
+            # carbon market may READ its emitters from a sibling product market's
+            # producers rather than authoring its own ``participant`` nodes — the
+            # shared-agent coupling (a producer contributes e_i to Σe=Cap here and
+            # q_i to Σq+M=D on the product side). A ``product_market``'s
+            # ``producer_ref`` out-port feeds this in-port; compile.py then stamps
+            # ``producer_ref: {market: <product id>}`` on this carbon body
+            # (config_io resolves the per-year emitter view). 0..1: at most one
+            # product market supplies a carbon market's emitters. Golden-inert: no
+            # committed carbon graph draws this edge, so a carbon market WITHOUT it
+            # compiles byte-identically to today.
+            PortSpec("producer_ref", "in", "producer_ref", cardinality="0..1"),
         ),
+    )
+
+
+def _product_market_block() -> BlockSpec:
+    r"""The multi-commodity product market (steel↔carbon, docs/multi-commodity-spec.md).
+
+    A goods market that clears on a behavioural demand curve against optimising
+    producer supply (``Σ q_i(P_s, P_c) + M(P_s) = D(P_s)``) — distinct in KIND
+    from a ``carbon_market`` (which clears a compliance-obligation flow). It is
+    NOT a price-formation variant: the ``"product"`` model_approach is selected
+    structurally by the node's own block id, so it declares no price-formation
+    port and carries NO competitive/banking scenario keys.
+
+    Every param is ``scope="edge"``: a product body is normalised by
+    ``config_io``'s dedicated ``normalize_product_body`` (NOT ``normalize_
+    scenario``), so these config_keys never appear in ``normalize_scenario(blank_
+    scenario())`` — ``compile.py`` reads them directly into a ``model_approach:
+    "product"`` body rather than through the scope-driven ``_merge_block_params``
+    machinery, and the catalogue drift-guard exempts ``edge`` scope by design.
+    """
+    return BlockSpec(
+        id="product_market",
+        label="Product Market",
+        category="market",
+        doc=(
+            "One node = one product (goods) market body "
+            "(config_io/builder.py:_build_product_market_from_year); clears "
+            "Σ q_i(P_s, P_c) + M(P_s) = D(P_s) on a demand curve "
+            "(features/product_market/solver.py:solve_product_path)."
+        ),
+        feature="product_market",
+        params=(
+            ParamSpec("name", "name", "edge", "str", "New Product Market", label="Market id"),
+            # Exogenous P_c at which the market is solvable STANDALONE (D3-3); a
+            # steel↔carbon link replaces it with the coupled carbon price (D3-4).
+            ParamSpec(
+                "carbon_price", "carbon_price", "edge", "float", 0.0,
+                unit="currency/tCO2", label="Exogenous carbon price P_c (standalone)",
+            ),
+            # The behavioural demand curve (spec §1 [JC1]): linear
+            # {form, intercept (A_d), slope (b_d)} closed-form anchor, or
+            # {form: "isoelastic", kappa, eta} numeric option.
+            ParamSpec(
+                "product_demand", "product_demand", "edge", "dict", default={},
+                label="Demand curve {form: linear|isoelastic, intercept/slope or kappa/eta}",
+            ),
+            # Carbon-free elastic imports M = world_price(M_0) + slope(m)·P_s, with
+            # an optional price-active CBAM sub-dict {enabled, coverage, sigma_foreign}.
+            ParamSpec(
+                "import_supply", "import_supply", "edge", "dict", default={},
+                label="Import supply {world_price, slope, sigma_foreign, cbam:{enabled, coverage}}",
+            ),
+            ParamSpec(
+                "oba_mode", "oba_mode", "edge", "enum", "output_based",
+                enum=_PRODUCT_OBA_MODES,
+                label="OBA design (output_based=cap-relaxing φ·q vs fixed_cap)",
+            ),
+            ParamSpec(
+                "years", "years", "edge", "list", default=(),
+                label="Per-year grid (year labels; producers attach via the "
+                "'producers' port and broadcast across every year)",
+            ),
+            # D1 link vocabulary (spec §2e/§6): REQUIRED iff this market joins a
+            # steel↔carbon link; absent = unlinked standalone product market.
+            ParamSpec(
+                "price_unit", "price_unit", "edge", "str", None,
+                label="Price unit (REQUIRED iff this market is linked)",
+            ),
+            ParamSpec(
+                "scenario_name", "scenario_name", "edge", "str", None,
+                label="Linked-scenario display name (multi-market only; "
+                "must agree across the component)",
+            ),
+            ParamSpec("flow_label", "flow_label", "edge", "str", None, label="Flow label (display)"),
+            ParamSpec("flow_unit", "flow_unit", "edge", "str", None, label="Flow unit (display)"),
+        ),
+        ports=(
+            PortSpec("producers", "in", "producer", cardinality="1..n"),
+            # producer_ref -> a carbon_market's producer_ref in-port: the shared
+            # producers ALSO emit into the linked carbon market (spec §6).
+            PortSpec("producer_ref", "out", "producer_ref"),
+            PortSpec("results", "out", "results"),
+            # The steel↔carbon coupling rides the same market_link idiom as carbon
+            # markets: 'signal' is this market's SOLVED delivered price, 'links'
+            # receives inbound market_link edges — a link on either makes this node
+            # join a >1-market joint component (compile._connected_components).
+            PortSpec("signal", "out", "market_signal"),
+            PortSpec("links", "in", "market_link", cardinality="0..n"),
+            PortSpec("joint_solver", "in", "joint_solver", cardinality="0..1"),
+        ),
+    )
+
+
+def _producer_block() -> BlockSpec:
+    r"""The two-margin multi-commodity producer (steel firm, spec §2).
+
+    Chooses output ``q_i`` AND intensity abatement ``a_i`` to maximise profit;
+    ``a_i^* = clip(P_c/β, 0, a_max)`` (intensity margin) and
+    ``q_i^*(P_s, P_c)`` (output margin) are its two FOCs. Authored on the
+    product-market side (attaches to a ``product_market``'s ``producers`` port);
+    the sibling carbon market reads the same producers through a ``producer_ref``.
+
+    Every param is ``scope="edge"``: a producer is validated by
+    ``normalize_product_body._normalize_producer`` (mapping to
+    :class:`pe.core.participant.producer.ProducerParams`), not by
+    ``normalize_participant``; ``compile.py`` reads these directly into a
+    product-body ``participants[]`` entry.
+    """
+    return BlockSpec(
+        id="producer",
+        label="Producer",
+        category="participants",
+        doc="core/participant/producer.py:MultiCommodityProducer via normalize_product_body._normalize_producer",
+        feature="product_market",
+        params=(
+            ParamSpec("name", "name", "edge", "str", "New Producer"),
+            # Quadratic production cost γ q + ½ δ q² ⇒ MC = γ + δ q (δ > 0 REQUIRED,
+            # spec §2 [JC3]); the config-door normaliser rejects δ ≤ 0 / β ≤ 0.
+            ParamSpec(
+                "output_cost", "output_cost", "edge", "dict", default={},
+                label="Output cost {gamma (γ), delta (δ > 0)}",
+            ),
+            ParamSpec(
+                "intensity", "intensity", "edge", "float", 0.0,
+                unit="tCO2/t", label="Baseline emission intensity σ",
+            ),
+            ParamSpec(
+                "abatement", "abatement", "edge", "dict", default={},
+                label="Intensity abatement {beta (β > 0), a_max}",
+            ),
+            ParamSpec(
+                "oba_benchmark", "oba_benchmark", "edge", "float", 0.0,
+                unit="tCO2/t", label="OBA benchmark φ (marginal output subsidy P_c·φ)",
+            ),
+            ParamSpec(
+                "F_lump", "F_lump", "edge", "float", 0.0,
+                unit="tCO2/yr", label="Lump-sum free allocation (infra-marginal transfer)",
+            ),
+            ParamSpec(
+                "capacity", "capacity", "edge", "float", None, label="Output capacity (optional)",
+            ),
+            # Cleaner-tech options (spec §4g): each drops σ→σ' once P_c crosses the
+            # Dixit-Pindyck trigger P* = M·θ (trigger_mode ∈ {break_even, option_value}).
+            ParamSpec(
+                "technology_options", "technology_options", "edge", "list", default=(),
+                label="Clean-tech options [{name, sigma_prime, theta, trigger_mode}]",
+            ),
+        ),
+        ports=(PortSpec("product", "out", "producer"),),
     )
 
 
@@ -834,6 +1004,8 @@ def _build_catalogue() -> BlockRegistry:
     registry = BlockRegistry()
     for block in (
         _market_block(),
+        _product_market_block(),
+        _producer_block(),
         _market_link_block(),
         _joint_solver_block(),
         *_price_formation_blocks(),
