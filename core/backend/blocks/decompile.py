@@ -132,6 +132,11 @@ def _decompile_scenario(
     scenario: dict[str, Any], scenario_index: int, nodes: list[Node], edges: list[Edge]
 ) -> None:
     market_id = f"market{scenario_index}"
+    if str(scenario.get("model_approach") or "") == "product":
+        _decompile_product_market_body(
+            scenario, market_id, scenario["name"], {"order": scenario_index}, nodes, edges
+        )
+        return
     _decompile_market_body(scenario, market_id, scenario["name"], {"order": scenario_index}, nodes, edges)
 
 
@@ -167,6 +172,9 @@ def _decompile_linked_scenario(
     scenario_name = scenario["name"]
 
     node_id_by_market_id: dict[str, str] = {}
+    # (referencing carbon node id, referenced product market_id) — the
+    # producer_ref edges to wire once every market node exists (D3-7).
+    producer_ref_pairs: list[tuple[str, str]] = []
     for index, market in enumerate(markets):
         market_id = market["market_id"]
         node_id = f"market{scenario_index}_{index}"
@@ -175,7 +183,23 @@ def _decompile_linked_scenario(
         if index == 0 and scenario_name != market_id:
             extra_params["scenario_name"] = scenario_name
         body = {k: v for k, v in market.items() if k != "market_id"}
+        if str(body.get("model_approach") or "") == "product":
+            _decompile_product_market_body(body, node_id, market_id, extra_params, nodes, edges)
+            continue
+        # A carbon body's producer_ref points at a product market's emitters
+        # (D3-7): record the reference and STRIP it from the body so it is not
+        # round-tripped as opaque _scenario_extra — it becomes a producer_ref edge.
+        producer_ref = body.pop("producer_ref", None)
+        if producer_ref:
+            producer_ref_pairs.append((node_id, str(producer_ref["market"])))
         _decompile_market_body(body, node_id, market_id, extra_params, nodes, edges)
+
+    for carbon_node_id, product_market_id in producer_ref_pairs:
+        edges.append(
+            Edge(
+                node_id_by_market_id[product_market_id], "producer_ref", carbon_node_id, "producer_ref"
+            )
+        )
 
     for link_index, link in enumerate(links):
         link_node_id = f"market{scenario_index}_link{link_index}"
@@ -326,6 +350,74 @@ def _decompile_market_body(
     _decompile_scenario_policy(body, market_id, nodes, edges)
     _decompile_expectations(body, years, market_id, nodes, edges)
     _decompile_baseline(body, market_id, nodes, edges)
+
+
+def _decompile_product_market_body(
+    body: dict[str, Any],
+    market_id: str,
+    node_name: str,
+    extra_market_params: dict[str, Any],
+    nodes: list[Node],
+    edges: list[Edge],
+) -> None:
+    """Decompile one ``model_approach: "product"`` body into a ``product_market`` node.
+
+    The product analogue of :func:`_decompile_market_body` (D3-7): one
+    ``product_market`` node carrying the body-level ``carbon_price``/
+    ``product_demand``/``import_supply``/``oba_mode``/``price_unit`` plus a
+    ``years`` grid of bare year labels, and one ``producer`` node per producer in
+    the first year (producers are year-invariant here, mirroring how the carbon
+    path treats participants), each wired ``product -> producers``. Only
+    non-default optional fields are restated (the "reads like what a human drew"
+    discipline the whole decompiler follows). Inverse of
+    ``compile._compile_product_market_fields``.
+
+    Args:
+        body: The normalized product body (a flat product scenario, or a linked
+            ``markets[i]`` entry with ``market_id`` stripped).
+        market_id: The ``product_market`` node id (and producer-node id prefix).
+        node_name: The node's ``name`` param (its scenario name or ``market_id``).
+        extra_market_params: Extra params to seed (``order``, ``scenario_name``).
+        nodes: Accumulating node list (mutated in place).
+        edges: Accumulating edge list (mutated in place).
+    """
+    market_params: dict[str, Any] = {"name": node_name, **extra_market_params}
+    if body.get("carbon_price"):
+        market_params["carbon_price"] = body["carbon_price"]
+    if body.get("product_demand"):
+        market_params["product_demand"] = body["product_demand"]
+    if body.get("import_supply"):
+        market_params["import_supply"] = body["import_supply"]
+    if body.get("oba_mode", "output_based") != "output_based":
+        market_params["oba_mode"] = body["oba_mode"]
+    for key in ("price_unit", "flow_label", "flow_unit"):
+        if body.get(key):
+            market_params[key] = body[key]
+
+    years: list[dict[str, Any]] = body["years"]
+    market_params["years"] = [{"year": str(y["year"])} for y in years]
+    nodes.append(Node(market_id, "product_market", market_params))
+
+    producers = years[0]["producers"] if years else []
+    for index, producer in enumerate(producers):
+        pid = f"{market_id}_prod{index}"
+        params: dict[str, Any] = {
+            "name": producer["name"],
+            "order": index,
+            "output_cost": {"gamma": producer["gamma"], "delta": producer["delta"]},
+            "intensity": producer["sigma"],
+            "abatement": {"beta": producer["beta"], "a_max": producer["a_max"]},
+        }
+        if producer.get("phi_oba"):
+            params["oba_benchmark"] = producer["phi_oba"]
+        if producer.get("f_lump"):
+            params["F_lump"] = producer["f_lump"]
+        if producer.get("capacity") is not None:
+            params["capacity"] = producer["capacity"]
+        if producer.get("technology_options"):
+            params["technology_options"] = producer["technology_options"]
+        nodes.append(Node(pid, "producer", params))
+        edges.append(Edge(pid, "product", market_id, "producers"))
 
 
 def _decompile_price_formation(scenario: dict[str, Any], pf_id: str, nodes: list[Node]) -> str:

@@ -40,6 +40,16 @@ cyclic SCC containing a banking or discrete-adoption (investment) market run
 UNDAMPED (relaxation == 1.0) is a WARNING — the floor-cancellation lesson
 generalized (undamped + discrete/banking is the known oscillation hazard).
 
+R37 SPLIT (D3, docs/multi-commodity-spec.md §7 R37 ADAPTATION): the graph tier
+here owns only the UNDAMPED-banking/discrete hazard (a conservative structural
+check on the SCC it can see). The ACTUAL loop-gain contraction ``g = s_c·s_s``
+for a steel↔carbon PRODUCT SCC needs the producer FOC slopes, which live in the
+product body — so it runs at RUNTIME in the product-solver home
+``pe.features.product_market.solver.product_scc_loop_gain`` (WARN iff |g| >= 1).
+That is the same contraction check the D2 engine surfaces as its
+Joint-Converged / Joint-Cycle-Detected diagnostics; look there, not here, for a
+product market's loop-gain warning.
+
 Dependency law: this module imports only ``ets.blocks`` siblings and stdlib.
 """
 
@@ -53,6 +63,12 @@ from .compile import resolve_year_value
 from .graph import Edge, Graph, Node
 
 Level = Literal["error", "warning"]
+
+# A market body node is a carbon compliance market OR a D3-7 product (goods)
+# market; both anchor a scenario/component and both carry ``signal``/``links``
+# link ports. A graph with only ``carbon_market`` nodes yields the identical
+# market-id set as before, so every existing per-graph check stays byte-identical.
+_MARKET_BLOCKS = ("carbon_market", "product_market")
 
 _MSR_BLOCKS = ("msr_bank_threshold", "kmsr_decree")
 _NON_COMPETITIVE_LIKE = ("rubin_schennach_banking", "hotelling", "nash_cournot")
@@ -115,6 +131,7 @@ def validate_graph(graph: Graph) -> list[ValidationIssue]:
     _check_dangling_and_port_kinds(graph, issues, node_ids)
     _check_policy_policy_edges(graph, issues)
     _check_market_links(graph, issues)
+    _check_product_markets(graph, issues)
 
     for market_node in graph.nodes:
         if market_node.block != "carbon_market":
@@ -193,7 +210,7 @@ def _check_policy_policy_edges(graph: Graph, issues: list[ValidationIssue]) -> N
 def _check_unconnected_nodes(graph: Graph, issues: list[ValidationIssue]) -> None:
     connected = {e.source for e in graph.edges} | {e.target for e in graph.edges}
     for node in graph.nodes:
-        if node.block == "carbon_market":
+        if node.block in _MARKET_BLOCKS:
             continue
         if node.id not in connected:
             issues.append(
@@ -208,8 +225,13 @@ def _check_unconnected_nodes(graph: Graph, issues: list[ValidationIssue]) -> Non
 
 # Mirrors modules/market_links/backend/plugin.py:ALLOWED_LINK_CHANNELS and
 # catalogue.py's own _LINK_CHANNELS — duplicated here only as strings, per
-# this module's dependency law (stdlib + blocks siblings only).
-_LINK_CHANNELS = frozenset({"mac_cost", "invest_break_even"})
+# this module's dependency law (stdlib + blocks siblings only). D3-4/D3-7 added
+# the two steel↔carbon shared-agent coupling channels (carbon_input_price/
+# output_ref_price); widening the whitelist is golden-inert (no committed graph
+# uses them, and R35 only ever rejects UNKNOWN channels).
+_LINK_CHANNELS = frozenset(
+    {"mac_cost", "invest_break_even", "carbon_input_price", "output_ref_price"}
+)
 
 # Mirrors engine/joint.py:JOINT_DEFAULTS["relaxation"] as a bare literal (this
 # module may not import the engine — dependency law). w = 1.0 is UNDAMPED
@@ -275,7 +297,7 @@ def _market_link_edges(
     Returns:
         The valid cross-market link edges as ``(source_id, target_id, link_node)``.
     """
-    market_ids = {n.id for n in graph.nodes if n.block == "carbon_market"}
+    market_ids = {n.id for n in graph.nodes if n.block in _MARKET_BLOCKS}
     edges: list[tuple[str, str, Node]] = []
     for link_node in link_nodes:
         endpoints = _resolve_link_endpoint_markets(graph, link_node)
@@ -419,7 +441,7 @@ def _rule_r35_link_whitelist(graph: Graph, link_nodes: list[Node], issues: list[
 
 def _rule_r36_link_units(graph: Graph, link_nodes: list[Node], issues: list[ValidationIssue]) -> None:
     """R36: every linked market declares price_unit; every link declares phi_unit."""
-    market_by_id = {n.id: n for n in graph.nodes if n.block == "carbon_market"}
+    market_by_id = {n.id: n for n in graph.nodes if n.block in _MARKET_BLOCKS}
     touched: set[str] = set()
     for link_node in link_nodes:
         if not link_node.params.get("phi_unit"):
@@ -532,7 +554,7 @@ def _rule_r37_undamped_cyclic_hazard(
         edges: The valid cross-market link edges (from :func:`_rule_r34_link_wellformed`).
         issues: Accumulating issue list (mutated in place).
     """
-    market_ids = {n.id for n in graph.nodes if n.block == "carbon_market"}
+    market_ids = {n.id for n in graph.nodes if n.block in _MARKET_BLOCKS}
     for scc in _cyclic_scc_members(market_ids, edges):
         scc_set = set(scc)
         has_banking = any(_market_pf_block(graph, m) == _BANKING_PF_BLOCK for m in scc)
@@ -577,6 +599,77 @@ def _check_market_links(graph: Graph, issues: list[ValidationIssue]) -> None:
     _rule_r37_undamped_cyclic_hazard(graph, edges, issues)
 
 
+# ── product market: R38 (product market well-formed), R39 (producer
+#    well-formed), R40 (producer_ref target) — D3-7,
+#    docs/multi-commodity-spec.md §2/§6 ─────────────────────────────────────
+
+
+def _check_product_markets(graph: Graph, issues: list[ValidationIssue]) -> None:
+    """Structural rules for the D3-7 product market, producer, and producer_ref.
+
+    R38 — every ``product_market`` node needs >= 1 ``producer`` attached (the
+    aggregate domestic supply ``Σ q_i`` is otherwise empty and clearing is
+    degenerate) and a non-empty ``years`` grid.
+    R39 — every ``producer`` node must attach to a ``product_market`` (a producer
+    reads both prices and contributes output to a product market; unattached it
+    compiles into nothing).
+    R40 — a ``producer_ref`` edge must source from a ``product_market`` (the
+    port-kind check already forbids other sources, so this only re-attributes a
+    missing product market at the carbon end for a friendlier message).
+
+    Cycles are LEGAL (a steel↔carbon SCC is the joint fixed point) — this
+    function never rejects the coupling itself; the loop-gain contraction check
+    runs at RUNTIME (``pe.features.product_market.solver.product_scc_loop_gain``,
+    R37 D3 adaptation) where the producer FOC slopes exist.
+    """
+    product_ids = {n.id for n in graph.nodes if n.block == "product_market"}
+    for node in graph.nodes:
+        if node.block == "product_market":
+            if not graph.edges_into(node.id, "producers"):
+                issues.append(
+                    ValidationIssue(
+                        "error", "R38",
+                        f"Product market '{node.id}' has no producer attached — a goods "
+                        "market needs >=1 producer supplying Σ q_i(P_s, P_c).",
+                        node=node.id,
+                    )
+                )
+            if not (node.params.get("years") or []):
+                issues.append(
+                    ValidationIssue(
+                        "error", "R38",
+                        f"Product market '{node.id}' has no years in its 'years' grid.",
+                        node=node.id,
+                    )
+                )
+        elif node.block == "producer":
+            product_edges = [
+                e for e in graph.edges if e.source == node.id and e.source_port == "product"
+            ]
+            if not any(e.target in product_ids for e in product_edges):
+                issues.append(
+                    ValidationIssue(
+                        "error", "R39",
+                        f"Producer '{node.id}' is not attached to any product_market "
+                        "(wire its 'product' port into a product market's 'producers' port).",
+                        node=node.id,
+                    )
+                )
+        elif node.block == "carbon_market":
+            for edge in graph.edges_into(node.id, "producer_ref"):
+                source = graph.node(edge.source)
+                if source is None or source.block != "product_market":
+                    issues.append(
+                        ValidationIssue(
+                            "error", "R40",
+                            f"carbon_market '{node.id}': producer_ref must source from a "
+                            "product_market node (its shared producers become this market's "
+                            "emitters, spec §6).",
+                            node=node.id,
+                        )
+                    )
+
+
 # ── per-market checks ────────────────────────────────────────────────────
 
 
@@ -591,7 +684,12 @@ def _validate_market(graph: Graph, market: Node, issues: list[ValidationIssue]) 
     participant_nodes: list[Node] = [
         n for n in (graph.node(e.source) for e in participant_edges) if n is not None
     ]
-    _rule_r2(market, participant_nodes, year_labels, issues)
+    # R2 carve-out (D3-7): a carbon market that reads its emitters from a sibling
+    # product market (a ``producer_ref`` edge) legitimately authors no
+    # ``participant`` nodes of its own — its emitters are the referenced
+    # producers (spec §6). Skip the "needs >=1 participant" check for it.
+    if not graph.edges_into(market.id, "producer_ref"):
+        _rule_r2(market, participant_nodes, year_labels, issues)
 
     if len(pf_edges) != 1:
         return  # remaining rules assume a resolvable price-formation block

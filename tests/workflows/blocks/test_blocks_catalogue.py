@@ -92,6 +92,8 @@ def test_param_config_key_exists_in_normalised_document(block_id: str, param_nam
 def test_catalogue_covers_every_block_in_plan() -> None:
     expected_ids = {
         "carbon_market",
+        "product_market",
+        "producer",
         "market_link",
         "joint_solver",
         "competitive_clearing",

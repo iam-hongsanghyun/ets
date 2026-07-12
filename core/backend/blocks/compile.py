@@ -79,6 +79,14 @@ from .registry import BlockSpec
 
 PER_YEAR_KEY = "__per_year__"
 
+# The two market-body block kinds a scenario/component is built from: the carbon
+# compliance market (``carbon_market``) and the D3-7 goods market
+# (``product_market``). A "market node" is either; ``_connected_components``
+# groups both under ``market_link`` edges, so a steel↔carbon cycle is one joint
+# component. A graph with ONLY ``carbon_market`` nodes (every committed example)
+# yields the identical node set as before, so those paths stay byte-identical.
+_MARKET_BLOCKS = ("carbon_market", "product_market")
+
 _MARKET_YEAR_GRID_KEYS = (
     "year",
     "total_cap",
@@ -229,18 +237,36 @@ def compile_graph(graph: Graph) -> dict[str, Any]:
             name — the engine's composite-key separator).
         ValueError: Propagated from ``config_io`` value validation.
     """
-    market_nodes = [n for n in graph.nodes if n.block == "carbon_market"]
+    market_nodes = [n for n in graph.nodes if n.block in _MARKET_BLOCKS]
     if not market_nodes:
-        raise CompileError("Graph has no 'carbon_market' node.")
+        raise CompileError("Graph has no 'carbon_market' or 'product_market' node.")
     market_nodes.sort(key=_order_key)
     components = _connected_components(graph, market_nodes)
     scenarios = [
-        _compile_market(graph, component[0])
+        _compile_single_market(graph, component[0])
         if len(component) == 1
         else _compile_linked_scenario(graph, component)
         for component in components
     ]
     return normalize_config({"scenarios": scenarios})
+
+
+def _compile_single_market(graph: Graph, market_node: Node) -> dict[str, Any]:
+    """Compile a size-one component: today's single-market scenario.
+
+    A lone ``carbon_market`` compiles VERBATIM (byte-identical to pre-D3-7); a
+    lone ``product_market`` compiles to a flat ``model_approach: "product"``
+    scenario body (``config_io`` normalises a top-level product scenario the same
+    way it does one nested in a linked component).
+    """
+    if market_node.block == "product_market":
+        return _compile_product_market_fields(
+            graph,
+            market_node,
+            identity_key="name",
+            identity_value=market_node.params.get("name", "New Product Market"),
+        )
+    return _compile_market(graph, market_node)
 
 
 def _link_endpoints(graph: Graph, link_node: Node) -> tuple[str, str]:
@@ -335,6 +361,7 @@ def _compile_market_fields(
     identity_key: str,
     identity_value: Any,
     allow_policy_events: bool,
+    allow_empty_participants: bool = False,
 ) -> dict[str, Any]:
     """Assemble one market body's fields — shared by both compile paths.
 
@@ -351,6 +378,12 @@ def _compile_market_fields(
         allow_policy_events: ``False`` inside a linked (multi-market)
             component — E7 defers events x multi-market to D2; ``True`` for
             the single-market path (unchanged behaviour).
+        allow_empty_participants: ``True`` only for a carbon market that reads
+            its emitters from a sibling product market via a ``producer_ref``
+            edge (D3-7) — its own ``participants[]`` are legitimately empty (the
+            producers live on the product side; ``config_io`` resolves the
+            per-year emitter view). ``False`` everywhere else (a market with no
+            participants is a compile error, byte-identical to today).
 
     Returns:
         The assembled market body dict (``identity_key`` + every merged
@@ -404,7 +437,7 @@ def _compile_market_fields(
     _compile_expectations(graph, market_node, owners, year_entries)
     _compile_baseline(graph, market_node, owners, scenario_fields)
     _compile_sectors(graph, market_node, owners, scenario_fields)
-    _compile_participants(graph, market_node, year_entries)
+    _compile_participants(graph, market_node, year_entries, allow_empty=allow_empty_participants)
     _compile_strategic(graph, market_node, owners, scenario_fields)
 
     return {**scenario_fields, "years": list(year_entries.values())}
@@ -487,19 +520,33 @@ def _compile_linked_scenario(graph: Graph, market_nodes: list[Node]) -> dict[str
     """
     market_ids_in_component = {n.id for n in market_nodes}
     markets: list[dict[str, Any]] = []
+    body_by_node: dict[str, dict[str, Any]] = {}
     declared_scenario_names: dict[str, str] = {}
     for market_node in market_nodes:
         market_id = str(market_node.params.get("name", "New Scenario"))
-        markets.append(
-            _compile_market_fields(
+        if market_node.block == "product_market":
+            body = _compile_product_market_fields(
+                graph, market_node, identity_key="market_id", identity_value=market_id
+            )
+        else:
+            body = _compile_market_fields(
                 graph, market_node,
                 identity_key="market_id", identity_value=market_id,
                 allow_policy_events=False,
+                allow_empty_participants=_has_producer_ref(graph, market_node),
             )
-        )
+        markets.append(body)
+        body_by_node[market_node.id] = body
         declared = market_node.params.get("scenario_name")
         if declared:
             declared_scenario_names[market_node.id] = str(declared)
+
+    # producer_ref stamping (D3-7, spec §6/§7 V-D3-3): a carbon market with an
+    # inbound ``producer_ref`` edge reads its emitters from the sourcing product
+    # market — emit ``producer_ref: {market: <product market_id>}`` on the carbon
+    # body (config_io resolves the per-year emitter view). Only carbon nodes that
+    # drew the edge gain the key, so a link-free carbon body is byte-identical.
+    _stamp_producer_refs(graph, market_nodes, market_ids_in_component, body_by_node)
 
     distinct_names = set(declared_scenario_names.values())
     if len(distinct_names) > 1:
@@ -530,6 +577,152 @@ def _compile_linked_scenario(graph: Graph, market_nodes: list[Node]) -> dict[str
     if joint_solver is not None:
         scenario["joint_solver"] = joint_solver
     return scenario
+
+
+def _has_producer_ref(graph: Graph, market_node: Node) -> bool:
+    """Whether a carbon market draws its emitters from a product market (D3-7)."""
+    return bool(graph.edges_into(market_node.id, "producer_ref"))
+
+
+def _stamp_producer_refs(
+    graph: Graph,
+    market_nodes: list[Node],
+    market_ids_in_component: set[str],
+    body_by_node: dict[str, dict[str, Any]],
+) -> None:
+    """Stamp ``producer_ref: {market: <product id>}`` on every referencing carbon body.
+
+    D3-7 (docs/multi-commodity-spec.md §6, V-D3-3): the carbon side carries the
+    ``producer_ref``; a ``product_market`` node's ``producer_ref`` out-port feeds
+    a ``carbon_market`` node's ``producer_ref`` in-port. The referenced market id
+    is the SOURCE product market's ``name`` param (its ``market_id`` in the
+    component). ``config_io._resolve_producer_refs`` expands it into the per-year
+    emitter view at normalise time, so only the bare ``{"market": ...}`` is emitted
+    here.
+
+    Args:
+        graph: The drawn block graph.
+        market_nodes: This component's market nodes.
+        market_ids_in_component: ``{n.id for n in market_nodes}``.
+        body_by_node: Node id -> its already-compiled market body (mutated).
+
+    Raises:
+        CompileError: The ``producer_ref`` source is not a ``product_market``
+            node in this component (a dangling/cross-component reference).
+    """
+    for market_node in market_nodes:
+        if market_node.block != "carbon_market":
+            continue
+        ref_edges = graph.edges_into(market_node.id, "producer_ref")
+        if not ref_edges:
+            continue
+        source = _require_node(
+            graph, ref_edges[0].source, f"Market '{market_node.id}' producer_ref edge"
+        )
+        if source.id not in market_ids_in_component or source.block != "product_market":
+            raise CompileError(
+                f"Market '{market_node.id}': producer_ref must source from a product_market "
+                f"node in the same linked component, got '{source.id}' ({source.block})."
+            )
+        product_market_id = str(source.params.get("name", "New Product Market"))
+        body_by_node[market_node.id]["producer_ref"] = {"market": product_market_id}
+
+
+def _compile_producer_dict(node: Node) -> dict[str, Any]:
+    """One ``producer`` node -> a product-body ``participants[]`` entry (D3-7).
+
+    Emits the nested config-door spelling (``output_cost``/``intensity``/
+    ``abatement``/``oba_benchmark``/``F_lump``/``capacity``/``technology_options``)
+    that ``config_io.normalize_product_body._normalize_producer`` flattens to
+    :class:`pe.core.participant.producer.ProducerParams`. Only user-set optional
+    fields are emitted; the normaliser fills its own (inert) defaults, so the
+    normalised body is identical whether or not a default-valued field is stated.
+    """
+    out: dict[str, Any] = {
+        "name": node.params.get("name", "New Producer"),
+        "kind": "producer",
+        "output_cost": dict(node.params.get("output_cost") or {}),
+        "intensity": node.params.get("intensity", 0.0),
+        "abatement": dict(node.params.get("abatement") or {}),
+    }
+    oba_benchmark = node.params.get("oba_benchmark")
+    if oba_benchmark:
+        out["oba_benchmark"] = oba_benchmark
+    f_lump = node.params.get("F_lump")
+    if f_lump:
+        out["F_lump"] = f_lump
+    capacity = node.params.get("capacity")
+    if capacity is not None:
+        out["capacity"] = capacity
+    technology_options = node.params.get("technology_options")
+    if technology_options:
+        out["technology_options"] = list(technology_options)
+    return out
+
+
+def _compile_product_market_fields(
+    graph: Graph, product_node: Node, *, identity_key: str, identity_value: Any
+) -> dict[str, Any]:
+    """Assemble one ``model_approach: "product"`` market body from a product node.
+
+    The product analogue of :func:`_compile_market_fields`: a goods-market body
+    (``carbon_price``/``product_demand``/``import_supply``/``oba_mode`` body-level,
+    producers per year) rather than a compliance body. ``config_io.normalize_
+    product_body`` is the value validator; this only derives the raw body shape
+    from the graph. Producers attach via the ``producers`` port and broadcast
+    across every year in the node's ``years`` grid.
+
+    Args:
+        graph: The drawn block graph.
+        product_node: The ``product_market`` node being compiled.
+        identity_key: ``"name"`` (standalone product scenario) or ``"market_id"``
+            (a market within a linked component).
+        identity_value: The value for ``identity_key``.
+
+    Returns:
+        The assembled product-market body dict.
+
+    Raises:
+        CompileError: The node has no years in its grid, or no producers attached.
+    """
+    fields: dict[str, Any] = {identity_key: identity_value, "model_approach": "product"}
+
+    carbon_price = product_node.params.get("carbon_price")
+    if carbon_price is not None:
+        fields["carbon_price"] = _coerce_json_shape(carbon_price)
+    demand = product_node.params.get("product_demand")
+    if demand:
+        fields["product_demand"] = _coerce_json_shape(demand)
+    imports = product_node.params.get("import_supply")
+    if imports:
+        fields["import_supply"] = _coerce_json_shape(imports)
+    oba_mode = product_node.params.get("oba_mode")
+    if oba_mode:
+        fields["oba_mode"] = oba_mode
+    for key in ("price_unit", "flow_label", "flow_unit"):
+        value = product_node.params.get(key)
+        if value:
+            fields[key] = value
+
+    year_labels = [str(y.get("year")) for y in (product_node.params.get("years") or [])]
+    if not year_labels:
+        raise CompileError(f"Product market '{product_node.id}' has no years in its 'years' grid.")
+
+    producer_edges = graph.edges_into(product_node.id, "producers")
+    if not producer_edges:
+        raise CompileError(f"Product market '{product_node.id}' has no producers attached.")
+    producer_ids = sorted(
+        {e.source for e in producer_edges},
+        key=lambda nid: _order_key(_require_node(graph, nid, "producer edge")),
+    )
+    producers = [
+        _compile_producer_dict(
+            _require_node(graph, pid, f"Product market '{product_node.id}' producer edge")
+        )
+        for pid in producer_ids
+    ]
+    fields["years"] = [{"year": label, "participants": producers} for label in year_labels]
+    return fields
 
 
 def _compile_joint_solver(graph: Graph, market_nodes: list[Node]) -> dict[str, Any] | None:
@@ -713,9 +906,19 @@ def _compile_participant_dict(node: Node, spec: BlockSpec, year_label: str) -> d
     return out
 
 
-def _compile_participants(graph: Graph, market_node: Node, year_entries: dict[str, dict[str, Any]]) -> None:
+def _compile_participants(
+    graph: Graph,
+    market_node: Node,
+    year_entries: dict[str, dict[str, Any]],
+    *,
+    allow_empty: bool = False,
+) -> None:
     edges = graph.edges_into(market_node.id, "participants")
     if not edges:
+        if allow_empty:
+            for entry in year_entries.values():
+                entry["participants"] = []
+            return
         raise CompileError(f"Market '{market_node.id}' has no participants attached.")
     participant_ids = sorted(
         {e.source for e in edges},
