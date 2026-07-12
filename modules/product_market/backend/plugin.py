@@ -152,6 +152,20 @@ def _normalize_import_supply(raw: Any, *, label: str) -> dict[str, Any]:
             f"upward-sloping in P_s, got {m}."
         )
 
+    # Top-level foreign carbon intensity σ_foreign (alias ``foreign_intensity``):
+    # a property of the imports themselves (embodied carbon), used BOTH by the
+    # leakage diagnostic (foreign emissions gained per domestic cut, spec §4f) AND
+    # as the default charge intensity of the CBAM lever (spec §4e). 0 by default
+    # (no leakage channel, inert CBAM).
+    sigma_foreign_top = _fnum_alias(
+        imports, ("sigma_foreign", "foreign_intensity"), DEFAULTS["cbam_sigma_foreign"], label=label
+    )
+    if sigma_foreign_top < 0.0:
+        raise ValueError(
+            f"{label}: import_supply.sigma_foreign (foreign_intensity) must be >= 0, "
+            f"got {sigma_foreign_top}."
+        )
+
     raw_cbam = imports.get("cbam")
     if raw_cbam is None and "cbam_enabled" in imports:
         # Already-normalised (flat) shape — re-wrap so the one validation path
@@ -164,12 +178,17 @@ def _normalize_import_supply(raw: Any, *, label: str) -> dict[str, Any]:
     if raw_cbam is None:
         cbam_enabled = bool(DEFAULTS["cbam_enabled"])
         coverage = float(DEFAULTS["cbam_coverage"])
-        sigma_foreign = float(DEFAULTS["cbam_sigma_foreign"])
+        sigma_foreign = sigma_foreign_top
     else:
         cbam = _as_mapping(raw_cbam, label=label, what="import_supply.cbam")
         cbam_enabled = bool(cbam.get("enabled", DEFAULTS["cbam_enabled"]))
         coverage = _fnum(cbam, "coverage", DEFAULTS["cbam_coverage"], label=label)
-        sigma_foreign = _fnum(cbam, "sigma_foreign", DEFAULTS["cbam_sigma_foreign"], label=label)
+        # The CBAM charge intensity defaults to the top-level foreign intensity
+        # (the embodied carbon of imports is the same object the charge prices),
+        # overridable per-CBAM via cbam.sigma_foreign / cbam.foreign_intensity.
+        sigma_foreign = _fnum_alias(
+            cbam, ("sigma_foreign", "foreign_intensity"), sigma_foreign_top, label=label
+        )
         if not 0.0 <= coverage <= 1.0:
             raise ValueError(
                 f"{label}: import_supply.cbam.coverage (c) must be in [0, 1], got {coverage}."
@@ -240,6 +259,10 @@ def _normalize_producer(raw: Any, *, index: int, label: str) -> dict[str, Any]:
         else _fnum({"capacity": capacity_raw}, "capacity", 0.0, label=prod_label)
     )
 
+    technology_options = _normalize_technology_options(
+        participant.get("technology_options"), sigma=sigma, label=prod_label, name=name
+    )
+
     # Bounds mirror ProducerParams.__post_init__ so the failure is loud at
     # config time (naming the producer) rather than deep in the solver.
     if not delta > 0.0:
@@ -274,7 +297,65 @@ def _normalize_producer(raw: Any, *, index: int, label: str) -> dict[str, Any]:
         "phi_oba": phi_oba,
         "f_lump": f_lump,
         "capacity": capacity,
+        "technology_options": technology_options,
     }
+
+
+def _normalize_technology_options(
+    raw: Any, *, sigma: float, label: str, name: str
+) -> list[dict[str, Any]]:
+    """Normalise a producer's cleaner-tech ``technology_options`` (spec §4g).
+
+    Each option is a Dixit-Pindyck-style discrete adoption dropping the baseline
+    intensity from ``sigma`` to a lower ``sigma_prime`` once the carbon price
+    crosses ``trigger``. Empty / absent by default (the off-by-default long-run
+    margin). Idempotent: the normalised flat spelling (``sigma_prime``/``trigger``)
+    is accepted alongside the raw (``intensity``/``clean_intensity``/
+    ``trigger_price``) spelling, so the second normalisation pass round-trips.
+
+    Args:
+        raw: The raw ``technology_options`` list (or ``None``).
+        sigma: The producer's un-adopted baseline intensity σ (the cleaner tech
+            must be strictly cleaner: ``sigma_prime <= sigma``).
+        label: Error-message prefix (the producer's ``participants[i]`` label).
+        name: The producer name (error attribution).
+
+    Returns:
+        The normalised options ``[{name, sigma_prime, trigger}, ...]`` (``[]`` when
+        absent).
+    """
+    if raw is None:
+        return []
+    if not isinstance(raw, list):
+        raise ValueError(
+            f"{label} ({name!r}): technology_options must be a list, got {type(raw).__name__}."
+        )
+    options: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for opt_index, raw_opt in enumerate(raw):
+        opt_label = f"{label} ({name!r}) technology_options[{opt_index}]"
+        opt = _as_mapping(raw_opt, label=opt_label, what="technology option")
+        opt_name = str(opt.get("name", "")).strip()
+        if not opt_name:
+            raise ValueError(f"{opt_label}: a technology option must have a non-empty name.")
+        if opt_name in seen:
+            raise ValueError(f"{opt_label}: duplicate technology option name {opt_name!r}.")
+        seen.add(opt_name)
+        sigma_prime = _fnum_alias(
+            opt, ("sigma_prime", "clean_intensity", "intensity"), 0.0, label=opt_label
+        )
+        trigger = _fnum_alias(opt, ("trigger", "trigger_price"), 0.0, label=opt_label)
+        if sigma_prime < 0.0:
+            raise ValueError(f"{opt_label}: sigma_prime must be >= 0, got {sigma_prime}.")
+        if sigma_prime > sigma:
+            raise ValueError(
+                f"{opt_label}: sigma_prime ({sigma_prime}) must be <= the baseline intensity "
+                f"σ ({sigma}) — a clean-tech option lowers intensity, it cannot raise it."
+            )
+        if trigger < 0.0:
+            raise ValueError(f"{opt_label}: trigger must be >= 0, got {trigger}.")
+        options.append({"name": opt_name, "sigma_prime": sigma_prime, "trigger": trigger})
+    return options
 
 
 def _normalize_years(raw_years: Any, *, label: str) -> list[dict[str, Any]]:

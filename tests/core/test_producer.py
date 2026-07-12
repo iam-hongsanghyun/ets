@@ -14,9 +14,12 @@ import pytest
 from pe.core.market.model import CarbonMarket
 from pe.core.participant.models import ComplianceOutcome
 from pe.core.participant.producer import (
+    CleanTechOption,
     MultiCommodityProducer,
     ProducerParams,
+    effective_intensity,
     optimize_producer,
+    propose_clean_tech_adoptions,
 )
 
 # The economist's finite-β anchor (V-D3-5b), per representative firm.
@@ -195,3 +198,58 @@ def test_beta_non_positive_rejected() -> None:
     """β <= 0 makes the intensity FOC ill-posed and is rejected."""
     with pytest.raises(ValueError, match="beta"):
         ProducerParams(gamma=5.0, delta=2.0, sigma=5.0, beta=0.0, a_max=5.0)
+
+
+# ── D3-5 cleaner-tech adoption (the long-run intensity margin, spec §4g) ────────
+
+_H2 = CleanTechOption(name="H2-DRI", sigma_prime=3.0, trigger=9.0)
+
+
+def test_effective_intensity_takes_the_lowest_adopted_option() -> None:
+    """σ_eff = min(σ, adopted σ'); un-adopted keeps σ; adopted drops to σ'."""
+    options = (_H2,)
+    assert effective_intensity(5.0, options, frozenset()) == 5.0
+    assert effective_intensity(5.0, options, frozenset({"H2-DRI"})) == 3.0
+    # Two options: the lowest adopted wins (monotone downward shift).
+    both = (_H2, CleanTechOption(name="CCS", sigma_prime=4.0, trigger=6.0))
+    assert effective_intensity(5.0, both, frozenset({"H2-DRI", "CCS"})) == 3.0
+
+
+def test_propose_adoptions_fires_only_at_or_above_the_trigger() -> None:
+    """Monotone trigger read: adopt iff P_c ≥ trigger and not already adopted."""
+    assert propose_clean_tech_adoptions((_H2,), 8.999, frozenset()) == []
+    assert propose_clean_tech_adoptions((_H2,), 9.0, frozenset()) == ["H2-DRI"]
+    assert propose_clean_tech_adoptions((_H2,), 20.0, frozenset()) == ["H2-DRI"]
+    # Already adopted ⇒ no re-proposal (the caller's monotone floor).
+    assert propose_clean_tech_adoptions((_H2,), 20.0, frozenset({"H2-DRI"})) == []
+
+
+def test_adopted_intensity_feeds_the_output_foc_analytically() -> None:
+    """With H2-DRI adopted (σ'=3) at (P_s=60, P_c=10): a=1, q=(60−5−B)/2.
+
+    B = ½·10·1² + 10·(3−1) = 5 + 20 = 25 ⇒ q = (60−5−25)/2 = 15, e = (3−1)·15 = 30.
+    """
+    params = ProducerParams(
+        gamma=5.0,
+        delta=2.0,
+        sigma=5.0,
+        beta=10.0,
+        a_max=5.0,
+        technology_options=(_H2,),
+        adopted_tech=frozenset({"H2-DRI"}),
+    )
+    out = optimize_producer(params, 60.0, 10.0)
+    np.testing.assert_allclose(out.a, 1.0, rtol=0, atol=1e-12)
+    np.testing.assert_allclose(out.net_carbon_burden, 25.0, rtol=0, atol=1e-12)
+    np.testing.assert_allclose(out.q, 15.0, rtol=0, atol=1e-12)
+    np.testing.assert_allclose(out.emissions, 30.0, rtol=0, atol=1e-12)
+
+
+def test_clean_tech_option_validates_bounds() -> None:
+    """σ' and trigger must be finite and non-negative; name non-empty."""
+    with pytest.raises(ValueError, match="sigma_prime"):
+        CleanTechOption(name="x", sigma_prime=-1.0, trigger=9.0)
+    with pytest.raises(ValueError, match="trigger"):
+        CleanTechOption(name="x", sigma_prime=3.0, trigger=-1.0)
+    with pytest.raises(ValueError, match="name"):
+        CleanTechOption(name="", sigma_prime=3.0, trigger=9.0)

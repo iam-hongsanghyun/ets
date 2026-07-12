@@ -783,11 +783,20 @@ def _build_producer_ref_views(producer_ref: Mapping[str, Any], year_label: str) 
         has no referenced producers).
     """
     from ..core.participant.producer import MultiCommodityProducer, ProducerParams
+    from ..core.participant.producer import CleanTechOption
 
     producers_by_year = producer_ref.get("producers_by_year") or {}
     specs = list(producers_by_year.get(str(year_label)) or [])
     views: list = []
     for spec in sorted(specs, key=lambda s: str(s["name"])):
+        options = tuple(
+            CleanTechOption(
+                name=str(o["name"]),
+                sigma_prime=float(o["sigma_prime"]),
+                trigger=float(o["trigger"]),
+            )
+            for o in spec.get("technology_options") or []
+        )
         params = ProducerParams(
             gamma=float(spec["gamma"]),
             delta=float(spec["delta"]),
@@ -796,6 +805,7 @@ def _build_producer_ref_views(producer_ref: Mapping[str, Any], year_label: str) 
             a_max=float(spec["a_max"]),
             phi_oba=float(spec.get("phi_oba", 0.0)),
             f_lump=float(spec.get("f_lump", 0.0)),
+            technology_options=options,
         )
         views.append(MultiCommodityProducer(name=str(spec["name"]), params=params))
     return views
