@@ -32,7 +32,7 @@ import logging
 from collections import defaultdict
 from copy import deepcopy
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import pandas as pd
 
@@ -828,6 +828,153 @@ def _final_adoption_state(path_details: list[dict]) -> AdoptionState:
     return ()
 
 
+def _adopted_by_producer(seed: Any) -> dict[str, set[str]]:
+    """Parse an ``investment_initial_adoptions`` seed into ``{producer: {tech}}``."""
+    from collections import defaultdict
+
+    floor = parse_adoption_state(seed) if seed else ()
+    adopted: dict[str, set[str]] = defaultdict(set)
+    for event in floor:
+        adopted[event.participant_name].add(event.technology_name)
+    return adopted
+
+
+def _apply_producer_adoption_floor(markets: list[CarbonMarket]) -> None:
+    """Apply the accumulated clean-tech floor to a leg's producers BEFORE solving.
+
+    The steel↔carbon investment lever (spec §4g), reusing the D2-5 outer-floor
+    machinery: each built leg carries the monotone adoption FLOOR on
+    ``investment_initial_adoptions`` (stamped by :func:`_solve_scc_member`). This
+    drops the post-adoption intensity σ' onto every adopted producer — the steel
+    market's ``product_producers`` specs (via the solve-time ``_adopted_tech``
+    key) and the carbon market's :class:`MultiCommodityProducer` emitter views
+    (via ``stamp_adopted_tech``) — so BOTH legs re-derive the FOC at the same σ'.
+    GUARDED: a no-op for any producer without ``technology_options`` (off-by-
+    default ⇒ byte-identical no-invest path).
+    """
+    from ..core.participant.producer import MultiCommodityProducer
+
+    for market in markets:
+        adopted = _adopted_by_producer(getattr(market, "investment_initial_adoptions", None))
+        specs = getattr(market, "product_producers", None)
+        if specs:
+            new_specs = []
+            touched = False
+            for spec in specs:
+                if spec.get("technology_options"):
+                    fresh = dict(spec)
+                    fresh["_adopted_tech"] = sorted(adopted.get(str(spec["name"]), set()))
+                    new_specs.append(fresh)
+                    touched = True
+                else:
+                    new_specs.append(spec)
+            if touched:
+                setattr(market, "product_producers", new_specs)  # noqa: B010
+        for participant in getattr(market, "participants", []):
+            if (
+                isinstance(participant, MultiCommodityProducer)
+                and participant.params.technology_options
+            ):
+                participant.stamp_adopted_tech(frozenset(adopted.get(participant.name, set())))
+
+
+def _leg_carbon_price(item: dict) -> float:
+    """The carbon price a leg's clean-tech trigger reads for one path-year item.
+
+    Product (steel) leg: the stamped ``product_carbon_price`` (the coupled P_c the
+    steel FOC prices in). Carbon leg: the solved allowance price
+    ``equilibrium["price"]``. Both are the SAME converged P_c at the joint fixed
+    point, so both legs propose the same adoptions there.
+    """
+    market = item["market"]
+    if getattr(market, "product_producers", None):
+        return float(getattr(market, "product_carbon_price", 0.0))
+    return float(item["equilibrium"]["price"])
+
+
+def _propose_and_stamp_producer_adoptions(path_details: list[dict]) -> None:
+    """Propose clean-tech adoptions from the solved leg P_c and stamp the state.
+
+    After a leg solves, each producer with ``technology_options`` adopts every
+    option whose trigger the leg's carbon price has reached (monotone union with
+    the floor); the grown :class:`AdoptionState` is serialized onto every path
+    row as ``investment_adoptions`` so :func:`_final_adoption_state` reads it and
+    :func:`_solve_cyclic_scc` accumulates the OUTER floor (spec §4g). Accumulates
+    across path-years in chronological order so a later year's state ⊇ an earlier
+    year's adoptions. GUARDED: a leg whose producers carry no options is left
+    untouched (no ``investment_adoptions`` key ⇒ byte-identical no-invest path).
+    """
+    from ..core.participant.producer import (
+        CleanTechOption,
+        MultiCommodityProducer,
+        propose_clean_tech_adoptions,
+    )
+    from ..core.protocols import AdoptionEvent, serialize_adoption_state
+
+    # Any producer with options anywhere on the path? Else leave the path inert.
+    def _options_for(market: CarbonMarket) -> list[tuple[str, tuple]]:
+        specs = getattr(market, "product_producers", None)
+        if specs:
+            out = []
+            for spec in specs:
+                opts = spec.get("technology_options") or []
+                if opts:
+                    out.append(
+                        (
+                            str(spec["name"]),
+                            tuple(
+                                CleanTechOption(
+                                    name=str(o["name"]),
+                                    sigma_prime=float(o["sigma_prime"]),
+                                    trigger=float(o["trigger"]),
+                                )
+                                for o in opts
+                            ),
+                        )
+                    )
+            return out
+        return [
+            (p.name, p.params.technology_options)
+            for p in getattr(market, "participants", [])
+            if isinstance(p, MultiCommodityProducer) and p.params.technology_options
+        ]
+
+    if not any(_options_for(item["market"]) for item in path_details):
+        return
+
+    adopted: dict[str, set[str]] = {}
+    seed = getattr(path_details[0]["market"], "investment_initial_adoptions", None)
+    for producer, techs in _adopted_by_producer(seed).items():
+        adopted[producer] = set(techs)
+
+    events = []
+    for item in path_details:
+        market = item["market"]
+        year = str(market.year)
+        P_c = _leg_carbon_price(item)
+        for producer, options in _options_for(market):
+            already = frozenset(adopted.get(producer, set()))
+            for tech in propose_clean_tech_adoptions(options, P_c, already):
+                adopted.setdefault(producer, set()).add(tech)
+        # Snapshot the state effective through this year onto the row. The four
+        # keys are stamped together (the ledger's key-presence guard couples
+        # them): producer clean-tech has no build lag (L=0), so every adoption
+        # is effective in its decision year; iterations/converged mirror the
+        # carbon feedback shape (the joint OUTER loop owns the fixed-point
+        # iteration/convergence, reported via the Joint * columns).
+        events = [
+            AdoptionEvent(participant_name=p, technology_name=t, adoption_year=year)
+            for p, techs in adopted.items()
+            for t in techs
+        ]
+        item["investment_adoptions"] = serialize_adoption_state(make_adoption_state(events))
+        item["investment_newly_effective"] = float(
+            sum(1 for ev in events if ev.adoption_year == year)
+        )
+        item["investment_feedback_iterations"] = 1.0
+        item["investment_converged"] = 1.0
+
+
 def _enforce_floor_monotone(
     previous_floor: AdoptionState, new_state: AdoptionState, market_id: str
 ) -> None:
@@ -945,6 +1092,11 @@ def _solve_scc_member(
             # investment fields dynamically — this file reads them via getattr,
             # so it writes via setattr symmetrically (no new mypy attr-defined).
             setattr(market, "investment_initial_adoptions", seed)  # noqa: B010
+    # Producer clean-tech lever (spec §4g): apply the accumulated adoption FLOOR
+    # to this leg's producers (steel product_producers + carbon emitter views)
+    # BEFORE link application, so a copied-on-write view inherits σ'. GUARDED —
+    # a no-op unless a producer carries technology_options (golden-inert).
+    _apply_producer_adoption_floor(base_markets)
     inbound = [
         link
         for link in links
@@ -952,6 +1104,10 @@ def _solve_scc_member(
     ]
     shifted = apply_inbound_links(market_id, base_markets, inbound, delivered_paths)
     ordered, path = _solve_market_leg(shifted, composite_scenario_name, market_id)
+    # Propose new clean-tech adoptions from this leg's solved carbon price and
+    # stamp the grown state onto the path (GUARDED — no-op without options), so
+    # _final_adoption_state reads it and the OUTER floor accumulates monotonely.
+    _propose_and_stamp_producer_adoptions(path)
     return ordered, path, _final_adoption_state(path)
 
 
@@ -1240,6 +1396,14 @@ def _stamp_multi_market_columns(
     """
     for summary_row, item in zip(summaries, path_details, strict=True):
         summary_row["Market"] = market_id
+        # Leakage diagnostic (spec §4f) — a guarded multi-market column present
+        # ONLY on product-market rows (the product solver stashes "leakage_rate"
+        # in its equilibrium bundle; carbon rows never carry it). Key-presence
+        # guarded like the Joint columns ⇒ absent for carbon-only / single-market
+        # runs, so no baseline moves.
+        equilibrium = item.get("equilibrium") or {}
+        if "leakage_rate" in equilibrium:
+            summary_row["Leakage Rate"] = float(equilibrium["leakage_rate"])
         year = str(item["market"].year)
         priced_pairs: set[tuple[str, str]] = set()
         for link in inbound_links:

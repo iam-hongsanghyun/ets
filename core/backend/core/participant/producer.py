@@ -45,11 +45,119 @@ from .models import ComplianceOutcome
 logger = get_logger(__name__)
 
 __all__ = [
+    "CleanTechOption",
     "ProducerParams",
     "ProducerOutcome",
     "optimize_producer",
     "MultiCommodityProducer",
+    "effective_intensity",
+    "propose_clean_tech_adoptions",
 ]
+
+
+@dataclass(frozen=True)
+class CleanTechOption:
+    r"""A durable cleaner-technology option on the producer's intensity margin.
+
+    The long-run (third) decarbonisation margin (``docs/multi-commodity-spec.md``
+    §4g): a Dixit-Pindyck-style discrete adoption that permanently shifts the
+    producer's baseline emission intensity DOWN from :math:`\sigma` to
+    :math:`\sigma' < \sigma` once the carbon price crosses the option's trigger
+    :math:`P^{*}` (the effective break-even :math:`M\theta`, the option-value
+    multiple ``M`` folded into the config trigger). Adoption is IRREVERSIBLE
+    (monotone across sweeps) and reintroduces the eventually-continuous discrete
+    kink the joint engine's adoption-as-outer-floor machinery handles.
+
+    Attributes:
+        name: Option name (adoption-event ``technology_name`` key).
+        sigma_prime: Post-adoption baseline intensity :math:`\sigma'`
+            [tCO2 / t-steel]; MUST be finite and ``>= 0``.
+        trigger: Carbon-price adoption trigger :math:`P^{*}` [currency / tCO2];
+            adopt when ``P_carbon >= trigger``. MUST be finite and ``>= 0``.
+    """
+
+    name: str
+    sigma_prime: float
+    trigger: float
+
+    def __post_init__(self) -> None:
+        if not self.name:
+            raise ValueError("CleanTechOption.name must be a non-empty string.")
+        if not np.isfinite(self.sigma_prime) or self.sigma_prime < 0.0:
+            raise ValueError(
+                f"CleanTechOption({self.name!r}).sigma_prime must be finite and >= 0 "
+                f"(got {self.sigma_prime!r})."
+            )
+        if not np.isfinite(self.trigger) or self.trigger < 0.0:
+            raise ValueError(
+                f"CleanTechOption({self.name!r}).trigger must be finite and >= 0 "
+                f"(got {self.trigger!r})."
+            )
+
+
+def effective_intensity(
+    sigma: float, options: tuple[CleanTechOption, ...], adopted_names: frozenset[str]
+) -> float:
+    r"""Post-adoption baseline intensity: the lowest adopted option's :math:`\sigma'`.
+
+    Adoption is monotone and permanent, so the effective intensity is the MINIMUM
+    of the un-adopted baseline :math:`\sigma` and every adopted option's
+    :math:`\sigma'` — a durable downward shift of the intensity curve
+    (``docs/multi-commodity-spec.md`` §4g). A producer with no adopted option
+    keeps :math:`\sigma` unchanged (off-by-default: the byte-identical no-invest
+    path).
+
+    Algorithm:
+        LaTeX:  $$ \sigma_{\mathrm{eff}} = \min\!\big(\sigma,\ \min_{o\in A}
+                   \sigma'_o\big), \qquad A = \{o : o.\mathrm{name}\in
+                   \mathrm{adopted}\}. $$
+        ASCII:  sigma_eff = min(sigma, min(o.sigma_prime for o adopted))
+
+    Args:
+        sigma: Un-adopted baseline intensity :math:`\sigma` [tCO2 / t-steel].
+        options: The producer's clean-tech options.
+        adopted_names: Names of options adopted so far (the monotone floor).
+
+    Returns:
+        The effective baseline intensity [tCO2 / t-steel].
+    """
+    sigma_eff = float(sigma)
+    for option in options:
+        if option.name in adopted_names:
+            sigma_eff = min(sigma_eff, float(option.sigma_prime))
+    return sigma_eff
+
+
+def propose_clean_tech_adoptions(
+    options: tuple[CleanTechOption, ...],
+    price_carbon: float,
+    adopted_names: frozenset[str],
+) -> list[str]:
+    r"""Names of clean-tech options newly triggered at ``price_carbon`` (monotone).
+
+    A pure trigger read (``docs/multi-commodity-spec.md`` §4g): an option not yet
+    in ``adopted_names`` is proposed for adoption iff the carbon price has reached
+    its trigger, ``P_carbon >= trigger``. Deterministic (options are read in
+    declaration order); returns only the NEW names, so unioning with the floor is
+    monotone. Ex-post regret (a post-adoption price below the trigger) is
+    permitted and does NOT un-adopt — that is the caller's monotone-floor
+    contract, not re-checked here.
+
+    Args:
+        options: The producer's clean-tech options.
+        price_carbon: The carbon price the adoption reads :math:`P_c`
+            [currency / tCO2].
+        adopted_names: Names already adopted (the monotone floor).
+
+    Returns:
+        The newly-triggered option names, in declaration order.
+    """
+    P_c = float(price_carbon)
+    return [
+        option.name
+        for option in options
+        if option.name not in adopted_names and P_c >= float(option.trigger)
+    ]
 
 
 @dataclass(frozen=True)
@@ -78,6 +186,10 @@ class ProducerParams:
             (a marginal output subsidy P_c·φ_OBA). 0 disables OBA.
         f_lump: Lump-sum free allocation F_lump [tCO2 / yr]; infra-marginal
             (absent from both FOCs — a pure transfer).
+        technology_options: Cleaner-tech adoption options (the long-run intensity
+            margin, spec §4g); empty by default (off, byte-identical no-invest).
+        adopted_tech: Names of the options adopted so far (the monotone floor);
+            the FOC uses the post-adoption intensity ``effective_intensity``.
     """
 
     gamma: float
@@ -87,6 +199,8 @@ class ProducerParams:
     a_max: float
     phi_oba: float = 0.0
     f_lump: float = 0.0
+    technology_options: tuple[CleanTechOption, ...] = ()
+    adopted_tech: frozenset[str] = frozenset()
 
     def __post_init__(self) -> None:
         if not np.isfinite(self.delta) or self.delta <= 0.0:
@@ -221,6 +335,11 @@ def optimize_producer(params: ProducerParams, P_steel: float, P_carbon: float) -
     P_s = float(P_steel)
     P_c = float(P_carbon)
 
+    # Post-adoption baseline intensity (spec §4g): the lowest adopted clean-tech
+    # sigma', else the un-adopted sigma (off-by-default: adopted_tech empty ⇒
+    # sigma unchanged ⇒ byte-identical no-invest FOC).
+    sigma = effective_intensity(params.sigma, params.technology_options, params.adopted_tech)
+
     # Intensity FOC: abate until MAC = beta*a = P_c, clipped to [0, a_max].
     # Reuse the kernel's linear abatement helper (core/costs.py) — its rule is
     # exactly min(a_max, max(0, P_c/beta)) = clip(P_c/beta, 0, a_max).
@@ -230,15 +349,15 @@ def optimize_producer(params: ProducerParams, P_steel: float, P_carbon: float) -
 
     # Per-unit net carbon burden B, built from the CLIPPED a (general form).
     abatement_cost_per_unit = 0.5 * params.beta * a * a
-    burden = abatement_cost_per_unit + P_c * (params.sigma - a) - P_c * params.phi_oba
+    burden = abatement_cost_per_unit + P_c * (sigma - a) - P_c * params.phi_oba
 
     # Output FOC with the q >= 0 exit floor (below break-even ⇒ shut output).
     q_unfloored = (P_s - params.gamma - burden) / params.delta
     q = max(0.0, q_unfloored)
     output_floored = q_unfloored <= 0.0
 
-    emissions = (params.sigma - a) * q
-    initial_emissions = params.sigma * q
+    emissions = (sigma - a) * q
+    initial_emissions = sigma * q
     free_allocation = params.f_lump + params.phi_oba * q
     net_allowance_demand = emissions - free_allocation
     abatement_cost = abatement_cost_per_unit * q
@@ -342,6 +461,20 @@ class MultiCommodityProducer:
             P_carbon: Carbon price P_c [currency / tCO2].
         """
         self._P_carbon = float(P_carbon)
+
+    def stamp_adopted_tech(self, adopted_names: frozenset[str]) -> None:
+        """Set the producer's adopted clean-tech floor (the long-run margin).
+
+        Replaces ``params.adopted_tech`` so both faces re-derive the FOC at the
+        post-adoption intensity ``effective_intensity`` (spec §4g). Monotone: the
+        caller (the SCC adoption-outer-floor host) only ever grows the set.
+
+        Args:
+            adopted_names: Names of the producer's adopted clean-tech options.
+        """
+        from dataclasses import replace
+
+        self.params = replace(self.params, adopted_tech=frozenset(adopted_names))
 
     # ── Core optimisation at stamped prices ──────────────────────────────────
 

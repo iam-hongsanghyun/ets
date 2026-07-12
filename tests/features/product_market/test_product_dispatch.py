@@ -136,3 +136,57 @@ def test_producer_delta_zero_is_rejected_at_config_time() -> None:
     }
     with pytest.raises(ValueError, match="delta must be > 0"):
         run_simulation_from_config(bad)
+
+
+def _product_scenario(*, import_supply: dict, producer_extra: dict | None = None) -> dict:
+    """A standalone product scenario for exercising the D3-5 config door."""
+    producer = {
+        "name": "SteelCo",
+        "kind": "producer",
+        "output_cost": {"gamma": 5.0, "delta": 2.0},
+        "intensity": 5.0,
+        "abatement": {"beta": 10.0, "a_max": 5.0},
+        **(producer_extra or {}),
+    }
+    return {
+        "scenarios": [
+            {
+                "name": "steel",
+                "model_approach": "product",
+                "carbon_price": 10.0,
+                "product_demand": {"form": "linear", "intercept": 40.0, "slope": 0.3},
+                "import_supply": import_supply,
+                "years": [{"year": "2030", "participants": [producer]}],
+            }
+        ]
+    }
+
+
+def test_foreign_intensity_alias_and_cbam_default_intensity() -> None:
+    """`foreign_intensity` aliases `sigma_foreign`; CBAM inherits it as its charge."""
+    # The alias parses and the standalone market still clears (smoke — a bad alias
+    # would have σ_foreign default to 0 and the CBAM charge vanish silently).
+    cfg = _product_scenario(
+        import_supply={
+            "world_price": 0.0,
+            "slope": 0.2,
+            "foreign_intensity": 5.0,
+            "cbam": {"enabled": True, "coverage": 1.0},
+        }
+    )
+    summary, _ = run_simulation_from_config(cfg)
+    assert len(summary) == 1
+
+
+def test_clean_tech_sigma_prime_above_baseline_is_rejected() -> None:
+    """A clean-tech option cannot RAISE intensity — σ' > σ is a loud config error."""
+    import pytest
+
+    cfg = _product_scenario(
+        import_supply={"world_price": 0.0, "slope": 0.2},
+        producer_extra={
+            "technology_options": [{"name": "bad", "sigma_prime": 6.0, "trigger": 9.0}]
+        },
+    )
+    with pytest.raises(ValueError, match="sigma_prime"):
+        run_simulation_from_config(cfg)

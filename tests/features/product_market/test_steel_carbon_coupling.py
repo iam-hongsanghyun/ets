@@ -57,21 +57,40 @@ _LEAKAGE = _SIGMA_FOREIGN * (_M_STAR - _M_0) / (_E_DOM_0 - _CAP)  # 30/85 = 0.35
 _ATOL = 1e-6
 
 
-def _steel_market_body(*, carbon_price: float = 0.0) -> dict:
-    """The steel product market body — 2 identical producers, linear demand, imports."""
+def _steel_market_body(
+    *,
+    carbon_price: float = 0.0,
+    cbam: dict | None = None,
+    phi_oba: float = 0.0,
+    tech_options: list[dict] | None = None,
+) -> dict:
+    """The steel product market body — 2 identical producers, linear demand, imports.
+
+    D3-5 lever knobs (each off-by-default): ``cbam`` (price-active import charge,
+    spec §4e), ``phi_oba`` (marginal output subsidy, §4d), ``tech_options`` (the
+    cleaner-tech adoption option, §4g). All absent ⇒ the D3-4 anchor verbatim.
+    """
+    producer = dict(_PRODUCER)
+    if phi_oba:
+        producer["oba_benchmark"] = phi_oba
+    if tech_options is not None:
+        producer["technology_options"] = tech_options
+    import_supply: dict = {"world_price": 0.0, "slope": _M_SLOPE, "sigma_foreign": _SIGMA_FOREIGN}
+    if cbam is not None:
+        import_supply["cbam"] = cbam
     return {
         "market_id": "steel",
         "model_approach": "product",
         "price_unit": "USD/t-steel",
         "carbon_price": carbon_price,
         "product_demand": {"form": "linear", "intercept": 40.0, "slope": _B_D},
-        "import_supply": {"world_price": 0.0, "slope": _M_SLOPE, "sigma_foreign": _SIGMA_FOREIGN},
+        "import_supply": import_supply,
         "years": [
             {
                 "year": "2030",
                 "participants": [
-                    {"name": "SteelCo A", **_PRODUCER},
-                    {"name": "SteelCo B", **_PRODUCER},
+                    {"name": "SteelCo A", **producer},
+                    {"name": "SteelCo B", **producer},
                 ],
             }
         ],
@@ -104,13 +123,22 @@ def _carbon_market_body() -> dict:
     }
 
 
-def _joint_scenario(*, back_link: bool = True) -> dict:
+def _joint_scenario(
+    *,
+    back_link: bool = True,
+    cbam: dict | None = None,
+    phi_oba: float = 0.0,
+    tech_options: list[dict] | None = None,
+) -> dict:
     """The full steel↔carbon joint scenario.
 
     Args:
         back_link: When ``True`` both coupling links are present (the genuine
             2-way cycle). When ``False`` only carbon→steel remains — a
             block-recursive acyclic chain (the β→∞-style corner control).
+        cbam: Optional price-active CBAM lever config (spec §4e).
+        phi_oba: Optional OBA marginal output subsidy benchmark (§4d).
+        tech_options: Optional cleaner-tech adoption options (§4g).
     """
     links = [
         {
@@ -133,11 +161,12 @@ def _joint_scenario(*, back_link: bool = True) -> dict:
                 "target_participants": ["*"],
             }
         )
+    steel = _steel_market_body(cbam=cbam, phi_oba=phi_oba, tech_options=tech_options)
     return {
         "scenarios": [
             {
                 "name": "steel-carbon-joint",
-                "markets": [_carbon_market_body(), _steel_market_body()],
+                "markets": [_carbon_market_body(), steel],
                 "links": links,
                 # Tight tolerance so the reported prices land on the exact anchor
                 # (atol 1e-6); damped w=0.5 per the flagship spec.
@@ -248,6 +277,171 @@ def test_disabling_back_link_is_block_recursive_and_still_solves() -> None:
     # steel then clears at the no-policy price P_s⁰=30. Both markets solved.
     np.testing.assert_allclose(_price(summary, "carbon"), 0.0, rtol=0, atol=_ATOL)
     np.testing.assert_allclose(_price(summary, "steel"), _P_STEEL_0, rtol=0, atol=_ATOL)
+
+
+# ── D3-5 lever helpers ────────────────────────────────────────────────────────
+
+
+def _steel_row(summary):
+    return summary[summary["Market"] == "steel"]
+
+
+def _q_agg(participants) -> float:
+    return float(participants[participants["Scenario"].str.endswith("steel")]["Output"].sum())
+
+
+def _a_first(participants) -> float:
+    steel = participants[participants["Scenario"].str.endswith("steel")]
+    return float(steel["Intensity Abatement"].to_numpy(dtype=float)[0])
+
+
+def _imports(summary, participants) -> float:
+    """Actual imports M* = D(P_s*) − Σq* (includes any CBAM shift)."""
+    p_steel = _price(summary, "steel")
+    return (40.0 - _B_D * p_steel) - _q_agg(participants)
+
+
+# ── D3-5 (a) CBAM — price-active import charge; the two-sided anti-leakage lever ─
+#
+# Numerically-computed goldens (the coupled steel↔carbon fixed point under the
+# finite-β anchor + the CBAM shift; not closed-form, pinned per spec §7).
+_CBAM_HALF_P_STEEL = 71.2632628565
+_CBAM_HALF_P_CARBON = 12.7258694436
+_CBAM_HALF_LEAKAGE = 0.1111598735
+_CBAM_FULL_P_CARBON = 17.8736088645
+_CBAM_FULL_Q_AGG = 12.4508230424
+_CBAM_FULL_LEAKAGE = -0.3355584940
+_PIN = 1e-6
+
+
+def test_cbam_half_coverage_drives_leakage_toward_zero() -> None:
+    """CBAM c=0.5 (spec §4e/§7): leakage FALLS from 0.353 toward zero (0.111)."""
+    summary, participants = run_simulation_from_config(
+        _joint_scenario(cbam={"enabled": True, "coverage": 0.5})
+    )
+    np.testing.assert_allclose(_price(summary, "steel"), _CBAM_HALF_P_STEEL, rtol=0, atol=_PIN)
+    np.testing.assert_allclose(_price(summary, "carbon"), _CBAM_HALF_P_CARBON, rtol=0, atol=_PIN)
+    leakage = float(_steel_row(summary)["Leakage Rate"].iloc[0])
+    np.testing.assert_allclose(leakage, _CBAM_HALF_LEAKAGE, rtol=0, atol=_PIN)
+    # Direction: strictly between the anchor (0.353) and neutralised (0).
+    assert 0.0 < leakage < _LEAKAGE
+
+
+def test_cbam_full_coverage_over_corrects_leakage_negative() -> None:
+    """CBAM c=1 over-corrects (spec §7): P_c↑≈17.9, q↑≈12.5, imports collapse, L<0."""
+    summary, participants = run_simulation_from_config(
+        _joint_scenario(cbam={"enabled": True, "coverage": 1.0})
+    )
+    np.testing.assert_allclose(_price(summary, "carbon"), _CBAM_FULL_P_CARBON, rtol=0, atol=_PIN)
+    np.testing.assert_allclose(_q_agg(participants), _CBAM_FULL_Q_AGG, rtol=0, atol=_PIN)
+    leakage = float(_steel_row(summary)["Leakage Rate"].iloc[0])
+    np.testing.assert_allclose(leakage, _CBAM_FULL_LEAKAGE, rtol=0, atol=_PIN)
+    # Over-correction: imports collapse (M* ≈ 0.30 vs anchor 12) and leakage < 0.
+    assert leakage < 0.0
+    assert _imports(summary, participants) < 1.0
+    # Emission-intensive tightening: carbon price and per-firm output both rise.
+    assert _price(summary, "carbon") > _P_CARBON_STAR
+    assert _q_agg(participants) > 2.0 * _Q_STAR
+
+
+# ── D3-5 (b) Leakage diagnostic column — guarded, multi-market product rows only ─
+
+
+def test_leakage_rate_column_present_on_product_row_only() -> None:
+    """ "Leakage Rate" reads 0.353 on the steel row, absent on the carbon row."""
+    summary, _ = run_simulation_from_config(_joint_scenario())
+    assert "Leakage Rate" in summary.columns
+    np.testing.assert_allclose(
+        float(_steel_row(summary)["Leakage Rate"].iloc[0]), _LEAKAGE, rtol=0, atol=_PIN
+    )
+    # Guarded: the carbon row carries NO leakage value (NaN after the frame join).
+    carbon_leak = summary[summary["Market"] == "carbon"]["Leakage Rate"]
+    assert bool(carbon_leak.isna().all())
+
+
+def test_leakage_rate_column_absent_for_single_market_run() -> None:
+    """A standalone product run carries NO "Leakage Rate" column (config-driven)."""
+    cf = {"scenarios": [{"name": "steel-only", **_steel_market_body(carbon_price=0.0)}]}
+    cf["scenarios"][0].pop("market_id")
+    summary, _ = run_simulation_from_config(cf)
+    assert "Leakage Rate" not in summary.columns
+
+
+# ── D3-5 (c) OBA — marginal output subsidy: q* rises, a* unchanged, leakage falls ─
+_OBA_P_STEEL = 53.3333333333
+_OBA_Q_AGG = 13.3333333333
+_OBA_LEAKAGE = 0.3255813953
+
+
+def test_oba_raises_output_leaves_abatement_untouched_and_cuts_leakage() -> None:
+    """OBA φ>0 (spec §4d): q* RISES, a* UNCHANGED, leakage FALLS (output preserved)."""
+    base_summary, base_participants = run_simulation_from_config(_joint_scenario())
+    summary, participants = run_simulation_from_config(_joint_scenario(phi_oba=1.0))
+
+    np.testing.assert_allclose(_price(summary, "steel"), _OBA_P_STEEL, rtol=0, atol=_PIN)
+    np.testing.assert_allclose(_q_agg(participants), _OBA_Q_AGG, rtol=0, atol=_PIN)
+    # a* is a pure function of P_c only (a=P_c/β); OBA leaves it exactly at 1.0.
+    np.testing.assert_allclose(
+        _a_first(participants), _a_first(base_participants), rtol=0, atol=_PIN
+    )
+    # Output preserved domestically ⇒ q* rises above the no-OBA anchor.
+    assert _q_agg(participants) > _q_agg(base_participants)
+    leakage = float(_steel_row(summary)["Leakage Rate"].iloc[0])
+    np.testing.assert_allclose(leakage, _OBA_LEAKAGE, rtol=0, atol=_PIN)
+    assert leakage < _LEAKAGE
+
+
+# ── D3-5 (d) Investment — cleaner tech, the long-run margin (adoption-in-cycle) ──
+_H2_DRI = [{"name": "H2-DRI", "sigma_prime": 3.0, "trigger": 9.0}]
+_ADOPT_P_STEEL = 43.7581014729
+_ADOPT_P_CARBON = 7.9261020626
+_ADOPT_Q_AGG = 18.1209502350
+
+
+def test_investment_adoption_recovers_output_and_loosens_the_cap() -> None:
+    """P_c crosses θ=9 ⇒ H2-DRI adopts ⇒ σ↓ ⇒ P_c falls, output recovers (spec §4g)."""
+    summary, participants = run_simulation_from_config(_joint_scenario(tech_options=_H2_DRI))
+
+    # Converged joint fixed point WITH adoption (a genuine cyclic SCC).
+    carbon_summary = summary[summary["Market"] == "carbon"]
+    assert float(carbon_summary["Joint Converged"].iloc[0]) == 1.0
+
+    # The adopted fixed point DIFFERS from the no-adopt anchor.
+    np.testing.assert_allclose(_price(summary, "steel"), _ADOPT_P_STEEL, rtol=0, atol=_PIN)
+    np.testing.assert_allclose(_price(summary, "carbon"), _ADOPT_P_CARBON, rtol=0, atol=_PIN)
+    np.testing.assert_allclose(_q_agg(participants), _ADOPT_Q_AGG, rtol=0, atol=_PIN)
+
+    # σ drops → the cap loosens → P_c FALLS below the no-adopt anchor (ex-post
+    # regret permitted: 7.93 < the θ=9 trigger), and output RECOVERS.
+    assert _price(summary, "carbon") < _P_CARBON_STAR
+    assert _q_agg(participants) > 2.0 * _Q_STAR
+
+    # Adoption is recorded on the steel row (the clean tech was adopted once).
+    assert float(_steel_row(summary)["Investment Newly Effective"].iloc[0]) == 2.0
+    assert "H2-DRI" in str(_steel_row(summary)["Investment Adoptions"].iloc[0])
+
+
+def test_investment_trigger_not_crossed_reproduces_the_no_adopt_anchor() -> None:
+    """θ=11 > P_c*=10 ⇒ no adoption ⇒ the fixed point is the D3-4 anchor exactly."""
+    no_adopt = [{"name": "H2-DRI", "sigma_prime": 3.0, "trigger": 11.0}]
+    summary, participants = run_simulation_from_config(_joint_scenario(tech_options=no_adopt))
+    np.testing.assert_allclose(_price(summary, "steel"), _P_STEEL_STAR, rtol=0, atol=_PIN)
+    np.testing.assert_allclose(_price(summary, "carbon"), _P_CARBON_STAR, rtol=0, atol=_PIN)
+    np.testing.assert_allclose(_q_agg(participants), 2.0 * _Q_STAR, rtol=0, atol=_PIN)
+
+
+# ── D3-5 composition — the levers compose (any subset can be on together) ───────
+
+
+def test_cbam_and_oba_compose() -> None:
+    """CBAM + OBA together still converge to a single joint fixed point."""
+    summary, participants = run_simulation_from_config(
+        _joint_scenario(cbam={"enabled": True, "coverage": 0.5}, phi_oba=0.5)
+    )
+    assert float(summary[summary["Market"] == "carbon"]["Joint Converged"].iloc[0]) == 1.0
+    # Both anti-leakage levers active ⇒ a well-defined leakage read on the steel row.
+    assert "Leakage Rate" in summary.columns
+    assert np.isfinite(float(_steel_row(summary)["Leakage Rate"].iloc[0]))
 
 
 class _capture_warnings:

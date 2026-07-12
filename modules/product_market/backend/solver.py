@@ -50,6 +50,7 @@ from ...core.market.product_clearing import (
     solve_product_equilibrium,
 )
 from ...core.participant.producer import (
+    CleanTechOption,
     MultiCommodityProducer,
     ProducerOutcome,
     ProducerParams,
@@ -197,7 +198,23 @@ def _import_supply(spec: dict[str, Any]) -> ImportSupply:
 
 
 def _producer_params(spec: dict[str, Any]) -> ProducerParams:
-    """Build validated :class:`ProducerParams` from a normalised producer spec."""
+    """Build validated :class:`ProducerParams` from a normalised producer spec.
+
+    Carries the cleaner-tech ``technology_options`` (spec §4g) and the
+    already-adopted floor ``adopted_tech`` (the spec's solve-time
+    ``_adopted_tech``, stamped by the SCC adoption-outer-floor host on
+    ``product_producers`` before the leg solves); both empty by default (the
+    byte-identical no-invest path).
+    """
+    options = tuple(
+        CleanTechOption(
+            name=str(o["name"]),
+            sigma_prime=float(o["sigma_prime"]),
+            trigger=float(o["trigger"]),
+        )
+        for o in spec.get("technology_options") or []
+    )
+    adopted = frozenset(str(n) for n in spec.get("_adopted_tech") or [])
     return ProducerParams(
         gamma=float(spec["gamma"]),
         delta=float(spec["delta"]),
@@ -206,6 +223,8 @@ def _producer_params(spec: dict[str, Any]) -> ProducerParams:
         a_max=float(spec["a_max"]),
         phi_oba=float(spec.get("phi_oba", 0.0)),
         f_lump=float(spec.get("f_lump", 0.0)),
+        technology_options=options,
+        adopted_tech=adopted,
     )
 
 
@@ -248,6 +267,86 @@ def _producer_row(
         "Total Compliance Cost": 0.0,
         **({"Year": year} if year is not None else {}),
     }
+
+
+# Below this |denominator| the domestic emission cut is numerically zero (no
+# policy bite): leakage is undefined ⇒ reported as 0.0 (no cut, no leak).
+_LEAKAGE_MIN_CUT = 1e-9
+
+
+def _leakage_diagnostic(
+    producers: list[MultiCommodityProducer],
+    demand: DemandCurve,
+    imports: ImportSupply,
+    price_steel: float,
+    price_carbon: float,
+) -> float:
+    r"""Carbon-leakage rate vs the no-policy (P_carbon = 0) counterfactual (§4f).
+
+    The share of the domestic emission cut that reappears abroad as embodied
+    carbon in extra imports. NAMED counterfactual (V-D3-4 requires it): the
+    no-policy world ``P_carbon = 0`` — at which the CBAM charge (``c·P_c·
+    σ_foreign``) also vanishes, so both the carbon price AND its border
+    adjustment switch off together. The counterfactual steel price is re-cleared
+    at ``P_c = 0`` with the SAME demand / import / producer curves.
+
+    Algorithm:
+        LaTeX:
+        $$ L = \sigma_{\mathrm{foreign}}\,
+               \frac{M^{*} - M^{0}}{e^{0} - e^{*}_{\mathrm{dom}}}, \qquad
+           (P_s^{0}) : S_{\mathrm{dom}}(P_s^{0}, 0) + M(P_s^{0}, 0) = D(P_s^{0}), $$
+        with ``e^{0} = Σ_i e_i(P_s^{0}, 0)`` the no-policy domestic emissions,
+        ``M^{0} = M(P_s^{0}, 0)`` its imports, ``e^{*}_{dom}`` / ``M^{*}`` the
+        policy-on values at ``(P_s^{*}, P_c^{*})``. Undefined (⇒ 0) when the
+        domestic cut ``e^{0} - e^{*}_{dom}`` is numerically zero.
+
+        ASCII fallback:
+            P_s0 solves S_dom(P_s0,0) + M(P_s0,0) = D(P_s0)
+            e0 = sum e_i(P_s0,0) ; M0 = M(P_s0,0)
+            L  = sigma_foreign*(M_star - M0)/(e0 - e_dom_star)
+
+        Symbols (units):
+            sigma_foreign : foreign carbon intensity of imports [tCO2/t-steel]
+            M_star, M0    : policy-on / no-policy imports        [t-steel/period]
+            e0, e_dom_star: no-policy / policy-on domestic emissions [tCO2/period]
+            L             : leakage rate                          [dimensionless]
+
+    Args:
+        producers: The market's producer fleet (sorted; each reads BOTH prices).
+        demand: The product demand curve.
+        imports: The import-supply schedule (its ``sigma_foreign`` is the foreign
+            carbon intensity used as the leakage numerator's per-unit factor).
+        price_steel: The policy-on cleared steel price ``P_s^*`` [currency/t-steel].
+        price_carbon: The policy-on carbon price ``P_c^*`` [currency/tCO2].
+
+    Returns:
+        The leakage rate ``L`` [dimensionless]; 0.0 when there is no domestic cut
+        (no policy bite) or no foreign carbon channel (``sigma_foreign = 0``).
+    """
+    sigma_foreign = float(imports.sigma_foreign)
+    if sigma_foreign == 0.0:
+        return 0.0
+
+    def _domestic_supply(P_s: float, P_c: float) -> float:
+        return sum(p.product_supply(P_s, P_c) for p in producers)
+
+    def _domestic_emissions(P_s: float, P_c: float) -> float:
+        return sum(optimize_producer(p.params, P_s, P_c).emissions for p in producers)
+
+    # Policy-on: imports at the cleared pair (incl. the CBAM shift) + domestic cut.
+    m_star = float(imports(price_steel, price_carbon))
+    e_dom_star = _domestic_emissions(price_steel, price_carbon)
+
+    # No-policy counterfactual: re-clear the steel market at P_c = 0.
+    cf = solve_product_equilibrium(_domestic_supply, 0.0, demand, imports)
+    price_steel_0 = float(cf["price"])
+    m_0 = float(imports(price_steel_0, 0.0))
+    e_0 = _domestic_emissions(price_steel_0, 0.0)
+
+    domestic_cut = e_0 - e_dom_star
+    if abs(domestic_cut) < _LEAKAGE_MIN_CUT:
+        return 0.0
+    return sigma_foreign * (m_star - m_0) / domestic_cut
 
 
 def _solve_one_market(market: CarbonMarket) -> dict[str, Any]:
@@ -303,6 +402,14 @@ def _solve_one_market(market: CarbonMarket) -> dict[str, Any]:
 
     result = solve_product_equilibrium(domestic_supply, carbon_price, demand, imports)
     price_steel = float(result["price"])
+
+    # Leakage diagnostic (spec §4f, V-D3-4): foreign emissions gained per unit of
+    # domestic emissions cut, measured against the NAMED no-policy counterfactual
+    # (P_carbon = 0 ⇒ the CBAM charge is inactive too, since it scales with P_c).
+    # Stashed in the equilibrium bundle; surfaced as the guarded "Leakage Rate"
+    # column ONLY on multi-market product rows (dispatch._stamp_multi_market_
+    # columns), so a single-market / carbon-only run never carries it.
+    leakage_rate = _leakage_diagnostic(producers, demand, imports, price_steel, carbon_price)
 
     # R37 (D3 adaptation, spec §7): the ACTUAL steel↔carbon joint loop gain
     # g = s_c·s_s from the linearised 2×2 clearing Jacobian at this operating
@@ -366,6 +473,7 @@ def _solve_one_market(market: CarbonMarket) -> dict[str, Any]:
         "auction_sold": 0.0,
         "unsold_allowances": 0.0,
         "coverage_ratio": 1.0,
+        "leakage_rate": leakage_rate,
     }
 
     logger.debug(
