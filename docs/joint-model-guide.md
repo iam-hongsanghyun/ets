@@ -9,6 +9,11 @@ existence, the contraction condition, the cycle-detection predicate, the
 investment nesting — see [`docs/joint-equilibrium.md`](joint-equilibrium.md).
 This page never restates that math; it links to it.
 
+> Coupling two markets of *different kinds* — a product market (steel) and a
+> compliance market (carbon)? That is a **multi-commodity model**, solved by
+> this same joint engine. See
+> [`docs/multi-commodity-guide.md`](multi-commodity-guide.md).
+
 ---
 
 ## 1. What a joint model is, and when you need one
