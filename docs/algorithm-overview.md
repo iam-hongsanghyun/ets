@@ -417,61 +417,37 @@ Bank balances still propagate exactly as in competitive mode. The Hotelling cond
 
 ## Nash-Cournot Solver
 
-**File:** `src/ets/solvers/nash.py`
+**File:** `modules/nash_cournot/backend/solver.py` (`pe.features.nash_cournot.solver`). Spec: `docs/nash-cournot-spec.md`.
 
 ### Equilibrium concept
 
-A **Cournot-Nash equilibrium in abatement quantities**: a profile $(a_1^*, \ldots, a_n^*)$ such that no strategic participant $i$ can reduce total compliance cost by unilaterally deviating from $a_i^*$. Non-strategic participants remain price-takers throughout.
+A **Cournot-Nash equilibrium in net allowance positions** $(d_1^*, \ldots, d_k^*)$: no strategic firm $i$ can lower its compliance cost by unilaterally changing its net position, given every other participant's position and the price-taking fringe's response. A strategic firm internalises its price impact along the residual (inverse) demand curve; the fringe stays a set of price takers ($\text{MAC}_j = P$).
 
-### Residual demand concept
+### Strategic first-order condition
 
-For strategic participant $i$, the residual demand curve from all other participants is:
+Let $d_i = e_{0,i} - a_i - F_i$ be firm $i$'s net allowance demand ($d_i>0$ buyer, $<0$ seller) and $g_i = e_{0,i} - F_i$ its net-demand intercept. Firm $i$ sets
 
-$$Q_{-i}(P) = \sum_{j \neq i} \text{net\_demand}_j(P)$$
+$$\text{MAC}_i = P + d_i\,\frac{\partial P}{\partial d_i}, \qquad \frac{\partial P}{\partial d_i} = \frac{1}{S_{-i}} > 0, \qquad S_{-i} = \sum_{j \neq i}\left|\frac{\partial d_j}{\partial P}\right| = \sum_{j \neq i}\frac{1}{\varphi_j} + b_{\text{fringe}}.$$
 
-The equilibrium price is determined by:
+The wedge $\text{MAC}_i - P = d_i / S_{-i}$ is **signed by the firm's net position** (Hahn 1984): a net SELLER ($d_i<0$) under-abates ($\text{MAC}_i < P$) to withhold supply → Nash price **above** competitive (monopoly); a net BUYER ($d_i>0$) over-abates ($\text{MAC}_i > P$) to withhold demand → Nash price **below** competitive (monopsony). As the fringe grows ($S_{-i}\to\infty$) the wedge → 0 and Nash → competitive.
 
-$$P(Q_i) : Q_{-i}(P) + Q_i = Q_{\text{auction}}$$
+For a linear MAC ($\text{MAC}_i = \varphi_i a_i$, price-taker net demand $d_i^{\text{PT}}(P) = g_i - P/\varphi_i$) the FOC closes in quantities:
 
-A strategic participant internalises this inverse relationship — increasing demand raises the price it pays.
+$$d_i^*(P) = \frac{\varphi_i g_i - P}{\varphi_i + 1/S_{-i}}.$$
 
-### Price impact estimation
+$\varphi_i$ and $g_i$ are read **analytically** for linear MACs (exact); a finite-difference linearisation of $d_i^{\text{PT}}$ (step `solver_nash_price_step`) is the general fallback for a non-linear MAC.
 
-The price impact `dP/dQ` is estimated via finite difference:
+### Reported equilibrium — the strategic clearing
 
-```python
-slope_dD_dP = (D(P + δ) - D(P - δ)) / (2δ)    # δ = solver_nash_price_step
-dP_dQ = -1 / slope_dD_dP                         # positive: higher demand → higher price
-```
+Hold each strategic firm at its Cournot position $d_i^*(P)$ (NOT its price-taking response) and clear the residual for the Nash price $P^{\text{Nash}}$:
 
-### Jacobi best-response iteration
+$$\sum_{i\in\text{strat}} d_i^*(P) + D_{\text{fringe}}(P) = Q.$$
 
-```
-1. Initialise: a_i^(0) = competitive abatement for all strategic participants i
+The left-hand side is strictly decreasing in $P$, so the root is unique; it is found by geometric-bracket + Brent (the competitive clearing's bracketing discipline). **The all-price-taker `market.solve_equilibrium` is used only for the competitive starting point / loud fallback — never for the report.** (Reporting the competitive clear was the pre-fix defect that made Nash prices bit-identical to competitive.) Each strategic firm is then reported at $(a_i^*, d_i^*)$ with $\text{MAC}_i = P^{\text{Nash}} + d_i^*/S_{-i}$, its allowance trades settled at the market price $P^{\text{Nash}}$.
 
-2. For each iteration k:
-   For each strategic participant i simultaneously (Jacobi, not Gauss-Seidel):
+### Existence / guard
 
-     a. Compute Q_{-i} = net demand from all others at current price
-     b. Solve participant i's best response:
-        min_{a_i} compliance_cost_i(a_i, P(a_i | Q_{-i}))
-        where P is updated by price impact: ΔP ≈ dP/dQ × Δ(net_demand_i)
-     c. Record new a_i^(k+1)
-
-3. Update all strategies simultaneously:
-   a_i ← a_i^(k+1) for all i
-
-4. Convergence check:
-   max_i |a_i^(k+1) - a_i^(k)| <= solver_nash_convergence_tol  → STOP
-```
-
-**Jacobi vs Gauss-Seidel:** All strategies are updated simultaneously (Jacobi style) to avoid sequential-update artifacts where early participants in the loop have information advantages.
-
-### Convergence criterion
-
-$$\max_i \left|a_i^{(k+1)} - a_i^{(k)}\right| \leq \text{solver\_nash\_convergence\_tol}$$
-
-If this is not achieved within `solver_nash_max_iters` iterations, the solver logs a warning and uses the current best approximation. The final equilibrium price is re-solved via Brent's method at the converged abatement profile.
+Uniqueness needs an elastic residual for every strategic firm, $S_{-i} > 0$: a fringe, or at least two strategic firms. A single strategic firm facing a perfectly inelastic residual ($S_{-i} = 0$, infinite price impact) is ill-posed and **raises** (JC4).
 
 ### Strategic vs non-strategic participants
 
@@ -482,7 +458,9 @@ strategic_names = set(nash_strategic_participants) if nash_strategic_participant
 # If nash_strategic_participants is empty → all participants are strategic
 ```
 
-Non-strategic participants are fixed price-takers throughout the iteration. The strategic participants' best-response optimisation accounts for price impact. This creates a mixed market — useful for modelling one dominant buyer among many small firms.
+### Mechanism composition
+
+The MSR $Q$-adjustment is applied **before** the strategic clearing (strategic firms compete over the MSR-adjusted $Q$), gated on `msr_enabled` / `msr_start_year` exactly as the competitive path. CCR is deferred to v1.1. Banking / intertemporal strategy is out of scope for v1 — the Nash path clears statically per year and **flags** (never silently runs) a banking-enabled market.
 
 ---
 
@@ -1315,11 +1293,13 @@ run_simulation(config)
     └─ model_approach == "nash_cournot":
         ├─ Compute baseline expected prices
         └─ For each year t:
-            ├─ Initialise from competitive equilibrium
-            ├─ Estimate dP/dQ (finite difference)
-            ├─ Jacobi best-response iteration (≤ solver_nash_max_iters)
-            │   └─ Each strategic participant minimises cost given residual demand
-            └─ Final Brent solve at converged abatement profile
+            ├─ MSR Q-adjustment (gated on msr_enabled/msr_start_year) BEFORE clearing
+            ├─ Competitive solve → anchor price for slopes / loud fallback
+            ├─ Per strategic firm: (phi_i, g_i) analytic (linear) or FD; S_-i = sum_{j!=i} 1/phi_j
+            │   └─ guard S_-i > 0 (elastic residual required), else raise (JC4)
+            └─ Root-find sum_i d_i*(P) + D_fringe(P) = Q  (monotone; bracket + Brent)
+                └─ report P^Nash, strategic firms at (a_i*, d_i*), MAC_i = P + d_i*/S_-i
+                   (NEVER the all-price-taker solve_equilibrium)
 
 run_coupled_simulation(config, external_model)   [Feedback Option B]
 │
@@ -1342,7 +1322,7 @@ run_coupled_simulation(config, external_model)   [Feedback Option B]
 | `minimize_scalar` (per participant, per price evaluation) | ~20–80 evaluations | N_participants × N_brent_evals |
 | Brent's method convergence | ~10–20 price evaluations | 1 per year |
 | Perfect foresight iterations | 1 full path per iteration | ≤ 25 |
-| Nash best-response iterations | N_strategic × 1 minimisation per iteration | ≤ 120 |
+| Nash strategic clearing | 1 monotone bracket+Brent root-find on the strategic-aware net demand | 1 per year |
 | Hotelling bisection | 1 full path per bisection step | ≤ 80 |
 | Total (5 participants, 5 years, competitive) | ~5 × 5 × 15 × 50 = 18,750 evaluations | — |
 

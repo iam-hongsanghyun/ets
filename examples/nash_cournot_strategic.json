@@ -1,0 +1,36 @@
+{
+  "description": {
+    "title": "Nash-Cournot strategic clearing — net-SELLER anchor (price ABOVE competitive)",
+    "economic_framing": "One allowance market, two symmetric strategic gencos plus a competitive price-taking fringe, cleared as a Cournot-Nash equilibrium in net allowance positions. This is the net-SELLER headline: the strategic firms are net sellers in equilibrium, so they WITHHOLD supply (under-abate) to lift the price — the Nash price sits ABOVE the competitive price (monopoly-side markup, Hahn 1984). The direction is NOT universal: a net-BUYER strategic configuration (a large importer over-emitting relative to its allocation) flips the sign — the buyer withholds demand (over-abates) to depress the price, so the Nash price falls BELOW competitive (monopsony). Free allocation signs the markup: over-allocation makes a firm a seller (price up); under-allocation makes it a buyer (price down).",
+    "mechanism": "Each strategic firm i sets MAC_i = P + d_i / S_-i, where d_i = e0_i - a_i - F_i is its net allowance demand (d_i<0 seller) and S_-i = sum_{j!=i} 1/phi_j + b_fringe is the residual-demand price-slope it faces. Holding the strategic firms at their Cournot positions d_i*, the residual fringe clears at the Nash price. Here phi_s=1 for both gencos, the fringe slope b_fringe=1, so S_-i = 1 (other genco) + 1 (fringe) = 2 and the price impact dP/dd_i = 1/2.",
+    "participants": "GencoA, GencoB: e0=10 Mt each, fully allocated (free_allocation_ratio=1.0 => g_s=e0-F=0), linear MAC slope 1, max abatement 10. Fringe: e0=21 Mt, no free allocation (g_f=21), linear MAC slope 1, max abatement 21. Auction Q=0 (total_cap=20 = the 20 Mt of free allocation, so nothing is auctioned): a pure secondary market between the fringe (net buyer) and the gencos (net sellers).",
+    "expected_output": {
+      "Competitive price [USD/tCO2]": 7.0,
+      "Nash-Cournot price [USD/tCO2]": 9.0,
+      "Per-genco net position (sells) competitive vs Nash [Mt]": [7.0, 6.0],
+      "Per-genco MAC at Nash [USD/tCO2]": 6.0,
+      "reading": "Competitive clearing: (21-P) + 2(0-P) = 0 => P=7, each genco sells 7 (MAC=7=P). Nash clearing: each genco's Cournot net demand is d_i*(P) = (0-P)/(1+1/2) = -2P/3, so (21-P) + 2(-2P/3) = 0 => 21 - 7P/3 = 0 => P=9. Each genco sells 6 (< 7: restricts supply) and abates only to MAC = 9 + (-6)/2 = 6 < P (a net seller under-abates). A +28.6% markup (9 vs 7), driven purely by strategic supply withholding — the first library baseline whose Nash price is genuinely distinct from competitive."
+    }
+  },
+  "scenarios": [
+    {
+      "name": "Nash-Cournot strategic gencos",
+      "model_approach": "nash_cournot",
+      "nash_strategic_participants": ["GencoA", "GencoB"],
+      "years": [
+        {
+          "year": "2025",
+          "total_cap": 20.0,
+          "auction_mode": "derive_from_cap",
+          "price_upper_bound": 1000.0,
+          "banking_allowed": false,
+          "participants": [
+            {"name": "GencoA", "initial_emissions": 10.0, "free_allocation_ratio": 1.0, "penalty_price": 1000.0, "abatement_type": "linear", "max_abatement": 10.0, "cost_slope": 1.0},
+            {"name": "GencoB", "initial_emissions": 10.0, "free_allocation_ratio": 1.0, "penalty_price": 1000.0, "abatement_type": "linear", "max_abatement": 10.0, "cost_slope": 1.0},
+            {"name": "Fringe", "initial_emissions": 21.0, "free_allocation_ratio": 0.0, "penalty_price": 1000.0, "abatement_type": "linear", "max_abatement": 21.0, "cost_slope": 1.0}
+          ]
+        }
+      ]
+    }
+  ]
+}
