@@ -349,3 +349,58 @@ def model_manifest(model_id: str) -> dict[str, Any]:
     """
     config = model_store.resolve_model_config(model_id)
     return derive_manifest(config)
+
+
+# ── 8. list_sessions / run_session (pe.command SESSION tier) ────────────────
+
+
+def list_sessions() -> dict[str, Any]:
+    """List every saved pe.command SESSION (a model populated with a user's data).
+
+    Sessions are a distinct registry tier from models: they never appear in
+    ``list_models`` (the model corpus / builder template picker), only here.
+    Each carries a ``source_model_id`` link back to the model it was
+    instantiated from.
+
+    Returns:
+        ``{"sessions": [{"id", "name", "source_model_id", "updated_at"}, ...]}``,
+        ordered deterministically by id.
+    """
+    return {
+        "sessions": [
+            {
+                "id": record.id,
+                "name": record.name,
+                "source_model_id": record.source_model_id,
+                "updated_at": record.updated_at,
+            }
+            for record in model_store.list_sessions()
+        ]
+    }
+
+
+def run_session(session_id: str, scenario: str | None = None) -> dict[str, Any]:
+    """Resolve a saved SESSION's full config and run it, compact summary out.
+
+    The session counterpart to :func:`run_model`: runs a ``"sess_<slug>"``
+    session (its stored full runnable state) rather than a model.
+
+    Args:
+        session_id: A ``"sess_<slug>"`` id (see :func:`list_sessions`).
+        scenario: If given, only that scenario's results are returned.
+
+    Returns:
+        ``{"ok": True, "session_id", "scenarios": {...}}`` — same compact
+        per-year shape as :func:`run_model`.
+
+    Raises:
+        ModelStoreError: ``session_id`` isn't a session id, or matches none.
+        ValueError: ``scenario`` doesn't match any scenario the run produced.
+    """
+    config = model_store.resolve_session(session_id).config
+    summary_df, _participant_df = run_simulation_from_config(config)
+    return {
+        "ok": True,
+        "session_id": session_id,
+        **compact_run_summary(summary_df, scenario=scenario, config=config),
+    }

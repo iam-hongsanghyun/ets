@@ -31,11 +31,18 @@ from ..engine import (
     solve_scenario_path,
 )
 from ..model_store import (
+    SessionRecord,
     compile_graph_or_raise,
+    delete_session,
     iter_examples,
     iter_registry_models,
+    list_sessions,
+    rename_session,
+    resolve_model_config,
+    resolve_session,
     save_config_as_model,
     save_graph_as_model,
+    save_session,
     slugify_filename,
 )
 
@@ -799,6 +806,185 @@ def _save_user_scenario(payload: dict) -> dict:
             "source": "user",
             "config": _decorate_frontend_config(saved.config, template_id=saved.id),
         },
+    }
+
+
+# ── Session tier (pe.command) + save-back-to-model ─────────────────────────
+#
+# A SESSION is a model POPULATED with a user's data (the full runnable state),
+# saved from and reloadable ONLY in pe.command — never in the builder's
+# template picker (GET /api/templates / GET /api/graph/from-template stay
+# models-only; iter_registry_models filters kind="model"). These handlers are
+# the transport-free adapters pe.command's UI consumes:
+#
+#   * POST   /api/session          save-as-SESSION      {name, config, source_model_id}
+#   * GET    /api/sessions         list every session
+#   * GET    /api/session/<id>     load one session's config
+#   * DELETE /api/session/<id>     delete a session
+#   * PATCH  /api/session/<id>     rename a session     {name}
+#   * POST   /api/model            save-as-MODEL (promote a session's config into
+#                                  the model library): {name, config, model_id?}
+#                                  — model_id present -> UPDATE that model in
+#                                  place; absent -> NEW name-derived model.
+#
+# A NEW session is instantiated client-side from GET /api/graph/from-template
+# (an example/model id) or an existing model's config; the backend just
+# resolves that source config (resolve_model_config, unchanged).
+
+
+def _session_payload(record: SessionRecord) -> dict:
+    """Serialize a :class:`~pe.model_store.SessionRecord` for the wire."""
+    return {
+        "id": record.id,
+        "name": record.name,
+        "source_model_id": record.source_model_id,
+        "created_at": record.created_at,
+        "updated_at": record.updated_at,
+    }
+
+
+def _handle_session_save(data: dict) -> dict:
+    """Handle POST /api/session — save a pe.command working state as a SESSION.
+
+    Args:
+        data: ``{"name": <display name>, "config": <full scenario config>,
+            "source_model_id": <model id or null>}``.
+
+    Returns:
+        The saved session's metadata (:func:`_session_payload`).
+
+    Raises:
+        ValueError: Empty ``name`` or a missing/non-dict ``config``.
+    """
+    name = str(data.get("name", "")).strip()
+    if not name:
+        raise ValueError("Request must include a non-empty 'name'.")
+    config = data.get("config")
+    if not isinstance(config, dict):
+        raise ValueError("Request must include a 'config' object.")
+    source_model_id = data.get("source_model_id")
+    record = save_session(
+        config,
+        name,
+        str(source_model_id) if source_model_id else None,
+        registry_dir=USER_SCENARIOS_DIR,
+    )
+    return _session_payload(record)
+
+
+def _handle_sessions_list() -> dict:
+    """Handle GET /api/sessions — list every saved session (pe.command only)."""
+    return {"sessions": [_session_payload(record) for record in list_sessions(registry_dir=USER_SCENARIOS_DIR)]}
+
+
+def _handle_session_get(session_id: str | None) -> dict:
+    """Handle GET /api/session/<id> — load one session's config + metadata.
+
+    Raises:
+        ValueError: Falsy ``session_id`` (routed as an empty path segment).
+        ModelStoreError: No such session (a ``ValueError`` subclass → 400).
+    """
+    if not session_id:
+        raise ValueError("A session id is required.")
+    record = resolve_session(session_id, registry_dir=USER_SCENARIOS_DIR)
+    return {**_session_payload(record), "config": record.config}
+
+
+def _handle_session_delete(session_id: str | None) -> dict:
+    """Handle DELETE /api/session/<id> — delete one session.
+
+    Raises:
+        ValueError: Falsy ``session_id``.
+        ModelStoreError: No such session (a ``ValueError`` subclass → 400).
+    """
+    if not session_id:
+        raise ValueError("A session id is required.")
+    delete_session(session_id, registry_dir=USER_SCENARIOS_DIR)
+    return {"ok": True, "id": session_id, "deleted": True}
+
+
+def _handle_session_rename(session_id: str | None, data: dict) -> dict:
+    """Handle PATCH /api/session/<id> — rename one session (re-slugs its id).
+
+    Args:
+        session_id: The session's current ``"sess_<slug>"`` id.
+        data: ``{"name": <new display name>}``.
+
+    Raises:
+        ValueError: Falsy ``session_id`` or empty ``name``.
+        ModelStoreError: No such session, or a colliding new id (→ 400).
+    """
+    if not session_id:
+        raise ValueError("A session id is required.")
+    name = str(data.get("name", "")).strip()
+    if not name:
+        raise ValueError("Request must include a non-empty 'name'.")
+    record = rename_session(session_id, name, registry_dir=USER_SCENARIOS_DIR)
+    return _session_payload(record)
+
+
+def _handle_model_get(model_id: str | None) -> dict:
+    """Handle GET /api/model/<id> — resolve a model's config (the session seed).
+
+    The "model → new session" instantiation step: pe.command loads a model's
+    config by id, populates it with the user's data, then saves the result via
+    ``POST /api/session``. Resolves any model id ``list_models``/the template
+    picker reports — an example stem or a ``"user_<slug>"`` registry model —
+    through the shared :func:`resolve_model_config` (models only; a session's
+    ``"sess_<slug>"`` id is not a model and does not resolve here).
+
+    Raises:
+        ValueError: Falsy ``model_id``.
+        ModelStoreError: No such model (a ``ValueError`` subclass → 400).
+    """
+    if not model_id:
+        raise ValueError("A model id is required.")
+    config = resolve_model_config(
+        model_id, examples_dir=EXAMPLES_DIR, registry_dir=USER_SCENARIOS_DIR
+    )
+    return {"id": model_id, "config": config}
+
+
+def _handle_model_save(data: dict) -> dict:
+    """Handle POST /api/model — promote a config into the MODEL library.
+
+    The session→model "save back" path: writes a scenario ``config`` into the
+    model tier (``kind="model"``, so it appears in the builder's template
+    picker and ``list_models``). Two outcomes, selected by ``model_id``:
+
+    * ``model_id`` present → UPDATE-EXISTING: overwrite that model id in place.
+    * ``model_id`` absent → NEW: a fresh name-derived ``user_<slug>`` model.
+
+    Args:
+        data: ``{"name": <display name>, "config": <scenario config>,
+            "model_id": <"user_<slug>" to overwrite, or null for new>}``.
+
+    Returns:
+        ``{"id": "user_<slug>", "name", "config", "updated": <bool>}`` —
+        ``updated`` is ``True`` for the overwrite path, ``False`` for a new
+        model.
+
+    Raises:
+        ValueError: Empty ``name``, missing/non-dict ``config``, or (via
+            :class:`~pe.model_store.ModelStoreError`) a ``model_id`` that
+            isn't a registry ``"user_<slug>"`` id.
+    """
+    name = str(data.get("name", "")).strip()
+    if not name:
+        raise ValueError("Request must include a non-empty 'name'.")
+    config = data.get("config")
+    if not isinstance(config, dict):
+        raise ValueError("Request must include a 'config' object.")
+    model_id = data.get("model_id")
+    target = str(model_id) if model_id else None
+    saved = save_config_as_model(
+        config, name, model_id=target, registry_dir=USER_SCENARIOS_DIR
+    )
+    return {
+        "id": saved.id,
+        "name": saved.name,
+        "config": saved.config,
+        "updated": target is not None,
     }
 
 

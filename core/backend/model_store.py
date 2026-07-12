@@ -71,7 +71,7 @@ from typing import Any
 from .blocks import Graph, compile_graph, graph_from_config, validate_graph
 from .config_io import load_config, save_config
 from .core.paths import EXAMPLES_DIR, USER_SCENARIOS_DIR
-from .registry.backend import StorageBackend
+from .registry.backend import ModelRecord, StorageBackend
 from .registry.config import get_backend_for_directory
 
 
@@ -126,6 +126,42 @@ class SavedModel:
     config: dict[str, Any]
     config_path: Path
     graph_path: Path
+
+
+# A SESSION's registry id carries this prefix (``sess_<slug>``) — its OWN
+# namespace, distinct from a model's bare-slug backend id (app-facing
+# ``user_<slug>``). The prefix IS the backend primary key for a session (unlike
+# ``user_``, which ``pe`` adds on top of the bare stored slug), so a model slug
+# and a session slug can never collide on the ``models`` table's primary key.
+SESSION_ID_PREFIX = "sess_"
+
+
+@dataclass(frozen=True)
+class SessionRecord:
+    """One saved pe.command SESSION — a model populated with a user's data.
+
+    A session is the FULL runnable state (every company/sector/detailed
+    setting) instantiated FROM a model, saved from pe.command and reloadable
+    ONLY there — never listed in the builder's template picker (see
+    :func:`iter_registry_models`, which filters to ``kind="model"``).
+
+    Args:
+        id: Registry id, ``"sess_<slug>"`` — both the app-facing id and the
+            backend primary key (see :data:`SESSION_ID_PREFIX`).
+        name: The session's display name (already ``.strip()``-ed).
+        config: The full stored scenario config (its working state).
+        source_model_id: The model this session was instantiated from
+            (``"user_<slug>"`` or an example stem), or ``None`` if unknown.
+        created_at: ISO-8601 UTC timestamp, set once at first save.
+        updated_at: ISO-8601 UTC timestamp, refreshed on every save.
+    """
+
+    id: str
+    name: str
+    config: dict[str, Any]
+    source_model_id: str | None
+    created_at: str
+    updated_at: str
 
 
 def slugify_filename(value: str) -> str:
@@ -233,24 +269,41 @@ def save_graph_as_model(
 
 
 def save_config_as_model(
-    config: dict[str, Any], name: str, *, registry_dir: Path | None = None
+    config: dict[str, Any],
+    name: str,
+    *,
+    model_id: str | None = None,
+    registry_dir: Path | None = None,
 ) -> SavedModel:
     """Persist an already-compiled scenario config (no composer graph) as a model.
 
     The bare-config counterpart to :func:`save_graph_as_model`, for callers
     that already have a compiled ``{"scenarios": [...]}`` dict rather than a
-    composer :class:`~pe.blocks.Graph` — today, ``pe.web.api``'s legacy
-    ``POST /api/save-scenario`` handler (pre-dates the composer's ``POST
-    /api/graph/save-model``). Writes only ``<slug>.json`` — no
-    ``.graph.json`` sidecar, since there is no source graph to round-trip;
-    :func:`resolve_model_graph` already handles a registry model with no
-    sidecar by decompiling its config on demand.
+    composer :class:`~pe.blocks.Graph` — ``pe.web.api``'s legacy ``POST
+    /api/save-scenario`` handler (pre-dates the composer's ``POST
+    /api/graph/save-model``), and the "save a pe.command SESSION back into
+    the model library" promotion (``POST /api/model``). Writes only
+    ``<slug>.json`` — no ``.graph.json`` sidecar, since there is no source
+    graph to round-trip; :func:`resolve_model_graph` already handles a
+    registry model with no sidecar by decompiling its config on demand.
+
+    Two write targets, selected by ``model_id``:
+
+    * ``model_id=None`` (NEW): the ``<slug>``/registry id is derived from
+      ``name`` (via :func:`slugify_filename`) — a fresh model, or an
+      overwrite if that slug already exists.
+    * ``model_id="user_<slug>"`` (UPDATE-EXISTING): that exact registry id
+      is overwritten in place (``StorageBackend.save_model`` is an upsert),
+      regardless of ``name``. This is the session→model "save back onto the
+      source model" path — the config is promoted onto the model it was
+      instantiated from without spawning a name-derived duplicate.
 
     Args:
         config: A scenario-config dict, as accepted by
             ``config_io.save_config``.
-        name: Display name; also the basis for the ``<slug>`` (via
-            :func:`slugify_filename`) and thus the registry id.
+        name: Display name.
+        model_id: ``None`` to write a NEW name-derived model, or an existing
+            ``"user_<slug>"`` id to UPDATE (overwrite) that model in place.
         registry_dir: Defaults to ``ets.core.paths.USER_SCENARIOS_DIR``.
 
     Returns:
@@ -258,15 +311,21 @@ def save_config_as_model(
         *would* live; no file is written there).
 
     Raises:
-        ModelStoreError: Empty ``name``.
+        ModelStoreError: Empty ``name``, or a ``model_id`` that isn't a
+            registry ``"user_<slug>"`` id (see
+            :func:`_require_registry_model_id`).
     """
     display_name = name.strip()
     if not display_name:
         raise ModelStoreError("A model needs a non-empty name.")
 
+    stem = (
+        _require_registry_model_id(model_id)
+        if model_id is not None
+        else slugify_filename(display_name)
+    )
     directory = registry_dir if registry_dir is not None else USER_SCENARIOS_DIR
     directory.mkdir(parents=True, exist_ok=True)
-    stem = slugify_filename(display_name)
     config_path = directory / f"{stem}.json"
     graph_path = directory / f"{stem}.graph.json"
     save_config(config, config_path)
@@ -288,8 +347,9 @@ def save_config_as_model(
 def _require_registry_model_id(model_id: str) -> str:
     """Validate ``model_id`` is a registry (``"user_<slug>"``) id; return its slug.
 
-    Shared guard for :func:`rename_registry_model` and
-    :func:`delete_registry_model` — both are registry-only mutations, per
+    Shared guard for :func:`rename_registry_model`,
+    :func:`delete_registry_model`, and :func:`save_config_as_model`'s
+    UPDATE-EXISTING path — all registry-only operations, per
     ``ets.mcp.models_tools``'s role split (the governor operates the
     registry but never touches a bundled example).
 
@@ -307,8 +367,8 @@ def _require_registry_model_id(model_id: str) -> str:
     if not model_id.startswith("user_") or not slug:
         raise ModelStoreError(
             f"'{model_id}' is not a registry model id — only models saved to the "
-            "registry (ids starting with 'user_') can be renamed or deleted; "
-            "bundled examples are immutable."
+            "registry (ids starting with 'user_') can be updated, renamed, or "
+            "deleted; bundled examples are immutable."
         )
     return slug
 
@@ -465,10 +525,17 @@ def iter_registry_models(
     Yields:
         ``(f"user_{record.id}", record.config)``, ordered deterministically
         by id (:meth:`~pe.registry.backend.StorageBackend.list_models`).
+
+    Note:
+        Only ``kind="model"`` entries are listed — a SESSION
+        (``kind="session"``, a model populated with a user's data and saved
+        from pe.command) is deliberately EXCLUDED so it never appears in the
+        builder's template picker or ``pe.mcp``'s ``list_models``. Sessions
+        are enumerated separately by :func:`list_sessions`.
     """
     directory = registry_dir if registry_dir is not None else USER_SCENARIOS_DIR
     directory.mkdir(parents=True, exist_ok=True)
-    for record in _backend_for(directory).list_models():
+    for record in _backend_for(directory).list_models(kind="model"):
         yield f"user_{record.id}", record.config
 
 
@@ -538,3 +605,207 @@ def resolve_model_graph(
             return Graph.from_dict(record.graph)
     config = resolve_model_config(model_id, examples_dir=examples_dir, registry_dir=registry_dir)
     return graph_from_config(config)
+
+
+# ── SESSION tier (pe.command) ─────────────────────────────────────────────
+#
+# A session is a model POPULATED with a user's data — the full runnable state,
+# saved from pe.command and reloadable ONLY there. It lives in the SAME backend
+# table as models, tagged ``kind="session"`` with a ``source_model_id`` link,
+# and is kept out of the builder's corpus by the ``kind="model"`` filter in
+# :func:`iter_registry_models`. Sessions are backend-only: unlike a model they
+# write NO ``<slug>.json``/``.graph.json`` file mirror (nothing decompiles or
+# re-edits a session, and a mirror would be re-imported as a MODEL by
+# ``pe.registry.migrate``'s ``*.json`` glob).
+
+
+def _record_to_session(record: ModelRecord) -> SessionRecord:
+    """Project a backend :class:`ModelRecord` (``kind="session"``) to a :class:`SessionRecord`."""
+    return SessionRecord(
+        id=record.id,
+        name=record.name,
+        config=record.config,
+        source_model_id=record.source_model_id,
+        created_at=record.created_at,
+        updated_at=record.updated_at,
+    )
+
+
+def _require_session_id(session_id: str) -> str:
+    """Validate ``session_id`` is a ``"sess_<slug>"`` id; return it (the backend id).
+
+    A session's app-facing id IS its backend primary key (see
+    :data:`SESSION_ID_PREFIX`), so there is nothing to strip — this just
+    guards that a session op was handed a session id, not a model/example id.
+
+    Raises:
+        ModelStoreError: ``session_id`` doesn't start with ``"sess_"`` or has
+            no slug after the prefix.
+    """
+    if not session_id.startswith(SESSION_ID_PREFIX) or not session_id[len(SESSION_ID_PREFIX) :]:
+        raise ModelStoreError(
+            f"'{session_id}' is not a session id — session ops require an id "
+            f"starting with '{SESSION_ID_PREFIX}' (as returned by save_session/list_sessions)."
+        )
+    return session_id
+
+
+def save_session(
+    config: dict[str, Any],
+    name: str,
+    source_model_id: str | None,
+    *,
+    registry_dir: Path | None = None,
+) -> SessionRecord:
+    """Persist a pe.command working state as a SESSION (``kind="session"``).
+
+    Stores the FULL ``config`` under a ``"sess_<slug>"`` id
+    (:func:`slugify_filename` of ``name``), tagged with the model it was
+    instantiated from (``source_model_id``). Idempotent on the derived id: a
+    second save under the same name overwrites (the backend upsert), so
+    re-saving a session in place is a no-duplicate update. Backend-only —
+    writes no file mirror (see this section's note).
+
+    Args:
+        config: The full scenario config (the session's working state).
+        name: Display name; also the basis for the ``<slug>``/id.
+        source_model_id: The model this session came from (``"user_<slug>"``
+            or an example stem), or ``None``.
+        registry_dir: Defaults to ``pe.core.paths.USER_SCENARIOS_DIR``.
+
+    Returns:
+        The persisted :class:`SessionRecord`.
+
+    Raises:
+        ModelStoreError: Empty ``name``.
+    """
+    display_name = name.strip()
+    if not display_name:
+        raise ModelStoreError("A session needs a non-empty name.")
+    directory = registry_dir if registry_dir is not None else USER_SCENARIOS_DIR
+    directory.mkdir(parents=True, exist_ok=True)
+    session_id = f"{SESSION_ID_PREFIX}{slugify_filename(display_name)}"
+    record = _backend_for(directory).save_model(
+        session_id,
+        display_name,
+        config,
+        None,
+        source="config",
+        domain=None,
+        kind="session",
+        source_model_id=source_model_id,
+    )
+    return _record_to_session(record)
+
+
+def list_sessions(*, registry_dir: Path | None = None) -> list[SessionRecord]:
+    """List every saved SESSION, ordered deterministically by id (``kind="session"`` only).
+
+    The pe.command counterpart to :func:`iter_registry_models` (which lists
+    ``kind="model"`` only): the two tiers never appear in each other's list.
+
+    Args:
+        registry_dir: Defaults to ``pe.core.paths.USER_SCENARIOS_DIR``.
+
+    Returns:
+        Every session as a :class:`SessionRecord`.
+    """
+    directory = registry_dir if registry_dir is not None else USER_SCENARIOS_DIR
+    directory.mkdir(parents=True, exist_ok=True)
+    return [
+        _record_to_session(record)
+        for record in _backend_for(directory).list_models(kind="session")
+    ]
+
+
+def resolve_session(session_id: str, *, registry_dir: Path | None = None) -> SessionRecord:
+    """Resolve a ``"sess_<slug>"`` id to its saved :class:`SessionRecord`.
+
+    Args:
+        session_id: A ``"sess_<slug>"`` id (see :func:`save_session`).
+        registry_dir: Defaults to ``pe.core.paths.USER_SCENARIOS_DIR``.
+
+    Returns:
+        The :class:`SessionRecord` (``.config`` is the reloadable working state).
+
+    Raises:
+        ModelStoreError: ``session_id`` isn't a session id, or matches none.
+    """
+    _require_session_id(session_id)
+    directory = registry_dir if registry_dir is not None else USER_SCENARIOS_DIR
+    record = _backend_for(directory).get_model(session_id)
+    if record is None:
+        raise ModelStoreError(f"Unknown session id '{session_id}'.")
+    return _record_to_session(record)
+
+
+def delete_session(session_id: str, *, registry_dir: Path | None = None) -> None:
+    """Delete a saved SESSION by ``"sess_<slug>"`` id.
+
+    Args:
+        session_id: A ``"sess_<slug>"`` id.
+        registry_dir: Defaults to ``pe.core.paths.USER_SCENARIOS_DIR``.
+
+    Raises:
+        ModelStoreError: ``session_id`` isn't a session id, or matches none.
+    """
+    _require_session_id(session_id)
+    directory = registry_dir if registry_dir is not None else USER_SCENARIOS_DIR
+    backend = _backend_for(directory)
+    if backend.get_model(session_id) is None:
+        raise ModelStoreError(f"Unknown session id '{session_id}'.")
+    backend.delete_model(session_id)
+
+
+def rename_session(
+    session_id: str, new_name: str, *, registry_dir: Path | None = None
+) -> SessionRecord:
+    """Rename a SESSION by re-slugging its id to ``new_name`` (keeps its source link).
+
+    A session's display name derives its id/slug (same policy as
+    :func:`rename_registry_model` for models), so a rename re-keys the row:
+    persist under the new ``"sess_<slug>"`` id, drop the old. The
+    ``source_model_id`` link and stored config carry over unchanged.
+
+    Args:
+        session_id: The session's current ``"sess_<slug>"`` id.
+        new_name: The new display name; also the basis of the new id.
+        registry_dir: Defaults to ``pe.core.paths.USER_SCENARIOS_DIR``.
+
+    Returns:
+        The renamed :class:`SessionRecord` (``id`` is the new ``"sess_<slug>"``).
+
+    Raises:
+        ModelStoreError: ``session_id`` isn't a session id, doesn't exist,
+            ``new_name`` is empty, or the new id collides with a different
+            existing session.
+    """
+    _require_session_id(session_id)
+    display_name = new_name.strip()
+    if not display_name:
+        raise ModelStoreError("A session needs a non-empty name.")
+    directory = registry_dir if registry_dir is not None else USER_SCENARIOS_DIR
+    backend = _backend_for(directory)
+    record = backend.get_model(session_id)
+    if record is None:
+        raise ModelStoreError(f"Unknown session id '{session_id}'.")
+
+    new_id = f"{SESSION_ID_PREFIX}{slugify_filename(display_name)}"
+    if new_id != session_id and backend.get_model(new_id) is not None:
+        raise ModelStoreError(
+            f"A session named '{display_name}' already exists (id '{new_id}')."
+        )
+
+    saved = backend.save_model(
+        new_id,
+        display_name,
+        record.config,
+        None,
+        source=record.source,
+        domain=record.domain,
+        kind="session",
+        source_model_id=record.source_model_id,
+    )
+    if new_id != session_id:
+        backend.delete_model(session_id)
+    return _record_to_session(saved)
