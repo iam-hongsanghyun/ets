@@ -1,12 +1,16 @@
 {
   "mcpServers": {
-    "pe-composer": {
+    "pe-config": {
       "command": "uv",
-      "args": ["run", "--extra", "mcp", "python", "-m", "pe.mcp"]
+      "args": ["run", "--extra", "mcp", "python", "-m", "pe.mcp.config"]
     },
-    "pe-models": {
+    "pe-run": {
       "command": "uv",
-      "args": ["run", "--extra", "mcp", "python", "-m", "pe.mcp.models"]
+      "args": ["run", "--extra", "mcp", "python", "-m", "pe.mcp.run"]
+    },
+    "pe-modules": {
+      "command": "uv",
+      "args": ["run", "--extra", "mcp", "python", "-m", "pe.mcp.modules"]
     }
   }
 }

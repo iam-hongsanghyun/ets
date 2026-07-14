@@ -139,17 +139,23 @@ goes — is documented as a six-step checklist in
 
 ---
 
-## MCP composer (AI-guided setup)
+## MCP servers (AI-guided setup)
 
-`src/ets/mcp` exposes the same block-graph composer as an
-[MCP](https://modelcontextprotocol.io) server, so an AI assistant (Claude
-Code, Claude Desktop, or any other MCP client) can hold a conversation with
-you and build a scenario graph turn by turn instead of you drawing it in
-`configure.command` or writing JSON by hand. It is a T5 app, same tier as
-`ets.web`/`ets.cli`, wired to the exact same `ets.blocks` catalogue/
-validator/compiler and the same `user-scenarios/` registry
-(`ets.model_store`) the web composer uses — a model saved from either place
-shows up immediately in both.
+`pe.mcp` exposes the modelling platform over
+[MCP](https://modelcontextprotocol.io) as **three servers**, so an AI
+assistant (Claude Code, Claude Desktop, or any other MCP client) can hold a
+conversation with you and build, run, or explain a scenario instead of you
+drawing it in `configure.command` or writing JSON by hand. All three are T5
+apps, same tier as `pe.web`/`pe.cli`, wired to the exact same `pe.blocks`
+catalogue/validator/compiler and the same `user-scenarios/` registry
+(`pe.model_store`) the web composer uses — a model saved from any of them
+shows up immediately everywhere.
+
+| Server | `python -m …` | What it does |
+|---|---|---|
+| **pe-config** | `pe.mcp.config` | CONFIGURES the platform: model *authoring* (the composer graph) + read-only *deployment settings* (the `PE_*` registry vars). |
+| **pe-run** | `pe.mcp.run` | OPERATES and ANALYSES the model registry: run / compare / sweep, plus batch sweeps, narrative, CSV import, investment trigger, and calibration. |
+| **pe-modules** | `pe.mcp.modules` | A FACTORY server giving every feature module (banking, MSR, CCR, CBAM, …) one uniform surface: describe / configure-into-graph / run-scoped / doc-resource. |
 
 ### Registration
 
@@ -159,30 +165,33 @@ Install the `mcp` optional-dependency group:
 uv sync --extra mcp        # or --all-extras
 ```
 
-The repo-root `.mcp.json` already registers the server for Claude Code (and
+The repo-root `.mcp.json` already registers all three for Claude Code (and
 any other client that reads that file):
 
 ```json
 {
   "mcpServers": {
-    "ets-composer": {
-      "command": "uv",
-      "args": ["run", "--extra", "mcp", "python", "-m", "ets.mcp"]
-    }
+    "pe-config":  { "command": "uv", "args": ["run", "--extra", "mcp", "python", "-m", "pe.mcp.config"] },
+    "pe-run":     { "command": "uv", "args": ["run", "--extra", "mcp", "python", "-m", "pe.mcp.run"] },
+    "pe-modules": { "command": "uv", "args": ["run", "--extra", "mcp", "python", "-m", "pe.mcp.modules"] }
   }
 }
 ```
 
-For Claude Desktop, add the same `"ets-composer"` entry (with an absolute
-`cwd` pointing at this repo) to its own `claude_desktop_config.json`. Run it
-by hand for a manual check — it speaks MCP over stdio, so a plain
-`python -m ets.mcp` blocks waiting for a client:
+For Claude Desktop, add the same entries (with an absolute `cwd` pointing at
+this repo) to its own `claude_desktop_config.json`. Run one by hand for a
+manual check — each speaks MCP over stdio, so a plain `python -m …` blocks
+waiting for a client:
 
 ```bash
-uv run --extra mcp python -m ets.mcp
+uv run --extra mcp python -m pe.mcp.config
 ```
 
 ### Tools
+
+**pe-config** — authoring (the graph document is the conversation's state;
+every mutating tool is stateless and returns the updated graph + fresh
+`issues`) plus settings:
 
 | Tool | What it does |
 |---|---|
@@ -194,10 +203,32 @@ uv run --extra mcp python -m ets.mcp
 | `check(graph)` | `validate_graph`'s issues (rules R1–R32) plus `next_steps` — a plain-language, typically yes/no-phrased suggestion for every ERROR, derived from `docs/blocks-composition-rules.md` §4. |
 | `run_model(graph, scenario=None)` | Compiles and runs the graph; returns a compact per-scenario/per-year summary (price, auction sold/offered, abatement, bank/MSR/CCR columns when active) — never a raw DataFrame. |
 | `save_model(graph, name)` | Persists the graph to the shared registry; the returned id shows up in both `run.command`'s template picker and `pe.command`'s model list. |
+| `list_settings()` / `describe_setting(name)` | Read-only view of the `PE_*` deployment settings (registry backend + location); secret values (API keys) are redacted — the server never writes credentials. |
 
-Every mutating tool is stateless: it takes the current graph JSON and
-returns the updated graph plus fresh `issues` — the AI assistant holds the
-graph across turns, not the server.
+**pe-run** — operation (`list_models`, `describe_model`, `run_model`,
+`compare_models`, `sweep_model`, `model_manifest`, `list_sessions`,
+`run_session`, `rename_model`, `delete_model`) plus analysis:
+
+| Tool | What it does |
+|---|---|
+| `run_batch(model_id, sweeps)` | Multi-axis parameter sweep of a registered model, reduced to per-combination headlines (the multi-axis generalisation of `sweep_model`). |
+| `narrate_model(model_id, scenario=None)` | A plain-language summary of the solved price/abatement path. |
+| `import_csv(csv_text, scenario_name=…)` | Turns a per-year CSV into a runnable config (hand it to pe-config to save). |
+| `compute_investment_trigger(sigma, r, y, credibility=None)` | Dixit–Pindyck real-options trigger multiple + break-even dating. |
+| `calibrate_slopes(model_id, observed_prices, participant_names)` | Inverse-fit participant MAC slopes to observed prices. |
+| `calibrate_from_elasticity(curve, …)` / `calibrate_abatement_from_reference(…)` | Forward-build a demand/supply/abatement block from one elasticity or MAC anchor. |
+
+**pe-modules** — one surface per feature module (pick the module by name):
+
+| Tool | What it does |
+|---|---|
+| `list_modules()` | Every feature module, its blocks, categories, whether it has a mechanism doc, and its scoped output columns. |
+| `describe_module(module)` | The module's block descriptors (params/defaults/units/bounds/enums) plus its `doc/reference.md` mechanism text. |
+| `configure_module(graph, module, params=None, block_id=None, target_market=None)` | Adds/wires one of the module's blocks onto a composer graph exactly as pe-config's `add_block` would. |
+| `run_module_scoped(model_id, module, scenario=None)` | Runs a model and reports just this module's own output columns (bank path, MSR reserve, CCR adjustment, …). |
+
+It also serves each module's mechanism doc as a resource,
+`pe-module://{module}/reference`.
 
 ### Example conversation flow
 
@@ -205,27 +236,28 @@ graph across turns, not the server.
 You:  Model a cap-and-trade market for three sectors with a price floor
       and an MSR that starts kicking in from year 3.
 
-AI:   [list_models(), list_blocks()] I'll start from a blank model —
-      new_graph() — and add three participants, a price_floor block, and
-      an msr_bank_threshold block. Sound good?
+AI:   [pe-config: list_models(), list_blocks()] I'll start from a blank
+      model — new_graph() — and add three participants, a price_floor
+      block, and an msr_bank_threshold block. Sound good?
 
 You:  Yes.
 
-AI:   [add_block(...) x5, check(graph) after each] The MSR needs a bank
-      signal to do anything under competitive clearing: at least one year
-      with banking_allowed=true and a non-myopic expectations rule. Want
-      me to set both?
+AI:   [pe-config: add_block(...) x5, check(graph) after each] The MSR needs
+      a bank signal to do anything under competitive clearing: at least one
+      year with banking_allowed=true and a non-myopic expectations rule.
+      Want me to set both?
 
 You:  Yes.
 
-AI:   [set_params(...), add_block("expectations", ...), check(graph)]
-      check() is clean now. [run_model(graph)] Here's what it solves to:
-      price starts at ~12/tCO2 in year 1 and rises to ~34/tCO2 by year 5 as
-      the MSR withholds allowances... Want me to save this model?
+AI:   [pe-config: set_params(...), add_block("expectations", ...),
+      check(graph)] check() is clean now. [pe-run: run_model(graph)] Here's
+      what it solves to: price starts at ~12/tCO2 in year 1 and rises to
+      ~34/tCO2 by year 5 as the MSR withholds allowances... Want me to save
+      this model?
 
 You:  Yes, call it "Three Sector MSR Pilot".
 
-AI:   [save_model(graph, "Three Sector MSR Pilot")] Saved as
+AI:   [pe-config: save_model(graph, "Three Sector MSR Pilot")] Saved as
       user_three_sector_msr_pilot — it's now in run.command's template
       picker and pe.command's model list.
 ```
@@ -831,13 +863,17 @@ src/ets/
   web/                T5 — apps
     api.py, routes.py, handlers.py, server.py
   cli.py              T5 — command-line entry point
-  mcp/                T5 — AI-guided composer, exposed as an MCP server
-    tools.py           stateless tool implementations (list_models, list_blocks,
-                       describe_block, new_graph, add_block, set_params,
-                       remove_node, check, run_model, save_model)
+  mcp/                T5 — three AI-guided MCP servers (config / run / modules)
+    tools.py           composer graph tools (pe-config authoring half)
+    settings_tools.py  read-only PE_* deployment settings (pe-config)
+    models_tools.py    governor tools (pe-run operation half)
+    analysis_tools.py  pe.analysis wrappers: batch, narrative, csv, trigger, calibration (pe-run)
     suggestions.py     rule -> plain-language-suggestion table for check()
     compact.py         compact per-scenario/per-year summary for run_model()
-    server.py          FastMCP wiring + server instructions; __main__.py entry
+    config/  run/      FastMCP server + instructions + __main__ per server
+    modules/           factory server: registry.py (catalogue-derived module map) +
+                       tools.py (describe/configure/run-scoped) + server.py + __main__
+    server.py/models_server.py  legacy pe-composer/pe-models (backward compat)
   <flat shims>        expectations.py, msr.py, ccr.py, costs.py, config.py, market.py,
                        participant.py, solvers/, market/, participant/ — DeprecationWarning,
                        re-export the moved names; see docs/feature-modules-plan.md §4 O13

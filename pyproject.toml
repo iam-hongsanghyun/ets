@@ -39,7 +39,8 @@ packages = [
     "pe.core", "pe.core.market", "pe.core.participant",
     "pe.config_io", "pe.engine", "pe.blocks",
     "pe.analysis", "pe.coupling", "pe.web",
-    "pe.mcp", "pe.mcp.models", "pe.registry",
+    "pe.mcp", "pe.mcp.models", "pe.mcp.config", "pe.mcp.run", "pe.mcp.modules",
+    "pe.registry",
     "pe.features",                              # namespace __init__ only
     # feature modules  (still under core/backend/features/ at WO-1; each peels to
     # modules/<name>/backend + its own package-dir line in WO-2..WO-15)
@@ -54,7 +55,8 @@ packages = [
     # Full list mechanically generated: `find compat/ets -name __init__.py`.
     "ets", "ets.core", "ets.core.market", "ets.core.participant",
     "ets.config_io", "ets.engine", "ets.blocks", "ets.analysis",
-    "ets.coupling", "ets.web", "ets.mcp", "ets.mcp.models", "ets.registry",
+    "ets.coupling", "ets.web", "ets.mcp", "ets.mcp.models",
+    "ets.mcp.config", "ets.mcp.run", "ets.mcp.modules", "ets.registry",
     "ets.features",
     "ets.features.banking", "ets.features.cbam", "ets.features.ccr",
     "ets.features.competitive", "ets.features.elastic_baseline",
